@@ -1,0 +1,45 @@
+version: '3.9'
+
+services:
+  grab2rss:
+    build: .
+    container_name: grab2rss
+    ports:
+      - "8000:8000"
+    environment:
+      # Prowlarr
+      - PROWLARR_URL=${PROWLARR_URL:-http://prowlarr:9696}
+      - PROWLARR_API_KEY=${PROWLARR_API_KEY:-}
+      - PROWLARR_HISTORY_PAGE_SIZE=${PROWLARR_HISTORY_PAGE_SIZE:-100}
+      
+      # Synchronisation
+      - SYNC_INTERVAL=${SYNC_INTERVAL:-3600}
+      
+      # Rétention et purge
+      - RETENTION_HOURS=${RETENTION_HOURS:-168}
+      - AUTO_PURGE=${AUTO_PURGE:-true}
+      
+      # Déduplication
+      - DEDUP_HOURS=${DEDUP_HOURS:-24}
+      
+      # Application
+      - APP_HOST=0.0.0.0
+      - APP_PORT=8000
+      
+      # RSS
+      - RSS_DOMAIN=${RSS_DOMAIN:-localhost:8000}
+      - RSS_SCHEME=${RSS_SCHEME:-http}
+    volumes:
+      - ./data:/app/data
+    networks:
+      - media-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  media-network:
+    driver: bridge

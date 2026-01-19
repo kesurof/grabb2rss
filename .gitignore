@@ -1,0 +1,58 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual environments
+venv/
+.env/
+.env.*
+!.env.example
+
+# =========================
+# Project runtime data
+# =========================
+data/
+*.db
+*.sqlite
+*.sqlite3
+*.jsonl
+
+# Logs
+*.log
+
+# =========================
+# Docker
+# =========================
+docker-data/
+docker-volumes/
+*.pid
+
+# =========================
+# IDE / Editor
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# =========================
+# Tests / coverage (si ajoutés plus tard)
+# =========================
+.coverage
+htmlcov/
+.pytest_cache/
+
+# =========================
+# OS / Misc
+# =========================
+Thumbs.db
