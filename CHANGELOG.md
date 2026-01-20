@@ -34,6 +34,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Module `setup.py` pour gestion de la configuration
   - Détection automatique du premier lancement
   - Middleware de redirection vers le setup wizard
+  - **Configuration chargée depuis YAML au démarrage** (Option A)
+  - Système de priorité : YAML > .env > variables d'env > défaut
+  - Scheduler démarre automatiquement après setup wizard
+  - Configuration persiste entre les redémarrages du container
 
 ### Changed
 - **Méthode d'installation recommandée** - Image pré-construite au lieu du build local
