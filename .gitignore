@@ -12,10 +12,8 @@ venv/
 .env/
 .env.*
 !.env.example
-
 # Environment variables - CRITICAL SECURITY
 .env
-
 # Project data
 data/
 *.db
