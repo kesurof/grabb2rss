@@ -18,11 +18,15 @@ CACHE_DURATION = 300  # 5 minutes en secondes
 
 def get_radarr_imported_download_ids(radarr_url: str, radarr_api_key: str, page_size: int = 200) -> Set[str]:
     """
-    Récupère les downloadId qui ont été grabbed ET importés dans Radarr
-    Stratégie: 
+    Récupère les downloadId qui ont été grabbed (choisis pour téléchargement) par Radarr
+
+    CORRIGÉ v2.6: Retourne tous les torrents grabbed, peu importe leur statut d'import
+    Un torrent "grabbed" = Radarr a décidé de le télécharger (même s'il n'est pas encore importé)
+
+    Stratégie:
     1. Récupérer tous les grabbed avec leur downloadId
-    2. Récupérer tous les downloadFolderImported avec leur downloadId
-    3. Intersection = downloadId vraiment importés
+    2. Récupérer tous les downloadFolderImported (pour stats uniquement)
+    3. Retourner tous les grabbed (pas seulement ceux importés)
     """
     try:
         response = requests.get(
@@ -41,18 +45,19 @@ def get_radarr_imported_download_ids(radarr_url: str, radarr_api_key: str, page_
                 download_id = record.get("downloadId")
                 if download_id:
                     grabbed_ids.add(download_id)
-        
-        # Extraire les downloadId des downloadFolderImported
+
+        # Extraire les downloadId des downloadFolderImported (pour stats uniquement)
         imported_ids = set()
         for record in data.get("records", []):
             if record.get("eventType") == "downloadFolderImported":
                 download_id = record.get("downloadId")
                 if download_id:
                     imported_ids.add(download_id)
-        
-        # Intersection: grabbed ET importé
-        valid_ids = grabbed_ids & imported_ids
-        
+
+        # CORRIGÉ: On garde tous les grabbed, peu importe s'ils sont importés ou non
+        # Un torrent "grabbed" = choisi par Radarr pour téléchargement
+        valid_ids = grabbed_ids
+
         print(f"📥 Radarr: {len(grabbed_ids)} grabbed, {len(imported_ids)} imported, {len(valid_ids)} valides")
         return valid_ids
         
@@ -62,7 +67,10 @@ def get_radarr_imported_download_ids(radarr_url: str, radarr_api_key: str, page_
 
 def get_sonarr_imported_download_ids(sonarr_url: str, sonarr_api_key: str, page_size: int = 200) -> Set[str]:
     """
-    Récupère les downloadId qui ont été grabbed ET importés dans Sonarr
+    Récupère les downloadId qui ont été grabbed (choisis pour téléchargement) par Sonarr
+
+    CORRIGÉ v2.6: Retourne tous les torrents grabbed, peu importe leur statut d'import
+    Un torrent "grabbed" = Sonarr a décidé de le télécharger (même s'il n'est pas encore importé)
     """
     try:
         response = requests.get(
@@ -81,18 +89,19 @@ def get_sonarr_imported_download_ids(sonarr_url: str, sonarr_api_key: str, page_
                 download_id = record.get("downloadId")
                 if download_id:
                     grabbed_ids.add(download_id)
-        
-        # Extraire les downloadId des downloadFolderImported
+
+        # Extraire les downloadId des downloadFolderImported (pour stats uniquement)
         imported_ids = set()
         for record in data.get("records", []):
             if record.get("eventType") == "downloadFolderImported":
                 download_id = record.get("downloadId")
                 if download_id:
                     imported_ids.add(download_id)
-        
-        # Intersection: grabbed ET importé
-        valid_ids = grabbed_ids & imported_ids
-        
+
+        # CORRIGÉ: On garde tous les grabbed, peu importe s'ils sont importés ou non
+        # Un torrent "grabbed" = choisi par Sonarr pour téléchargement
+        valid_ids = grabbed_ids
+
         print(f"📺 Sonarr: {len(grabbed_ids)} grabbed, {len(imported_ids)} imported, {len(valid_ids)} valides")
         return valid_ids
         
@@ -108,7 +117,11 @@ def get_all_imported_download_ids(
     use_cache: bool = True
 ) -> Set[str]:
     """
-    Récupère tous les downloadId importés depuis Radarr et Sonarr
+    Récupère tous les downloadId grabbed (choisis) depuis Radarr et Sonarr
+
+    CORRIGÉ v2.6: Retourne les torrents grabbed, pas seulement ceux importés
+    Cela permet d'inclure les téléchargements en cours dans le flux RSS
+
     Avec cache de 5 minutes pour éviter de surcharger les APIs
     """
     global _imported_cache, _cache_timestamp
