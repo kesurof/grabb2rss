@@ -135,6 +135,9 @@ APP_PORT = int(os.getenv("APP_PORT", "8000"))
 RSS_DOMAIN = _get_config("RSS_DOMAIN", "localhost:8000", str)
 RSS_SCHEME = _get_config("RSS_SCHEME", "http", str)
 
+# URL interne Docker (pour accès depuis d'autres conteneurs)
+RSS_INTERNAL_URL = _get_config("RSS_INTERNAL_URL", "http://grabb2rss:8000", str)
+
 # API
 RSS_TITLE = _get_config("RSS_TITLE", "grabb2rss", str)
 RSS_DESCRIPTION = _get_config("RSS_DESCRIPTION", "Derniers torrents grabbés via Prowlarr", str)
@@ -148,8 +151,9 @@ DESCRIPTIONS = {
     "RETENTION_HOURS": "Nombre d'heures avant suppression automatique (168 = 7j, 0 = infini)",
     "DEDUP_HOURS": "Fenêtre de déduplication en heures (24 = 24h glissant)",
     "AUTO_PURGE": "Activer la suppression automatique des anciens grabs",
-    "RSS_DOMAIN": "Domaine pour les URLs RSS (ex: grabb2rss.example.com)",
-    "RSS_SCHEME": "Protocole pour les URLs RSS (http ou https)"
+    "RSS_DOMAIN": "Domaine pour les URLs RSS publiques (ex: grabb2rss.example.com)",
+    "RSS_SCHEME": "Protocole pour les URLs RSS (http ou https)",
+    "RSS_INTERNAL_URL": "URL interne complète pour accès Docker (ex: http://grabb2rss:8000)"
 }
 
 def is_setup_completed() -> bool:
