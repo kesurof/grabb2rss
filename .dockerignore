@@ -1,82 +1,56 @@
-# Git
+# Git files
 .git
 .gitignore
 .gitattributes
 
-# Python
+# Python cache
 __pycache__
-*.py[cod]
-*$py.class
-*.so
+*.pyc
+*.pyo
+*.pyd
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
+*.so
 *.egg
-MANIFEST
-venv/
-env/
-ENV/
+*.egg-info
+dist
+build
+.pytest_cache
+.coverage
+htmlcov
 
-# Environment
-.env
-.env.*
-!.env.example
+# Virtual environments
+venv
+env
+ENV
+.venv
 
-# Data directories
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Documentation and development files
+*.md
+!README.md
+docs/
+tests/
+.github/
+
+# Docker files (no need to copy into image)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Data directories (should be mounted as volumes)
 data/
 config/
 *.db
-*.sqlite
-*.sqlite3
-
-# Docker
-docker-compose.yml
-Dockerfile
-.dockerignore
-
-# Documentation
-docs/
-*.md
-!README.md
-LICENSE
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-.DS_Store
-Thumbs.db
-
-# Logs
 *.log
-*.jsonl
 
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-.nox/
-
-# CI/CD
-.github/
-.gitlab-ci.yml
-.travis.yml
-
-# Misc
-*.bak
+# Temporary files
+tmp/
+temp/
 *.tmp
-*.temp
