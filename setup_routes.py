@@ -32,7 +32,7 @@ class SetupConfigModel(BaseModel):
 
     rss_domain: Optional[str] = "localhost:8000"
     rss_scheme: Optional[str] = "http"
-    rss_title: Optional[str] = "Grab2RSS"
+    rss_title: Optional[str] = "grabb2RSS"
     rss_description: Optional[str] = "Prowlarr to RSS Feed"
 
 
@@ -58,7 +58,7 @@ async def setup_page():
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grab2RSS - Configuration Initiale</title>
+    <title>grabb2RSS - Configuration Initiale</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -235,8 +235,8 @@ async def setup_page():
 <body>
     <div class="container">
         <header>
-            <h1>🚀 Bienvenue sur Grab2RSS</h1>
-            <p class="subtitle">Configuration initiale - Version 2.6.1</p>
+            <h1>🚀 Bienvenue sur grabb2RSS</h1>
+            <p class="subtitle">Configuration initiale - Version 2.6.5</p>
         </header>
 
         <div id="alert" class="alert"></div>
@@ -409,7 +409,7 @@ async def setup_page():
 
                 rss_domain: window.location.hostname,
                 rss_scheme: window.location.protocol.replace(':', ''),
-                rss_title: 'Grab2RSS',
+                rss_title: 'grabb2RSS',
                 rss_description: 'Prowlarr to RSS Feed'
             };
 

@@ -1,6 +1,6 @@
 # setup.py
 """
-Module de configuration initiale pour Grab2RSS
+Module de configuration initiale pour Grabb2RSS
 Gère le setup wizard au premier lancement
 """
 import yaml
@@ -21,12 +21,12 @@ DEFAULT_CONFIG = {
     "radarr": {
         "url": "",
         "api_key": "",
-        "enabled": False
+        "enabled": True
     },
     "sonarr": {
         "url": "",
         "api_key": "",
-        "enabled": False
+        "enabled": True
     },
     "sync": {
         "interval": 3600,
@@ -37,7 +37,7 @@ DEFAULT_CONFIG = {
     "rss": {
         "domain": "localhost:8000",
         "scheme": "http",
-        "title": "Grab2RSS",
+        "title": "Grabb2RSS",
         "description": "Prowlarr to RSS Feed"
     },
     "app": {
@@ -182,11 +182,11 @@ def get_config_for_ui() -> Dict[str, Any]:
         "prowlarr_url": "URL de votre serveur Prowlarr (ex: http://prowlarr:9696)",
         "prowlarr_api_key": "Clé API Prowlarr (obtenue depuis Prowlarr Settings → API)",
         "prowlarr_history_page_size": "Nombre d'enregistrements à récupérer par sync (50-500)",
-        "radarr_url": "URL de Radarr (ex: http://radarr:7878) - Optionnel",
-        "radarr_api_key": "Clé API Radarr - Optionnel",
+        "radarr_url": "URL de Radarr (ex: http://radarr:7878)",
+        "radarr_api_key": "Clé API Radarr",
         "radarr_enabled": "Activer l'intégration Radarr (true/false)",
-        "sonarr_url": "URL de Sonarr (ex: http://sonarr:8989) - Optionnel",
-        "sonarr_api_key": "Clé API Sonarr - Optionnel",
+        "sonarr_url": "URL de Sonarr (ex: http://sonarr:8989)",
+        "sonarr_api_key": "Clé API Sonarr",
         "sonarr_enabled": "Activer l'intégration Sonarr (true/false)",
         "sync_interval": "Intervalle entre chaque sync en secondes (3600 = 1 heure)",
         "sync_retention_hours": "Nombre d'heures avant suppression automatique (168 = 7j, 0 = infini)",
@@ -227,7 +227,7 @@ def get_config_for_ui() -> Dict[str, Any]:
         "description": descriptions.get("radarr_api_key", "")
     }
     ui_config["radarr_enabled"] = {
-        "value": str(radarr.get("enabled", False)).lower(),
+        "value": str(radarr.get("enabled", True)).lower(),
         "description": descriptions.get("radarr_enabled", "")
     }
 
@@ -242,7 +242,7 @@ def get_config_for_ui() -> Dict[str, Any]:
         "description": descriptions.get("sonarr_api_key", "")
     }
     ui_config["sonarr_enabled"] = {
-        "value": str(sonarr.get("enabled", False)).lower(),
+        "value": str(sonarr.get("enabled", True)).lower(),
         "description": descriptions.get("sonarr_enabled", "")
     }
 
@@ -276,7 +276,7 @@ def get_config_for_ui() -> Dict[str, Any]:
         "description": descriptions.get("rss_scheme", "")
     }
     ui_config["rss_title"] = {
-        "value": rss.get("title", "Grab2RSS"),
+        "value": rss.get("title", "Grabb2RSS"),
         "description": descriptions.get("rss_title", "")
     }
     ui_config["rss_description"] = {
@@ -345,7 +345,7 @@ def save_config_from_ui(ui_config: Dict[str, Any]) -> bool:
     config["rss"] = {
         "domain": get_value("rss_domain", "localhost:8000"),
         "scheme": get_value("rss_scheme", "http"),
-        "title": get_value("rss_title", "Grab2RSS"),
+        "title": get_value("rss_title", "Grabb2RSS"),
         "description": get_value("rss_description", "Prowlarr to RSS Feed")
     }
 

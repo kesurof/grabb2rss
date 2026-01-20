@@ -49,7 +49,7 @@ def load_configuration():
                     rss = yaml_config.get("rss", {})
                     config["RSS_DOMAIN"] = rss.get("domain", "localhost:8000")
                     config["RSS_SCHEME"] = rss.get("scheme", "http")
-                    config["RSS_TITLE"] = rss.get("title", "Grab2RSS")
+                    config["RSS_TITLE"] = rss.get("title", "grabb2rss")
                     config["RSS_DESCRIPTION"] = rss.get("description", "Prowlarr to RSS Feed")
 
                     return config
@@ -136,7 +136,7 @@ RSS_DOMAIN = _get_config("RSS_DOMAIN", "localhost:8000", str)
 RSS_SCHEME = _get_config("RSS_SCHEME", "http", str)
 
 # API
-RSS_TITLE = _get_config("RSS_TITLE", "Grab2RSS", str)
+RSS_TITLE = _get_config("RSS_TITLE", "grabb2rss", str)
 RSS_DESCRIPTION = _get_config("RSS_DESCRIPTION", "Derniers torrents grabbés via Prowlarr", str)
 
 # Descriptions pour l'UI
@@ -148,7 +148,7 @@ DESCRIPTIONS = {
     "RETENTION_HOURS": "Nombre d'heures avant suppression automatique (168 = 7j, 0 = infini)",
     "DEDUP_HOURS": "Fenêtre de déduplication en heures (24 = 24h glissant)",
     "AUTO_PURGE": "Activer la suppression automatique des anciens grabs",
-    "RSS_DOMAIN": "Domaine pour les URLs RSS (ex: grab2rss.example.com)",
+    "RSS_DOMAIN": "Domaine pour les URLs RSS (ex: grabb2rss.example.com)",
     "RSS_SCHEME": "Protocole pour les URLs RSS (http ou https)"
 }
 

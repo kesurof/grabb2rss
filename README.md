@@ -1,6 +1,6 @@
-# 📡 Grab2RSS
+# 📡 grabb2rss
 
-[![Version](https://img.shields.io/badge/version-2.6.1-blue)](https://github.com/kesurof/grabb2rss)
+[![Version](https://img.shields.io/badge/version-2.6.5-blue)](https://github.com/kesurof/grabb2rss)
 [![Docker](https://img.shields.io/badge/docker-ghcr.io-blue)](https://ghcr.io/kesurof/grabb2rss)
 [![Python](https://img.shields.io/badge/python-3.11+-green)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -40,7 +40,7 @@ Transformez vos grabs Prowlarr en flux RSS pour le seeding automatique avec vos 
 1. **Télécharger le fichier docker-compose.yml**
 
 ```bash
-mkdir grab2rss && cd grab2rss
+mkdir grabb2rss && cd grabb2rss
 curl -o docker-compose.yml https://raw.githubusercontent.com/kesurof/grabb2rss/main/docker-compose.example.yml
 ```
 
@@ -50,9 +50,9 @@ Ou créez manuellement le fichier `docker-compose.yml` :
 version: "3.8"
 
 services:
-  grab2rss:
+  grabb2rss:
     image: ghcr.io/kesurof/grabb2rss:latest
-    container_name: grab2rss
+    container_name: grabb2rss
     environment:
       - PUID=1000  # Votre User ID (trouvez-le avec: id -u)
       - PGID=1000  # Votre Group ID (trouvez-le avec: id -g)
@@ -77,8 +77,8 @@ Ouvrez votre navigateur sur **http://localhost:8000**
 
 Vous serez automatiquement redirigé vers le **Setup Wizard** où vous pourrez configurer :
 - ✅ Prowlarr (URL + Clé API) - **Obligatoire**
-- ✅ Radarr (URL + Clé API) - Optionnel
-- ✅ Sonarr (URL + Clé API) - Optionnel
+- ✅ Radarr (URL + Clé API) - **Obligatoire**
+- ✅ Sonarr (URL + Clé API) - **Obligatoire**
 - ✅ Paramètres de synchronisation et rétention
 
 **C'est tout !** 🎉 Votre configuration est sauvegardée dans `/config/settings.yml`
@@ -125,70 +125,6 @@ Endpoints principaux :
 
 ---
 
-## ⚙️ Configuration Avancée
-
-### User/Group IDs (PUID/PGID)
-
-Suivant les standards LinuxServer.io, vous pouvez définir PUID et PGID pour matcher votre utilisateur hôte :
-
-```bash
-id $USER
-# uid=1000(user) gid=1000(user) groups=1000(user)
-```
-
-Puis dans docker-compose.yml :
-```yaml
-environment:
-  - PUID=1000
-  - PGID=1000
-```
-
-Cela garantit que les fichiers créés par le container ont les bonnes permissions sur votre hôte.
-
-### Paramètres Clés
-
-| Variable | Défaut | Description |
-|----------|--------|-------------|
-| `PUID` | 1000 | User ID pour les permissions fichiers |
-| `PGID` | 1000 | Group ID pour les permissions fichiers |
-| `TZ` | Europe/Paris | Timezone du container |
-
-Tous les autres paramètres sont configurables via le Setup Wizard ou l'interface web.
-
----
-
-## 🐳 Docker Compose avec Traefik
-
-```yaml
-version: "3.8"
-
-services:
-  grab2rss:
-    image: ghcr.io/kesurof/grabb2rss:latest
-    container_name: grab2rss
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Paris
-    volumes:
-      - ./config:/config
-      - ./data:/app/data
-    networks:
-      - traefik_proxy
-    restart: unless-stopped
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.grab2rss.rule=Host(`rss.example.com`)"
-      - "traefik.http.routers.grab2rss.entrypoints=https"
-      - "traefik.http.routers.grab2rss.tls.certresolver=letsencrypt"
-
-networks:
-  traefik_proxy:
-    external: true
-```
-
----
-
 ## 📊 Architecture
 
 ```
@@ -198,7 +134,7 @@ networks:
        │ API
        ▼
 ┌─────────────┐
-│  Grab2RSS   │ ← Récupère les grabs, génère les flux RSS
+│  grabb2rss   │ ← Récupère les grabs, génère les flux RSS
 └──────┬──────┘
        │ Flux RSS
        ▼
@@ -208,7 +144,7 @@ networks:
 └─────────────┘
 ```
 
-### Filtrage Optionnel
+### Filtrage inclus
 
 ```
 ┌──────────┐  ┌──────────┐
@@ -219,7 +155,7 @@ networks:
            │ API (filtre les torrents grabbed)
            ▼
      ┌─────────────┐
-     │  Grab2RSS   │ ← Affiche uniquement les torrents grabbed
+     │  grabb2rss   │ ← Affiche uniquement les torrents grabbed
      └─────────────┘
 ```
 
@@ -231,7 +167,7 @@ networks:
 
 Vérifiez les logs :
 ```bash
-docker logs grab2rss
+docker logs grabb2rss
 ```
 
 ### Problèmes de permissions
@@ -288,19 +224,6 @@ Votre configuration dans `/config` sera préservée.
 
 ---
 
-## 🔐 Sécurité
-
-**⚠️ Important :** Ne partagez jamais vos clés API publiquement.
-
-Si vous exposez accidentellement des clés API :
-1. Régénérez toutes les clés API dans Prowlarr/Radarr/Sonarr
-2. Reconfigurez via le Setup Wizard ou l'interface web
-3. Redémarrez le container
-
-Consultez [SECURITY_INCIDENT.md](SECURITY_INCIDENT.md) pour l'historique des incidents de sécurité.
-
----
-
 ## 🤝 Contribuer
 
 Les contributions sont les bienvenues ! Pour contribuer :
@@ -322,11 +245,6 @@ docker-compose -f docker-compose.dev.yml up --build
 
 ---
 
-## 📝 Licence
-
-Licence MIT - Voir le fichier [LICENSE](LICENSE) pour plus de détails
-
----
 
 ## 🙏 Remerciements
 

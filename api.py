@@ -638,7 +638,7 @@ async def web_ui():
 <body>
     <div class="container">
         <header>
-            <h1>📡 Grab2RSS v2.5</h1>
+            <h1>📡 Grabb2RSS v2.6.5</h1>
             <p class="subtitle">Convertisseur Prowlarr → RSS avec Flux Personnalisés + Admin</p>
         </header>
 

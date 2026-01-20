@@ -9,7 +9,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 echo -e "${BLUE}═══════════════════════════════════════${NC}"
-echo -e "${BLUE}  Grab2RSS v2.6 - Container Init${NC}"
+echo -e "${BLUE}  Grabb2RSS v2.6.5 - Container Init${NC}"
 echo -e "${BLUE}═══════════════════════════════════════${NC}"
 
 # Set default PUID/PGID if not provided
@@ -58,7 +58,7 @@ chmod -R 755 /config
 
 echo -e "${GREEN}✓${NC} Permissions configured successfully"
 echo -e "${BLUE}═══════════════════════════════════════${NC}"
-echo -e "${GREEN}✓${NC} Starting Grab2RSS as user 'abc' (${PUID}:${PGID})"
+echo -e "${GREEN}✓${NC} Starting Grabb2RSS as user 'abc' (${PUID}:${PGID})"
 echo -e "${BLUE}═══════════════════════════════════════${NC}"
 echo ""
 
