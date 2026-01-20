@@ -433,9 +433,9 @@ def get_db_stats() -> dict:
         grabs_count = conn.execute("SELECT COUNT(*) FROM grabs").fetchone()[0]
         sync_logs_count = conn.execute("SELECT COUNT(*) FROM sync_log").fetchone()[0]
         config_count = conn.execute("SELECT COUNT(*) FROM config").fetchone()[0]
-        
+
         size_mb = DB_PATH.stat().st_size / (1024 * 1024) if DB_PATH.exists() else 0
-        
+
         return {
             "path": str(DB_PATH),
             "size_mb": round(size_mb, 2),
@@ -443,3 +443,154 @@ def get_db_stats() -> dict:
             "sync_logs": sync_logs_count,
             "config_entries": config_count
         }
+
+def get_torrent_files_with_info() -> List[dict]:
+    """
+    Récupère la liste des fichiers torrents avec leurs informations associées depuis la base de données
+    """
+    torrent_files_info = []
+
+    if not TORRENT_DIR.exists():
+        return torrent_files_info
+
+    with get_db() as conn:
+        # Récupérer tous les fichiers torrents du système de fichiers
+        torrent_files_on_disk = {f.name: f for f in TORRENT_DIR.glob("*.torrent")}
+
+        # Pour chaque fichier, récupérer ses infos depuis la DB
+        for filename, filepath in torrent_files_on_disk.items():
+            # Chercher les infos du grab associé
+            grab_info = conn.execute("""
+                SELECT id, grabbed_at, title, tracker, torrent_file
+                FROM grabs
+                WHERE torrent_file = ?
+            """, (filename,)).fetchone()
+
+            file_stats = filepath.stat()
+
+            torrent_info = {
+                "filename": filename,
+                "size_bytes": file_stats.st_size,
+                "size_mb": round(file_stats.st_size / (1024 * 1024), 2),
+                "modified_at": datetime.fromtimestamp(file_stats.st_mtime).isoformat() + "Z",
+                "has_grab": grab_info is not None
+            }
+
+            # Ajouter les infos du grab si disponibles
+            if grab_info:
+                torrent_info.update({
+                    "grab_id": grab_info[0],
+                    "grabbed_at": grab_info[1],
+                    "title": grab_info[2],
+                    "tracker": grab_info[3] or "N/A"
+                })
+            else:
+                # Torrent orphelin (sans grab associé)
+                torrent_info.update({
+                    "grab_id": None,
+                    "grabbed_at": None,
+                    "title": filename.replace(".torrent", ""),
+                    "tracker": "N/A"
+                })
+
+            torrent_files_info.append(torrent_info)
+
+    # Trier par date de grab (les plus récents en premier)
+    torrent_files_info.sort(key=lambda x: x.get("grabbed_at") or x.get("modified_at"), reverse=True)
+
+    return torrent_files_info
+
+def cleanup_orphan_torrents() -> Tuple[int, List[str]]:
+    """
+    Supprime les fichiers torrents qui n'ont pas de grab associé dans la base de données
+    Retourne (nombre_supprimés, liste_fichiers_supprimés)
+    """
+    deleted_count = 0
+    deleted_files = []
+
+    if not TORRENT_DIR.exists():
+        return deleted_count, deleted_files
+
+    with get_db() as conn:
+        # Récupérer tous les fichiers torrents du système de fichiers
+        torrent_files_on_disk = list(TORRENT_DIR.glob("*.torrent"))
+
+        for filepath in torrent_files_on_disk:
+            filename = filepath.name
+
+            # Vérifier si ce fichier est référencé dans la DB
+            grab = conn.execute("""
+                SELECT COUNT(*) FROM grabs WHERE torrent_file = ?
+            """, (filename,)).fetchone()
+
+            # Si le fichier n'est pas référencé, le supprimer
+            if grab[0] == 0:
+                try:
+                    filepath.unlink()
+                    deleted_count += 1
+                    deleted_files.append(filename)
+                except Exception as e:
+                    print(f"⚠️ Erreur lors de la suppression de {filename}: {e}")
+
+    return deleted_count, deleted_files
+
+def delete_torrent_file(filename: str) -> bool:
+    """
+    Supprime un fichier torrent spécifique (et éventuellement son grab associé)
+    """
+    if not TORRENT_DIR.exists():
+        return False
+
+    torrent_path = TORRENT_DIR / filename
+
+    if not torrent_path.exists():
+        return False
+
+    try:
+        torrent_path.unlink()
+        return True
+    except Exception as e:
+        print(f"⚠️ Erreur lors de la suppression de {filename}: {e}")
+        return False
+
+def purge_all_torrents() -> Tuple[int, float]:
+    """
+    Supprime TOUS les fichiers torrents du dossier
+    Retourne (nombre_supprimés, taille_libérée_MB)
+    """
+    deleted_count = 0
+    size_freed = 0
+
+    if not TORRENT_DIR.exists():
+        return deleted_count, size_freed
+
+    torrent_files = list(TORRENT_DIR.glob("*.torrent"))
+
+    for filepath in torrent_files:
+        try:
+            size_freed += filepath.stat().st_size
+            filepath.unlink()
+            deleted_count += 1
+        except Exception as e:
+            print(f"⚠️ Erreur lors de la suppression de {filepath.name}: {e}")
+
+    size_freed_mb = size_freed / (1024 * 1024)
+    return deleted_count, round(size_freed_mb, 2)
+
+def delete_log(log_id: int) -> bool:
+    """Supprime un log de synchronisation spécifique"""
+    with get_db() as conn:
+        try:
+            cursor = conn.execute("DELETE FROM sync_log WHERE id = ?", (log_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            print(f"⚠️ Erreur lors de la suppression du log {log_id}: {e}")
+            return False
+
+def purge_all_logs() -> int:
+    """Supprime tous les logs de synchronisation"""
+    with get_db() as conn:
+        cursor = conn.execute("DELETE FROM sync_log")
+        conn.commit()
+        return cursor.rowcount

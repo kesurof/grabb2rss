@@ -86,11 +86,27 @@ def generate_rss(
     SubElement(channel, "link").text = base_url
     SubElement(channel, "description").text = RSS_DESCRIPTION
     SubElement(channel, "language").text = "fr"
-    SubElement(channel, "lastBuildDate").text = datetime.utcnow().isoformat() + "Z"
-    SubElement(channel, "ttl").text = "30"
-    
+
     conn = get_db_connection()
     try:
+        # Récupérer la date du dernier grab pour lastBuildDate
+        if tracker_filter:
+            latest_grab = conn.execute("""
+                SELECT grabbed_at FROM grabs
+                WHERE tracker = ?
+                ORDER BY grabbed_at DESC LIMIT 1
+            """, (tracker_filter,)).fetchone()
+        else:
+            latest_grab = conn.execute("""
+                SELECT grabbed_at FROM grabs
+                ORDER BY grabbed_at DESC LIMIT 1
+            """).fetchone()
+
+        # Utiliser la date du dernier grab ou la date actuelle si aucun grab
+        last_build_date = latest_grab[0] if latest_grab else datetime.utcnow().isoformat() + "Z"
+        SubElement(channel, "lastBuildDate").text = last_build_date
+        SubElement(channel, "ttl").text = "30"
+
         # Requête avec ou sans filtre tracker
         if tracker_filter:
             query = """

@@ -7,7 +7,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from prowlarr import fetch_history, extract_grabs
 from torrent import download_torrent
-from db import insert_grab, purge_by_retention, log_sync, init_db, is_duplicate
+from db import insert_grab, purge_by_retention, log_sync, init_db, is_duplicate, cleanup_orphan_torrents
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +112,12 @@ def sync_prowlarr():
             purged = purge_by_retention(retention_hours)
             if purged > 0:
                 print(f"🗑️  Purge: {purged} anciens grabs supprimés")
-        
+
+        # Nettoyage automatique des torrents orphelins
+        orphans_count, orphans_files = cleanup_orphan_torrents()
+        if orphans_count > 0:
+            print(f"🧹 Nettoyage: {orphans_count} torrents orphelins supprimés")
+
         log_sync("success", None, grabs_count, deduplicated_count)
         last_sync_time = datetime.utcnow()
         last_sync_error = None
