@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   grab2rss:
     build: .
@@ -31,8 +29,9 @@ services:
       - RSS_SCHEME=${RSS_SCHEME:-http}
     volumes:
       - ./data:/app/data
+      - ./.env:/app/.env:ro
     networks:
-      - media-network
+      - traefik_proxy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -41,5 +40,5 @@ services:
       retries: 3
 
 networks:
-  media-network:
-    driver: bridge
+  traefik_proxy:
+    external: true

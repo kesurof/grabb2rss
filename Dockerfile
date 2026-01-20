@@ -5,17 +5,20 @@ LABEL description="Prowlarr to RSS converter with multi-tracker support"
 
 WORKDIR /app
 
-# Installer les dépendances système
+# Installer les dépendances système (CORRIGÉ pour psutil)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     curl \
+    gcc \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copier les fichiers de dépendances
 COPY requirements.txt .
 
 # Installer les dépendances Python
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Copier le code source
 COPY . .

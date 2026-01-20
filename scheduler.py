@@ -70,7 +70,7 @@ def sync_prowlarr():
         
         print(f"⏱️  Sync Prowlarr en cours... ({datetime.utcnow().isoformat()})")
         
-        # Récupérer les downloadId importés depuis Radarr/Sonarr (si configurés)
+        # Récupérer les downloadId grabbed (choisis) depuis Radarr/Sonarr (si configurés)
         imported_download_ids = set()
         if (radarr_url and radarr_api_key) or (sonarr_url and sonarr_api_key):
             from radarr_sonarr import get_all_imported_download_ids
@@ -80,7 +80,7 @@ def sync_prowlarr():
                 sonarr_url=sonarr_url if sonarr_url else None,
                 sonarr_api_key=sonarr_api_key if sonarr_api_key else None
             )
-            print(f"🔍 Vérification activée: {len(imported_download_ids)} downloadId importés")
+            print(f"🔍 Vérification activée: {len(imported_download_ids)} downloadId grabbed")
         else:
             print("ℹ️  Vérification Radarr/Sonarr désactivée (pas de config)")
         
@@ -107,12 +107,12 @@ def sync_prowlarr():
                 # Télécharger le torrent
                 torrent_file = download_torrent(grab["title"], grab["torrent_url"])
                 
-                # Vérifier si importé dans Radarr/Sonarr (si activé)
+                # Vérifier si grabbed par Radarr/Sonarr (si activé)
                 if imported_download_ids:
                     from radarr_sonarr import is_download_id_imported
                     if not is_download_id_imported(torrent_file, imported_download_ids):
                         rejected_count += 1
-                        print(f"⊘ Non importé: {grab['title']}")
+                        print(f"⊘ Non grabbed par Radarr/Sonarr: {grab['title']}")
                         continue
                 
                 # Insérer dans la BD
@@ -140,7 +140,7 @@ def sync_prowlarr():
         last_sync_error = None
         
         if rejected_count > 0:
-            print(f"✅ Sync terminée: {grabs_count} grabs, {deduplicated_count} doublons, {rejected_count} non importés")
+            print(f"✅ Sync terminée: {grabs_count} grabs, {deduplicated_count} doublons, {rejected_count} rejetés (non grabbed)")
         else:
             print(f"✅ Sync terminée: {grabs_count} grabs, {deduplicated_count} doublons")
         
