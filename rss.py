@@ -6,7 +6,35 @@ from typing import Optional
 from urllib.parse import quote
 
 from db import get_db_connection
-from config import RSS_TITLE, RSS_DESCRIPTION, RSS_DOMAIN, RSS_SCHEME, TORRENT_DIR
+from config import RSS_TITLE, RSS_DESCRIPTION, RSS_DOMAIN, RSS_SCHEME, RSS_INTERNAL_URL, TORRENT_DIR
+
+def is_docker_internal_request(request_host: Optional[str]) -> bool:
+    """
+    Détermine si la requête provient de l'intérieur du réseau Docker
+
+    Args:
+        request_host: Host de la requête
+
+    Returns:
+        True si requête interne Docker, False sinon
+    """
+    if not request_host:
+        return False
+
+    # Normaliser en minuscules pour comparaison
+    host_lower = request_host.lower()
+
+    # Indicateurs d'accès interne Docker
+    internal_indicators = [
+        'grabb2rss',       # Nom du service Docker
+        'grab2rss',        # Alias possible
+        'localhost',       # Accès local
+        '127.0.0.1',       # Loopback IPv4
+        '::1',             # Loopback IPv6
+        '0.0.0.0'          # Wildcard
+    ]
+
+    return any(indicator in host_lower for indicator in internal_indicators)
 
 def get_torrent_url(base_url: str, torrent_file: str) -> str:
     """Génère une URL encodée pour le fichier torrent"""
@@ -20,19 +48,28 @@ def generate_rss(
 ) -> bytes:
     """
     Génère le flux RSS multi-client avec filtres optionnels
-    
+
     Compatible avec rutorrent, qBittorrent, Transmission
-    
+
+    Logique de sélection d'URL:
+    - Si requête interne Docker (grabb2rss, localhost, etc.) → utilise RSS_INTERNAL_URL
+    - Sinon → utilise domaine public (RSS_SCHEME://RSS_DOMAIN)
+
     Args:
         request_host: Host de la requête
         tracker_filter: Filtre par tracker (None = tous)
         limit: Nombre d'items max
     """
-    
-    # Déterminer la base URL
-    if request_host:
+
+    # Déterminer la base URL selon le contexte
+    if is_docker_internal_request(request_host):
+        # Requête depuis l'intérieur de Docker (ex: qBittorrent dans un autre conteneur)
+        base_url = RSS_INTERNAL_URL
+    elif request_host:
+        # Requête externe avec host spécifique
         base_url = f"{RSS_SCHEME}://{request_host}"
     else:
+        # Fallback sur domaine public configuré
         base_url = f"{RSS_SCHEME}://{RSS_DOMAIN}"
     
     rss = Element("rss", version="2.0")
@@ -117,10 +154,16 @@ def generate_torrent_json(
     limit: int = 100
 ) -> dict:
     """Génère un flux au format JSON avec filtres"""
-    
-    if request_host:
+
+    # Déterminer la base URL selon le contexte
+    if is_docker_internal_request(request_host):
+        # Requête depuis l'intérieur de Docker (ex: qBittorrent dans un autre conteneur)
+        base_url = RSS_INTERNAL_URL
+    elif request_host:
+        # Requête externe avec host spécifique
         base_url = f"{RSS_SCHEME}://{request_host}"
     else:
+        # Fallback sur domaine public configuré
         base_url = f"{RSS_SCHEME}://{RSS_DOMAIN}"
     
     conn = get_db_connection()
