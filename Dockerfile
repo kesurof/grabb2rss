@@ -17,7 +17,7 @@ RUN apt-get update && \
     curl \
     gcc \
     python3-dev \
-    su-exec \
+    gosu \
     bash \
     && rm -rf /var/lib/apt/lists/*
 

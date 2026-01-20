@@ -63,4 +63,4 @@ echo -e "${BLUE}═════════════════════�
 echo ""
 
 # Drop privileges and execute main application as abc user
-exec su-exec abc python /app/main.py
+exec gosu abc python /app/main.py
