@@ -503,6 +503,25 @@ async def get_detailed_stats():
         logger.error(f"Erreur get_detailed_stats: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/test-history-limits")
+async def test_history_limits():
+    """Lance le test des limites d'historique Prowlarr/Radarr/Sonarr"""
+    try:
+        from test_history_limits import run_test_and_save
+
+        # Lancer le test (peut prendre quelques secondes)
+        results = run_test_and_save()
+
+        return {
+            "status": "success",
+            "message": "Test des limites d'historique terminé",
+            "results": results,
+            "output_file": results.get("output_file", "/config/history_limits_test.json")
+        }
+    except Exception as e:
+        logger.error(f"Erreur test_history_limits: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ==================== WEB UI ====================
 
 @app.get("/test", response_class=HTMLResponse)
@@ -853,6 +872,7 @@ async def web_ui():
                 <button class="button" onclick="vacuumDatabase()">🔧 Optimiser BD</button>
                 <button class="button success" onclick="syncNow()">📡 Forcer Sync</button>
                 <button class="button danger" onclick="purgeOldGrabs()">🗑️ Purger Anciens</button>
+                <button class="button" onclick="testHistoryLimits()">📊 Tester Limites Historique</button>
             </div>
 
             <div class="alert info" style="margin-top: 15px;">
@@ -875,6 +895,20 @@ async def web_ui():
             </div>
             <div id="system-logs-container" style="max-height: 500px; overflow-y: auto;">
                 <p style="text-align: center; color: #888; padding: 20px;">Chargement des logs...</p>
+            </div>
+
+            <h3 style="margin-top: 30px; margin-bottom: 15px;">📊 Test des Limites d'Historique</h3>
+            <div id="history-test-results" style="display: none;">
+                <div class="alert info" style="margin-bottom: 15px;">
+                    <strong>📝 Résultats du test</strong><br>
+                    <span id="history-test-timestamp" style="color: #888; font-size: 12px;"></span>
+                </div>
+                <div style="background: #1a1a1a; padding: 15px; border-radius: 8px; border: 1px solid #333;">
+                    <pre id="history-test-content" style="margin: 0; white-space: pre-wrap; font-size: 12px; color: #ddd; max-height: 400px; overflow-y: auto;"></pre>
+                </div>
+                <div style="margin-top: 10px; text-align: right;">
+                    <a id="history-test-download" href="#" download="history_limits_test.json" class="button" style="text-decoration: none;">💾 Télécharger JSON</a>
+                </div>
             </div>
         </div>
     </div>
@@ -1360,15 +1394,15 @@ async def web_ui():
 
         async function purgeOldGrabs() {
             const hours = prompt("Supprimer les grabs plus anciens que combien d'heures ?\\n(168 = 7 jours, 336 = 14 jours, 720 = 30 jours)", "168");
-            
+
             if (hours === null) return;
-            
+
             const hoursInt = parseInt(hours);
             if (isNaN(hoursInt) || hoursInt < 1) {
                 alert("❌ Valeur invalide");
                 return;
             }
-            
+
             if (confirm("Supprimer tous les grabs > " + hoursInt + "h ?")) {
                 try {
                     const res = await fetch(API_BASE + '/purge/retention?hours=' + hoursInt, { method: "POST" });
@@ -1379,6 +1413,130 @@ async def web_ui():
                 } catch (e) {
                     alert("❌ Erreur: " + e);
                 }
+            }
+        }
+
+        async function testHistoryLimits() {
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = "⏳ Test en cours...";
+
+            try {
+                const res = await fetch(API_BASE + '/test-history-limits', { method: "POST" });
+
+                if (!res.ok) {
+                    throw new Error("Erreur HTTP " + res.status);
+                }
+
+                const data = await res.json();
+
+                // Afficher les résultats
+                const resultsDiv = document.getElementById('history-test-results');
+                resultsDiv.style.display = 'block';
+
+                // Timestamp
+                const timestamp = new Date(data.results.timestamp).toLocaleString('fr-FR');
+                document.getElementById('history-test-timestamp').textContent =
+                    "Test effectué le " + timestamp;
+
+                // Formater les résultats de manière lisible
+                const results = data.results;
+                let output = "=".repeat(80) + "\\n";
+                output += "TEST DES LIMITES D'HISTORIQUE\\n";
+                output += "=".repeat(80) + "\\n\\n";
+
+                // Configuration
+                output += "📋 CONFIGURATION\\n";
+                output += "-".repeat(80) + "\\n";
+                output += "Prowlarr URL:      " + results.configuration.prowlarr_url + "\\n";
+                output += "Prowlarr pageSize: " + results.configuration.prowlarr_page_size + "\\n";
+                output += "Radarr activé:     " + results.configuration.radarr_enabled + "\\n";
+                output += "Sonarr activé:     " + results.configuration.sonarr_enabled + "\\n";
+                output += "Sync interval:     " + results.configuration.sync_interval_seconds + "s\\n";
+                output += "Rétention:         " + results.configuration.retention_hours + "h\\n\\n";
+
+                // Prowlarr
+                output += "📡 PROWLARR\\n";
+                output += "-".repeat(80) + "\\n";
+                results.prowlarr.tested_page_sizes.forEach(test => {
+                    const d = test.data;
+                    if (d.error) {
+                        output += "pageSize=" + test.page_size + " → ❌ " + d.error + "\\n";
+                    } else {
+                        output += "pageSize=" + test.page_size + " → ";
+                        output += d.total + " enregistrements, ";
+                        output += d.successful_grabs + " grabs réussis\\n";
+                        if (d.oldest_grab) {
+                            output += "  Plus ancien: " + new Date(d.oldest_grab).toLocaleString('fr-FR') + "\\n";
+                        }
+                    }
+                });
+
+                output += "\\n🔍 ANALYSE\\n";
+                output += "-".repeat(80) + "\\n";
+                output += "Type de limitation: " + results.prowlarr.analysis.limitation_type + "\\n";
+                output += results.prowlarr.analysis.details + "\\n";
+                output += "\\n💡 Recommandation:\\n";
+                output += results.prowlarr.analysis.recommendation + "\\n\\n";
+
+                // Radarr
+                output += "🎬 RADARR\\n";
+                output += "-".repeat(80) + "\\n";
+                if (results.radarr.error) {
+                    output += "⚠️  " + results.radarr.error + "\\n\\n";
+                } else {
+                    output += "Total: " + results.radarr.total + " | Grabs: " + results.radarr.grabs + "\\n";
+                    if (results.radarr.oldest_grab) {
+                        output += "Plus ancien: " + new Date(results.radarr.oldest_grab).toLocaleString('fr-FR') + "\\n";
+                    }
+                    output += "\\n";
+                }
+
+                // Sonarr
+                output += "📺 SONARR\\n";
+                output += "-".repeat(80) + "\\n";
+                if (results.sonarr.error) {
+                    output += "⚠️  " + results.sonarr.error + "\\n\\n";
+                } else {
+                    output += "Total: " + results.sonarr.total + " | Grabs: " + results.sonarr.grabs + "\\n";
+                    if (results.sonarr.oldest_grab) {
+                        output += "Plus ancien: " + new Date(results.sonarr.oldest_grab).toLocaleString('fr-FR') + "\\n";
+                    }
+                    output += "\\n";
+                }
+
+                // Comparaison
+                output += "🔄 COMPARAISON DES PÉRIODES\\n";
+                output += "-".repeat(80) + "\\n";
+                if (results.comparison.prowlarr_oldest) {
+                    output += "Prowlarr: " + new Date(results.comparison.prowlarr_oldest).toLocaleString('fr-FR') + "\\n";
+                }
+                if (results.comparison.radarr_oldest) {
+                    output += "Radarr:   " + new Date(results.comparison.radarr_oldest).toLocaleString('fr-FR') + "\\n";
+                }
+                if (results.comparison.sonarr_oldest) {
+                    output += "Sonarr:   " + new Date(results.comparison.sonarr_oldest).toLocaleString('fr-FR') + "\\n";
+                }
+
+                document.getElementById('history-test-content').textContent = output;
+
+                // Lien de téléchargement
+                const blob = new Blob([JSON.stringify(results, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                document.getElementById('history-test-download').href = url;
+
+                // Scroll vers les résultats
+                resultsDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+                alert("✅ Test terminé !\\n\\nRésultats sauvegardés dans:\\n" + data.output_file);
+
+            } catch (e) {
+                console.error("Erreur testHistoryLimits:", e);
+                alert("❌ Erreur lors du test: " + e);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
             }
         }
 

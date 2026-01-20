@@ -274,5 +274,88 @@ def main():
     print()
 
 
+def run_test_and_save() -> Dict:
+    """
+    Lance le test et retourne les résultats structurés.
+    Sauvegarde aussi les résultats dans /config/history_limits_test.json
+    """
+    from pathlib import Path
+
+    # Test Prowlarr avec différents pageSizes
+    page_sizes = [50, 100, 200, 500, 1000]
+    prowlarr_results = []
+
+    for size in page_sizes:
+        result = test_prowlarr_history(size)
+        prowlarr_results.append({
+            "page_size": size,
+            "data": result
+        })
+
+    # Test Radarr et Sonarr
+    radarr_result = test_radarr_history(500)
+    sonarr_result = test_sonarr_history(500)
+
+    # Analyse Prowlarr
+    analysis = {
+        "limitation_type": "unknown",
+        "recommendation": "",
+        "details": ""
+    }
+
+    if len(prowlarr_results) >= 2:
+        smallest = prowlarr_results[0]["data"]
+        largest = prowlarr_results[-1]["data"]
+
+        if "error" not in smallest and "error" not in largest:
+            if smallest.get('oldest_grab') == largest.get('oldest_grab'):
+                analysis["limitation_type"] = "temporal"
+                analysis["details"] = f"Historique disponible jusqu'à: {largest.get('oldest_grab', 'N/A')}"
+                analysis["recommendation"] = "Vérifier les paramètres de rétention dans Prowlarr (Settings → General)"
+            else:
+                analysis["limitation_type"] = "pagesize"
+                analysis["details"] = f"Augmenter pageSize permet de remonter plus loin"
+                analysis["recommendation"] = f"Augmenter PROWLARR_HISTORY_PAGE_SIZE à {page_sizes[-1]} ou plus"
+
+    # Construire le résultat final
+    results = {
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "configuration": {
+            "prowlarr_url": config.PROWLARR_URL,
+            "prowlarr_page_size": config.PROWLARR_HISTORY_PAGE_SIZE,
+            "radarr_enabled": config.RADARR_ENABLED,
+            "sonarr_enabled": config.SONARR_ENABLED,
+            "sync_interval_seconds": config.SYNC_INTERVAL,
+            "retention_hours": config.RETENTION_HOURS
+        },
+        "prowlarr": {
+            "tested_page_sizes": prowlarr_results,
+            "analysis": analysis
+        },
+        "radarr": radarr_result,
+        "sonarr": sonarr_result,
+        "comparison": {
+            "prowlarr_oldest": prowlarr_results[-1]["data"].get("oldest_grab") if prowlarr_results and "error" not in prowlarr_results[-1]["data"] else None,
+            "radarr_oldest": radarr_result.get("oldest_grab") if "error" not in radarr_result else None,
+            "sonarr_oldest": sonarr_result.get("oldest_grab") if "error" not in sonarr_result else None
+        }
+    }
+
+    # Sauvegarder dans /config
+    try:
+        config_dir = Path("/config")
+        config_dir.mkdir(exist_ok=True)
+
+        output_file = config_dir / "history_limits_test.json"
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(results, f, indent=2, ensure_ascii=False)
+
+        results["output_file"] = str(output_file)
+    except Exception as e:
+        results["save_error"] = str(e)
+
+    return results
+
+
 if __name__ == "__main__":
     main()
