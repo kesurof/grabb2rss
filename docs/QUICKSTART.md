@@ -1,62 +1,66 @@
-# 🚀 Guide de Démarrage Rapide - Grab2RSS v2.4
+# 🚀 Guide de Démarrage Rapide - Grab2RSS v2.6+
 
 ## ⚡ Installation en 3 Minutes
 
 ### 🐳 Méthode Docker (Recommandée)
 
 ```bash
-# 1. Cloner et configurer
-git clone https://github.com/votre-repo/grab2rss.git
-cd grab2rss
-cp .env.example .env
-nano .env  # Éditer PROWLARR_API_KEY
+# 1. Créer le dossier
+mkdir grab2rss && cd grab2rss
 
-# 2. Lancer
+# 2. Créer docker-compose.yml
+cat > docker-compose.yml << 'EOF'
+version: "3.8"
+
+services:
+  grab2rss:
+    image: ghcr.io/kesurof/grabb2rss:latest
+    container_name: grab2rss
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Paris
+    volumes:
+      - ./config:/config
+      - ./data:/app/data
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+EOF
+
+# 3. Lancer
 docker-compose up -d
 
-# 3. Vérifier
+# 4. Vérifier
 curl http://localhost:8000/health
 ```
 
-**C'est tout ! 🎉** Ouvrez `http://localhost:8000` dans votre navigateur.
+**C'est tout ! 🎉** Ouvrez `http://localhost:8000` et suivez le Setup Wizard.
 
 ---
 
-### 🐍 Méthode Python
+## 🔑 Configuration via le Setup Wizard
 
-```bash
-# 1. Installation
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+Au premier lancement, vous serez automatiquement redirigé vers le **Setup Wizard** :
 
-# 2. Configuration
-cp .env.example .env
-nano .env  # Éditer PROWLARR_API_KEY
+1. **Ouvrir** `http://localhost:8000` dans votre navigateur
 
-# 3. Lancement
-python main.py
-```
+2. **Prowlarr** (obligatoire) :
+   - URL : `http://prowlarr:9696`
+   - Clé API : obtenue depuis Prowlarr → Settings → General → API Key
 
-**Interface disponible** sur `http://localhost:8000`
+3. **Radarr/Sonarr** (optionnels) :
+   - Si vous voulez filtrer les grabs par films/séries
+   - Mêmes paramètres : URL + Clé API
 
----
+4. **Paramètres** :
+   - Intervalle de sync : 3600 secondes (1 heure)
+   - Rétention : 168 heures (7 jours)
+   - Déduplication : 168 heures
 
-## 🔑 Configuration Minimale
+5. **Cliquer sur "Sauvegarder"**
 
-Éditez le fichier `.env` :
-
-```env
-# REQUIS
-PROWLARR_URL=http://prowlarr:9696
-PROWLARR_API_KEY=votre_clé_api_ici
-
-# Recommandé (valeurs par défaut)
-SYNC_INTERVAL=3600          # 1 heure
-DEDUP_HOURS=168             # 7 jours
-RETENTION_HOURS=168         # 7 jours
-AUTO_PURGE=true
-```
+**Configuration sauvegardée** dans `./config/settings.yml` ✅
 
 ### 🔍 Où Trouver la Clé API Prowlarr ?
 
@@ -260,26 +264,38 @@ http://localhost:8000/rss/tracker/Sharewood/json
 
 ### Astuce 1 : Réduire la Fenêtre de Déduplication
 
-Si vous voyez beaucoup de doublons :
+Si vous voyez beaucoup de doublons, modifiez via l'interface web (onglet Configuration) :
 
-```env
-DEDUP_HOURS=24  # Au lieu de 168
+- **sync_dedup_hours** : `24` (au lieu de 168)
+
+Ou éditez `/config/settings.yml` :
+```yaml
+sync:
+  dedup_hours: 24
 ```
 
 ### Astuce 2 : Sync Plus Fréquente
 
-Pour récupérer les torrents plus rapidement :
+Pour récupérer les torrents plus rapidement, modifiez via l'interface web :
 
-```env
-SYNC_INTERVAL=1800  # 30 minutes au lieu d'1h
+- **sync_interval** : `1800` (30 minutes au lieu d'1h)
+
+Ou éditez `/config/settings.yml` :
+```yaml
+sync:
+  interval: 1800
 ```
 
 ### Astuce 3 : Garder Plus Longtemps
 
-Pour garder les torrents plus de 7 jours :
+Pour garder les torrents plus de 7 jours, modifiez via l'interface web :
 
-```env
-RETENTION_HOURS=720  # 30 jours
+- **sync_retention_hours** : `720` (30 jours)
+
+Ou éditez `/config/settings.yml` :
+```yaml
+sync:
+  retention_hours: 720
 ```
 
 ### Astuce 4 : Flux RSS par Tracker
@@ -309,7 +325,7 @@ Règle 2 : http://localhost:8000/rss/tracker/YGGtorrent → Catégorie: YGG
 curl http://localhost:9696
 ```
 
-Si erreur, corriger `PROWLARR_URL` dans `.env`
+Si erreur, corriger `PROWLARR_URL` via l'interface web (onglet Configuration) ou en relançant le Setup Wizard
 
 ### Problème : Tracker "Unknown"
 
@@ -321,10 +337,13 @@ Si erreur, corriger `PROWLARR_URL` dans `.env`
 ❌ PROWLARR_API_KEY manquante
 ```
 
-**Solution** : Vérifier le fichier `.env`
+**Solution** : Reconfigurer via l'interface web (onglet Configuration) ou relancer le Setup Wizard
 
+Pour relancer le Setup Wizard :
 ```bash
-cat .env | grep PROWLARR_API_KEY
+docker-compose down
+rm config/settings.yml
+docker-compose up -d
 ```
 
 ---
