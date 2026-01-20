@@ -1,3 +1,31 @@
+# ============================================
+# Stage 1: Builder - Compile Python packages
+# ============================================
+FROM python:3.11-slim AS builder
+
+# Install build dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    python3-dev \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create virtual environment for isolation
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Upgrade pip and install wheel for faster builds
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
+# Copy and install requirements
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
+
+# ============================================
+# Stage 2: Runtime - Minimal production image
+# ============================================
 FROM python:3.11-slim
 
 # Labels
@@ -8,29 +36,27 @@ LABEL org.opencontainers.image.source="https://github.com/kesurof/grabb2rss"
 LABEL org.opencontainers.image.description="Prowlarr to RSS converter inspired by LinuxServer.io standards"
 LABEL org.opencontainers.image.licenses="MIT"
 
-# Set working directory
-WORKDIR /app
-
-# Install system dependencies
+# Install only runtime dependencies (no gcc/build tools)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     curl \
-    gcc \
-    python3-dev \
     gosu \
     bash \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+# Copy Python virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
 
-# Copy application code
+# Set PATH to use venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Set working directory
+WORKDIR /app
+
+# Copy application code (do this late to maximize cache)
 COPY . .
 
 # Copy and set entrypoint permissions
-COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # Create necessary directories
@@ -39,7 +65,8 @@ RUN mkdir -p /app/data/torrents /config
 # Environment variables (LinuxServer.io style)
 ENV PUID=1000 \
     PGID=1000 \
-    TZ=Etc/UTC
+    TZ=Etc/UTC \
+    PYTHONUNBUFFERED=1
 
 # Expose port
 EXPOSE 8000
