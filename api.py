@@ -4,11 +4,15 @@ from fastapi.responses import Response, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import logging
+import psutil
+import time
+from datetime import datetime
 
 from config import TORRENT_DIR, DB_PATH, DEDUP_HOURS, DESCRIPTIONS, PROWLARR_URL, PROWLARR_API_KEY
 from db import (
     init_db, get_grabs, get_stats, purge_all, purge_by_retention,
-    get_config, set_config, get_all_config, get_sync_logs, get_trackers, get_db
+    get_config, set_config, get_all_config, get_sync_logs, get_trackers, get_db,
+    vacuum_database, get_db_stats
 )
 from rss import generate_rss, generate_torrent_json
 from models import GrabOut, GrabStats, SyncStatus
@@ -16,10 +20,13 @@ from scheduler import start_scheduler, stop_scheduler, get_sync_status, trigger_
 
 logger = logging.getLogger(__name__)
 
+# Variable pour tracker le temps de démarrage
+start_time = time.time()
+
 app = FastAPI(
     title="Grab2RSS API",
     description="API pour Grab2RSS - Convert Prowlarr grabs en RSS",
-    version="2.3.0"
+    version="2.5.0"
 )
 
 # CORS
@@ -42,7 +49,7 @@ async def startup():
     """Au démarrage de l'app"""
     init_db()
     start_scheduler()
-    print("✅ Application démarrée v2.3")
+    print("✅ Application démarrée v2.5")
 
 @app.on_event("shutdown")
 async def shutdown():
@@ -55,13 +62,12 @@ async def shutdown():
 @app.get("/health")
 async def health():
     """Healthcheck complet avec vérification de tous les composants"""
-    from datetime import datetime
     import requests
     
     checks = {
         "status": "ok",
         "timestamp": datetime.utcnow().isoformat(),
-        "version": "2.3.0",
+        "version": "2.5.0",
         "components": {
             "database": "unknown",
             "prowlarr": "unknown",
@@ -72,7 +78,6 @@ async def health():
     # 1. Vérifier la base de données
     try:
         if DB_PATH.exists():
-            # Tester une requête simple
             with get_db() as conn:
                 conn.execute("SELECT 1").fetchone()
             checks["components"]["database"] = "ok"
@@ -123,7 +128,6 @@ async def health():
         checks["components"]["scheduler"] = f"error: {str(e)}"
         checks["status"] = "degraded"
     
-    # Déterminer le code de statut HTTP
     status_code = 200 if checks["status"] == "ok" else 503
     
     return JSONResponse(checks, status_code=status_code)
@@ -131,7 +135,6 @@ async def health():
 @app.get("/debug")
 async def debug_info():
     """Informations de debug"""
-    from datetime import datetime
     return {
         "status": "running",
         "timestamp": datetime.utcnow().isoformat(),
@@ -347,17 +350,151 @@ async def update_configuration(config_data: dict):
         logger.error(f"Erreur update_config: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# ==================== ADMIN / MAINTENANCE v2.5 ====================
+
+@app.post("/api/cache/clear")
+async def clear_cache():
+    """Vide tous les caches (trackers + imports Radarr/Sonarr)"""
+    try:
+        # Cache trackers
+        from prowlarr import clear_tracker_cache, get_tracker_cache_info
+        tracker_count = clear_tracker_cache()
+        
+        # Cache Radarr/Sonarr
+        from radarr_sonarr import clear_cache as clear_import_cache
+        clear_import_cache()
+        
+        return {
+            "status": "cleared",
+            "message": f"Cache vidé ({tracker_count} trackers)",
+            "tracker_cache_cleared": tracker_count
+        }
+    except Exception as e:
+        logger.error(f"Erreur clear_cache: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/db/vacuum")
+async def vacuum_db():
+    """Optimise la base de données SQLite (VACUUM)"""
+    try:
+        size_before, size_after = vacuum_database()
+        saved = size_before - size_after
+        
+        return {
+            "status": "optimized",
+            "message": "Base de données optimisée",
+            "size_before_mb": round(size_before, 2),
+            "size_after_mb": round(size_after, 2),
+            "saved_mb": round(saved, 2)
+        }
+    except Exception as e:
+        logger.error(f"Erreur vacuum_db: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/config/reload")
+async def reload_config_from_env():
+    """
+    Recharge la configuration depuis le fichier .env
+    ATTENTION : Écrase la configuration actuelle en DB avec les valeurs de .env
+    """
+    try:
+        from db import reload_config_from_env
+        count = reload_config_from_env()
+        
+        return {
+            "status": "reloaded",
+            "message": f"Configuration rechargée depuis .env ({count} paramètres)",
+            "count": count,
+            "warning": "L'application doit être redémarrée pour certains paramètres (SYNC_INTERVAL, etc.)"
+        }
+    except Exception as e:
+        logger.error(f"Erreur reload_config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/logs/system")
+async def get_system_logs(
+    limit: int = Query(100, ge=1, le=500),
+    level: str = Query("all")
+):
+    """
+    Récupère les logs système avec filtrage
+    level: all, success, error, warning, info
+    """
+    try:
+        # Récupérer les logs de sync
+        sync_logs = get_sync_logs(limit)
+        
+        # Formater les logs
+        logs = []
+        for log in sync_logs:
+            log_level = "success" if log["status"] == "success" else "error"
+            log_type = "sync"
+            message = f"Sync: {log['grabs_count']} grabs, {log.get('deduplicated_count', 0)} doublons"
+            details = log.get("error", None)
+            
+            logs.append({
+                "timestamp": log["sync_at"],
+                "level": log_level,
+                "type": log_type,
+                "message": message,
+                "details": details
+            })
+        
+        # Filtrer par niveau
+        if level != "all":
+            logs = [l for l in logs if l["level"] == level]
+        
+        return {
+            "logs": logs[:limit],
+            "total": len(logs),
+            "level": level
+        }
+    except Exception as e:
+        logger.error(f"Erreur get_system_logs: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/stats/detailed")
+async def get_detailed_stats():
+    """Statistiques système détaillées"""
+    try:
+        # Stats DB
+        db_stats = get_db_stats()
+        
+        # Stats torrents
+        torrent_count = len(list(TORRENT_DIR.glob("*.torrent"))) if TORRENT_DIR.exists() else 0
+        torrent_size = sum(f.stat().st_size for f in TORRENT_DIR.glob("*.torrent")) / (1024 * 1024) if TORRENT_DIR.exists() else 0
+        
+        # Stats système
+        process = psutil.Process()
+        memory_mb = process.memory_info().rss / (1024 * 1024)
+        cpu_percent = process.cpu_percent(interval=0.1)
+        uptime_seconds = int(time.time() - start_time)
+        
+        return {
+            "timestamp": datetime.utcnow().isoformat(),
+            "database": db_stats,
+            "torrents": {
+                "count": torrent_count,
+                "total_size_mb": round(torrent_size, 2),
+                "directory": str(TORRENT_DIR)
+            },
+            "system": {
+                "memory_mb": round(memory_mb, 2),
+                "cpu_percent": round(cpu_percent, 2),
+                "threads": process.num_threads(),
+                "uptime_seconds": uptime_seconds
+            }
+        }
+    except Exception as e:
+        logger.error(f"Erreur get_detailed_stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ==================== WEB UI ====================
 
 @app.get("/test", response_class=HTMLResponse)
 async def test_ui():
     """Interface de test simple"""
-    from pathlib import Path
-    test_file = Path(__file__).parent / "test_simple.html"
-    if test_file.exists():
-        return test_file.read_text()
-    else:
-        return """<!DOCTYPE html>
+    return """<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Test</title></head>
 <body style="font-family: Arial; max-width: 800px; margin: 50px auto; padding: 20px; background: #0f0f0f; color: #fff;">
 <h1 style="color: #1e90ff;">🧪 Grab2RSS - Test</h1>
@@ -368,107 +505,38 @@ async def test_ui():
 <li><a href="/rss" style="color: #1e90ff;">Voir le flux RSS</a></li>
 <li><a href="/" style="color: #1e90ff;">Interface complète</a></li>
 </ul>
-<h2>Test API JavaScript</h2>
-<button onclick="testAPI()" style="background: #1e90ff; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer;">🔍 Tester</button>
-<pre id="result" style="background: #1a1a1a; padding: 15px; margin-top: 15px; border-radius: 4px;"></pre>
-<script>
-async function testAPI() {
-    const result = document.getElementById('result');
-    result.textContent = '⏳ Test en cours...';
-    try {
-        const response = await fetch('/api/stats');
-        const data = await response.json();
-        result.textContent = '✅ Succès !\\n\\n' + JSON.stringify(data, null, 2);
-    } catch (error) {
-        result.textContent = '❌ Erreur: ' + error.message;
-    }
-}
-</script>
 </body></html>"""
 
 @app.get("/minimal", response_class=HTMLResponse)
 async def minimal_ui():
-    """Interface ultra-minimaliste sans JavaScript complexe"""
+    """Interface ultra-minimaliste"""
     return """<!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Grab2RSS - Test Minimal</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 50px auto;
-            padding: 20px;
-            background: #0f0f0f;
-            color: #fff;
-        }
-        h1 { color: #1e90ff; }
-        a {
-            color: #1e90ff;
-            text-decoration: none;
-            display: block;
-            padding: 10px;
-            margin: 10px 0;
-            background: #1a1a1a;
-            border-radius: 4px;
-        }
-        a:hover { background: #2a2a2a; }
-        .success { color: #00ff00; }
-    </style>
 </head>
-<body>
-    <h1>🧪 Grab2RSS - Test Minimal</h1>
-    
-    <p class="success">✅ Si vous voyez cette page, le serveur fonctionne !</p>
-    
+<body style="font-family: Arial; max-width: 800px; margin: 50px auto; padding: 20px; background: #0f0f0f; color: #fff;">
+    <h1 style="color: #1e90ff;">🧪 Grab2RSS v2.5 - Test Minimal</h1>
+    <p style="color: #00ff00;">✅ Si vous voyez cette page, le serveur fonctionne !</p>
     <h2>📋 Liens de Test</h2>
-    
-    <a href="/api/stats" target="_blank">📊 Stats (JSON)</a>
-    <a href="/api/grabs" target="_blank">📋 Grabs (JSON)</a>
-    <a href="/api/trackers" target="_blank">🏷️ Trackers (JSON)</a>
-    <a href="/rss" target="_blank">📡 Flux RSS (XML)</a>
-    <a href="/rss/torrent.json" target="_blank">📡 Flux RSS (JSON)</a>
-    <a href="/health" target="_blank">💚 Health Check</a>
-    <a href="/debug" target="_blank">🔍 Debug Info</a>
-    <a href="/" target="_blank">🏠 Interface Complète</a>
-    
-    <h2>📝 Informations</h2>
-    <ul>
-        <li>Serveur : <strong>http://localhost:8000</strong></li>
-        <li>Version : <strong>2.3.0</strong></li>
-        <li>Status : <strong class="success">ONLINE</strong></li>
-    </ul>
-    
-    <h2>🧪 Test JavaScript</h2>
-    <p>Si JavaScript fonctionne, vous verrez "OK" ci-dessous :</p>
-    <p id="js-test" style="color: #ff0000;">❌ JavaScript NON chargé</p>
-    
-    <script>
-        // Test ultra-simple
-        document.getElementById('js-test').innerHTML = '<span style="color: #00ff00;">✅ JavaScript OK</span>';
-        console.log('✅ JavaScript fonctionne');
-    </script>
-    
-    <h2>💡 Prochaines Étapes</h2>
-    <ol>
-        <li>Si vous voyez "✅ JavaScript OK" ci-dessus, tout fonctionne</li>
-        <li>Sinon, ouvrez la console (F12) pour voir les erreurs</li>
-        <li>Testez les liens ci-dessus pour vérifier l'API</li>
-    </ol>
+    <a href="/api/stats" target="_blank" style="color: #1e90ff; display: block; padding: 10px; margin: 10px 0; background: #1a1a1a; border-radius: 4px; text-decoration: none;">📊 Stats (JSON)</a>
+    <a href="/api/grabs" target="_blank" style="color: #1e90ff; display: block; padding: 10px; margin: 10px 0; background: #1a1a1a; border-radius: 4px; text-decoration: none;">📋 Grabs (JSON)</a>
+    <a href="/rss" target="_blank" style="color: #1e90ff; display: block; padding: 10px; margin: 10px 0; background: #1a1a1a; border-radius: 4px; text-decoration: none;">📡 Flux RSS (XML)</a>
+    <a href="/health" target="_blank" style="color: #1e90ff; display: block; padding: 10px; margin: 10px 0; background: #1a1a1a; border-radius: 4px; text-decoration: none;">💚 Health Check</a>
+    <a href="/" target="_blank" style="color: #1e90ff; display: block; padding: 10px; margin: 10px 0; background: #1a1a1a; border-radius: 4px; text-decoration: none;">🏠 Interface Complète</a>
 </body>
 </html>"""
 
 @app.get("/", response_class=HTMLResponse)
 async def web_ui():
-    """Interface Web complète (CORRIGÉE)"""
-    return """<!DOCTYPE html>
+    """Interface Web complète v2.5 - CORRIGÉE"""
+    html_content = """<!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grab2RSS v2.3 - Dashboard</title>
+    <title>Grab2RSS v2.5 - Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -535,14 +603,29 @@ async def web_ui():
         .alert { padding: 15px; border-radius: 4px; margin-bottom: 15px; }
         .alert.info { background: #003366; color: #1e90ff; border-left: 4px solid #1e90ff; }
         
+        .log-item { background: #1a1a1a; border-left: 4px solid #333; padding: 12px; margin-bottom: 10px; border-radius: 4px; }
+        .log-item.success { border-left-color: #00aa00; }
+        .log-item.error { border-left-color: #ff4444; }
+        .log-item.warning { border-left-color: #ffaa00; }
+        .log-item.info { border-left-color: #1e90ff; }
+        .log-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .log-level { font-weight: bold; font-size: 14px; }
+        .log-level.success { color: #00aa00; }
+        .log-level.error { color: #ff4444; }
+        .log-level.warning { color: #ffaa00; }
+        .log-level.info { color: #1e90ff; }
+        .log-time { color: #888; font-size: 12px; }
+        .log-message { margin-bottom: 5px; }
+        .log-details { color: #888; font-size: 12px; font-family: monospace; }
+        
         h2 { color: #1e90ff; margin: 30px 0 15px 0; }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>📡 Grab2RSS v2.3</h1>
-            <p class="subtitle">Convertisseur Prowlarr → RSS avec Flux Personnalisés</p>
+            <h1>📡 Grab2RSS v2.5</h1>
+            <p class="subtitle">Convertisseur Prowlarr → RSS avec Flux Personnalisés + Admin</p>
         </header>
 
         <div class="tabs">
@@ -552,6 +635,7 @@ async def web_ui():
             <button class="tab-button" onclick="switchTab('rss')">📡 Flux RSS</button>
             <button class="tab-button" onclick="switchTab('logs')">📝 Logs</button>
             <button class="tab-button" onclick="switchTab('config')">⚙️ Configuration</button>
+            <button class="tab-button" onclick="switchTab('admin')">🔧 Admin</button>
         </div>
 
         <!-- TAB: DASHBOARD -->
@@ -713,6 +797,72 @@ async def web_ui():
                 <button class="button" onclick="loadConfig()">🔄 Recharger</button>
             </div>
         </div>
+
+        <!-- TAB: ADMIN (NOUVEAU v2.5) -->
+        <div id="admin" class="tab-content">
+            <h2>🔧 Administration & Maintenance</h2>
+            
+            <h3 style="margin-top: 20px; margin-bottom: 15px;">📊 Statistiques Système</h3>
+            <div class="grid">
+                <div class="card">
+                    <h3>Base de Données</h3>
+                    <div class="value"><span id="admin-db-size">-</span><span class="unit">MB</span></div>
+                    <p style="color: #888; font-size: 12px; margin-top: 10px;">
+                        Grabs: <span id="admin-db-grabs">-</span> | 
+                        Logs: <span id="admin-db-logs">-</span>
+                    </p>
+                </div>
+                <div class="card">
+                    <h3>Fichiers Torrents</h3>
+                    <div class="value"><span id="admin-torrent-count">-</span></div>
+                    <p style="color: #888; font-size: 12px; margin-top: 10px;">
+                        Taille: <span id="admin-torrent-size">-</span> MB
+                    </p>
+                </div>
+                <div class="card">
+                    <h3>Mémoire</h3>
+                    <div class="value"><span id="admin-memory">-</span><span class="unit">MB</span></div>
+                    <p style="color: #888; font-size: 12px; margin-top: 10px;">
+                        CPU: <span id="admin-cpu">-</span>%
+                    </p>
+                </div>
+                <div class="card">
+                    <h3>Uptime</h3>
+                    <div class="value" id="admin-uptime" style="font-size: 20px;">-</div>
+                </div>
+            </div>
+            
+            <h3 style="margin-top: 30px; margin-bottom: 15px;">🛠️ Actions de Maintenance</h3>
+            <div class="actions">
+                <button class="button" onclick="loadAdminStats()">🔄 Rafraîchir Stats</button>
+                <button class="button" onclick="clearCache()">🗑️ Vider Cache</button>
+                <button class="button" onclick="vacuumDatabase()">🔧 Optimiser BD</button>
+                <button class="button" onclick="reloadConfigFromEnv()">📄 Recharger .env</button>
+                <button class="button success" onclick="syncNow()">📡 Forcer Sync</button>
+                <button class="button danger" onclick="purgeOldGrabs()">🗑️ Purger Anciens</button>
+            </div>
+            
+            <div class="alert info" style="margin-top: 15px;">
+                <strong>💡 Configuration :</strong> 
+                Vous pouvez modifier la configuration via l'onglet <strong>Configuration</strong> ou via le fichier <strong>.env</strong>. 
+                Si vous modifiez .env, cliquez sur <strong>"Recharger .env"</strong> pour appliquer les changements (redémarrage requis pour certains paramètres).
+            </div>
+            
+            <h3 style="margin-top: 30px; margin-bottom: 15px;">📋 Logs Système</h3>
+            <div class="filter-bar">
+                <label for="log-level-filter" style="margin: 0; color: #1e90ff; font-weight: 600;">Niveau:</label>
+                <select id="log-level-filter" onchange="loadSystemLogs()" style="flex: 0 0 auto; min-width: 150px;">
+                    <option value="all">Tous</option>
+                    <option value="success">Succès</option>
+                    <option value="error">Erreurs</option>
+                    <option value="warning">Avertissements</option>
+                    <option value="info">Informations</option>
+                </select>
+            </div>
+            <div id="system-logs-container" style="max-height: 500px; overflow-y: auto;">
+                <p style="text-align: center; color: #888; padding: 20px;">Chargement des logs...</p>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -739,12 +889,13 @@ async def web_ui():
             if (tab === 'grabs') loadGrabs();
             if (tab === 'stats') loadStats();
             if (tab === 'rss') loadRssUrls();
+            if (tab === 'admin') loadAdminTab();
         }
 
         function loadRssUrls() {
             const baseUrl = getRssBaseUrl();
-            document.getElementById('rss-global-xml').textContent = `${baseUrl}/rss`;
-            document.getElementById('rss-global-json').textContent = `${baseUrl}/rss/torrent.json`;
+            document.getElementById('rss-global-xml').textContent = baseUrl + '/rss';
+            document.getElementById('rss-global-json').textContent = baseUrl + '/rss/torrent.json';
             updateTrackerRssUrls();
         }
 
@@ -753,11 +904,11 @@ async def web_ui():
             const baseUrl = getRssBaseUrl();
             
             if (tracker === 'all') {
-                document.getElementById('rss-tracker-xml').textContent = `${baseUrl}/rss`;
-                document.getElementById('rss-tracker-json').textContent = `${baseUrl}/rss/torrent.json`;
+                document.getElementById('rss-tracker-xml').textContent = baseUrl + '/rss';
+                document.getElementById('rss-tracker-json').textContent = baseUrl + '/rss/torrent.json';
             } else {
-                document.getElementById('rss-tracker-xml').textContent = `${baseUrl}/rss/tracker/${encodeURIComponent(tracker)}`;
-                document.getElementById('rss-tracker-json').textContent = `${baseUrl}/rss/tracker/${encodeURIComponent(tracker)}/json`;
+                document.getElementById('rss-tracker-xml').textContent = baseUrl + '/rss/tracker/' + encodeURIComponent(tracker);
+                document.getElementById('rss-tracker-json').textContent = baseUrl + '/rss/tracker/' + encodeURIComponent(tracker) + '/json';
             }
         }
 
@@ -772,15 +923,11 @@ async def web_ui():
 
         async function loadTrackers() {
             try {
-                console.log("📊 Chargement des trackers...");
-                
-                const res = await fetch(`${API_BASE}/trackers`);
-                if (!res.ok) throw new Error(`Trackers API error: ${res.status}`);
+                const res = await fetch(API_BASE + '/trackers');
+                if (!res.ok) throw new Error('Trackers API error: ' + res.status);
                 
                 const data = await res.json();
                 allTrackers = data.trackers;
-                
-                console.log(`✅ ${allTrackers.length} trackers chargés`);
                 
                 [document.getElementById('tracker-filter-grabs'), document.getElementById('tracker-filter-rss')].forEach(select => {
                     if (!select) return;
@@ -794,25 +941,24 @@ async def web_ui():
                 });
             } catch (e) {
                 console.error("❌ Erreur loadTrackers:", e);
-                // Continuer même si les trackers ne sont pas disponibles
             }
         }
 
         async function filterGrabs() {
             const tracker = document.getElementById('tracker-filter-grabs').value;
-            const url = `${API_BASE}/grabs?limit=100&tracker=${encodeURIComponent(tracker)}`;
+            const url = API_BASE + '/grabs?limit=100&tracker=' + encodeURIComponent(tracker);
             
             try {
                 const grabs = await fetch(url).then(r => r.json());
                 const tbody = document.getElementById("grabs-table");
-                tbody.innerHTML = grabs.length ? grabs.map(g => `
-                    <tr>
-                        <td class="date">${new Date(g.grabbed_at).toLocaleString('fr-FR')}</td>
-                        <td>${g.title}</td>
-                        <td><strong style="color: #1e90ff;">${g.tracker || 'N/A'}</strong></td>
-                        <td><a href="/torrents/${encodeURIComponent(g.torrent_file)}" target="_blank" style="color: #1e90ff; text-decoration: none;">📥 Download</a></td>
-                    </tr>
-                `).join("") : `<tr><td colspan="4" style="text-align: center; color: #888;">Aucun grab</td></tr>`;
+                tbody.innerHTML = grabs.length ? grabs.map(g => 
+                    '<tr>' +
+                    '<td class="date">' + new Date(g.grabbed_at).toLocaleString('fr-FR') + '</td>' +
+                    '<td>' + g.title + '</td>' +
+                    '<td><strong style="color: #1e90ff;">' + (g.tracker || 'N/A') + '</strong></td>' +
+                    '<td><a href="/torrents/' + encodeURIComponent(g.torrent_file) + '" target="_blank" style="color: #1e90ff; text-decoration: none;">📥 Download</a></td>' +
+                    '</tr>'
+                ).join("") : '<tr><td colspan="4" style="text-align: center; color: #888;">Aucun grab</td></tr>';
             } catch (e) {
                 console.error("Erreur filterGrabs:", e);
             }
@@ -820,10 +966,9 @@ async def web_ui():
 
         async function loadStats() {
             try {
-                const res = await fetch(`${API_BASE}/stats`);
+                const res = await fetch(API_BASE + '/stats');
                 statsData = await res.json();
                 
-                // Stats par tracker - Pie Chart
                 const trackerLabels = statsData.tracker_stats.map(t => t.tracker);
                 const trackerData = statsData.tracker_stats.map(t => t.count);
                 
@@ -851,7 +996,6 @@ async def web_ui():
                     }
                 });
                 
-                // Grabs par jour - Line Chart
                 const dayLabels = statsData.grabs_by_day.map(d => d.day).reverse();
                 const dayData = statsData.grabs_by_day.map(d => d.count).reverse();
                 
@@ -884,7 +1028,6 @@ async def web_ui():
                     }
                 });
                 
-                // Top torrents - Bar Chart
                 const topLabels = statsData.top_torrents.map(t => t.title.substring(0, 30) + '...');
                 const topData = Array(statsData.top_torrents.length).fill(1);
                 
@@ -915,16 +1058,15 @@ async def web_ui():
                     }
                 });
                 
-                // Stats tableau
                 const total = statsData.tracker_stats.reduce((a, b) => a + b.count, 0);
                 let tbody = document.getElementById('tracker-stats-body');
-                tbody.innerHTML = statsData.tracker_stats.map(t => `
-                    <tr>
-                        <td><strong>${t.tracker}</strong></td>
-                        <td>${t.count}</td>
-                        <td>${((t.count / total) * 100).toFixed(1)}%</td>
-                    </tr>
-                `).join("");
+                tbody.innerHTML = statsData.tracker_stats.map(t => 
+                    '<tr>' +
+                    '<td><strong>' + t.tracker + '</strong></td>' +
+                    '<td>' + t.count + '</td>' +
+                    '<td>' + ((t.count / total) * 100).toFixed(1) + '%</td>' +
+                    '</tr>'
+                ).join("");
                 
             } catch (e) {
                 console.error("Erreur loadStats:", e);
@@ -933,17 +1075,9 @@ async def web_ui():
 
         async function refreshData() {
             try {
-                console.log("🔄 Rafraîchissement des données...");
-                
                 const [stats, sync] = await Promise.all([
-                    fetch(`${API_BASE}/stats`).then(r => {
-                        if (!r.ok) throw new Error(`Stats API error: ${r.status}`);
-                        return r.json();
-                    }),
-                    fetch(`${API_BASE}/sync/status`).then(r => {
-                        if (!r.ok) throw new Error(`Sync API error: ${r.status}`);
-                        return r.json();
-                    })
+                    fetch(API_BASE + '/stats').then(r => r.json()),
+                    fetch(API_BASE + '/sync/status').then(r => r.json())
                 ]);
 
                 document.getElementById("total-grabs").textContent = stats.total_grabs;
@@ -952,24 +1086,19 @@ async def web_ui():
 
                 const statusEl = document.getElementById("sync-status");
                 
-                // Déterminer le vrai statut
                 let statusClass = "status offline";
                 let statusText = "Inactif";
                 
                 if (sync.is_running) {
-                    // Sync en cours
                     statusClass = "status online";
                     statusText = "Sync en cours...";
                 } else if (sync.next_sync) {
-                    // Scheduler actif avec prochaine sync planifiée
                     statusClass = "status online";
                     statusText = "Actif";
                 } else if (sync.last_sync) {
-                    // A déjà sync mais pas de prochaine sync planifiée
                     statusClass = "status offline";
                     statusText = "Arrêté";
                 } else {
-                    // Jamais sync
                     statusClass = "status offline";
                     statusText = "En attente";
                 }
@@ -977,12 +1106,9 @@ async def web_ui():
                 statusEl.className = statusClass;
                 statusEl.textContent = statusText;
 
-                document.getElementById("next-sync").textContent = sync.next_sync ? `Prochain: ${new Date(sync.next_sync).toLocaleString('fr-FR')}` : "-";
-                
-                console.log("✅ Données rafraîchies");
+                document.getElementById("next-sync").textContent = sync.next_sync ? 'Prochain: ' + new Date(sync.next_sync).toLocaleString('fr-FR') : "-";
             } catch (e) {
                 console.error("❌ Erreur refreshData:", e);
-                // Ne pas bloquer l'interface sur une erreur
             }
         }
 
@@ -992,17 +1118,17 @@ async def web_ui():
 
         async function loadLogs() {
             try {
-                const logs = await fetch(`${API_BASE}/sync/logs?limit=50`).then(r => r.json());
+                const logs = await fetch(API_BASE + '/sync/logs?limit=50').then(r => r.json());
                 const tbody = document.getElementById("logs-table");
-                tbody.innerHTML = logs.length ? logs.map(l => `
-                    <tr>
-                        <td class="date">${new Date(l.sync_at).toLocaleString('fr-FR')}</td>
-                        <td><span class="status ${l.status === 'success' ? 'online' : 'offline'}">${l.status}</span></td>
-                        <td>${l.grabs_count}</td>
-                        <td>${l.deduplicated_count || 0}</td>
-                        <td style="color: #ff4444; font-size: 12px;">${l.error ? l.error.substring(0, 50) : '-'}</td>
-                    </tr>
-                `).join("") : `<tr><td colspan="5" style="text-align: center; color: #888;">Aucun log</td></tr>`;
+                tbody.innerHTML = logs.length ? logs.map(l => 
+                    '<tr>' +
+                    '<td class="date">' + new Date(l.sync_at).toLocaleString('fr-FR') + '</td>' +
+                    '<td><span class="status ' + (l.status === 'success' ? 'online' : 'offline') + '">' + l.status + '</span></td>' +
+                    '<td>' + l.grabs_count + '</td>' +
+                    '<td>' + (l.deduplicated_count || 0) + '</td>' +
+                    '<td style="color: #ff4444; font-size: 12px;">' + (l.error ? l.error.substring(0, 50) : '-') + '</td>' +
+                    '</tr>'
+                ).join("") : '<tr><td colspan="5" style="text-align: center; color: #888;">Aucun log</td></tr>';
             } catch (e) {
                 console.error("Erreur loadLogs:", e);
             }
@@ -1010,17 +1136,17 @@ async def web_ui():
 
         async function loadConfig() {
             try {
-                const response = await fetch(`${API_BASE}/config`);
+                const response = await fetch(API_BASE + '/config');
                 configData = await response.json();
                 
                 const form = document.getElementById("config-form");
-                form.innerHTML = Object.entries(configData).map(([key, data]) => `
-                    <div class="form-group">
-                        <label for="${key}">${key}</label>
-                        <input type="text" id="${key}" name="${key}" value="${data.value || ''}" placeholder="${data.description}">
-                        <small>${data.description}</small>
-                    </div>
-                `).join("");
+                form.innerHTML = Object.entries(configData).map(([key, data]) => 
+                    '<div class="form-group">' +
+                    '<label for="' + key + '">' + key + '</label>' +
+                    '<input type="text" id="' + key + '" name="' + key + '" value="' + (data.value || '') + '" placeholder="' + data.description + '">' +
+                    '<small>' + data.description + '</small>' +
+                    '</div>'
+                ).join("");
             } catch (e) {
                 alert("Erreur lors du chargement de la config: " + e);
             }
@@ -1039,7 +1165,7 @@ async def web_ui():
                     }
                 });
                 
-                const res = await fetch(`${API_BASE}/config`, {
+                const res = await fetch(API_BASE + '/config', {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(updates)
@@ -1062,15 +1188,46 @@ async def web_ui():
             btn.textContent = "⏳ Sync en cours...";
             
             try {
-                await fetch(`${API_BASE}/sync/trigger`, { method: "POST" });
+                const triggerRes = await fetch(API_BASE + '/sync/trigger', { method: "POST" });
+                const triggerData = await triggerRes.json();
                 
-                setTimeout(() => {
-                    refreshData();
+                if (triggerData.status === "already_running") {
+                    alert("⏳ Une synchronisation est déjà en cours");
                     btn.disabled = false;
                     btn.textContent = "📡 Sync Maintenant";
-                }, 2000);
+                    return;
+                }
+                
+                let syncCompleted = false;
+                const maxAttempts = 30;
+                
+                for (let i = 0; i < maxAttempts; i++) {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    
+                    const statusRes = await fetch(API_BASE + '/sync/status');
+                    const status = await statusRes.json();
+                    
+                    if (!status.is_running) {
+                        syncCompleted = true;
+                        
+                        if (status.last_error) {
+                            alert("❌ Erreur sync: " + status.last_error);
+                        } else {
+                            alert("✅ Synchronisation terminée !");
+                        }
+                        break;
+                    }
+                }
+                
+                if (!syncCompleted) {
+                    alert("⏳ La synchronisation prend plus de temps que prévu. Vérifiez les logs.");
+                }
+                
+                await refreshData();
+                
             } catch (e) {
-                alert("Erreur: " + e);
+                alert("❌ Erreur: " + e);
+            } finally {
                 btn.disabled = false;
                 btn.textContent = "📡 Sync Maintenant";
             }
@@ -1079,7 +1236,7 @@ async def web_ui():
         async function purgeAllGrabs() {
             if (confirm("⚠️  Êtes-vous CERTAIN ? Cela supprimera TOUS les grabs !")) {
                 try {
-                    const res = await fetch(`${API_BASE}/purge/all`, { method: "POST" });
+                    const res = await fetch(API_BASE + '/purge/all', { method: "POST" });
                     const data = await res.json();
                     alert("✅ " + data.message);
                     refreshData();
@@ -1090,16 +1247,148 @@ async def web_ui():
             }
         }
 
-        // Initialisation
+        async function loadAdminTab() {
+            await loadAdminStats();
+            await loadSystemLogs();
+        }
+
+        async function loadAdminStats() {
+            try {
+                const res = await fetch(API_BASE + '/stats/detailed');
+                const data = await res.json();
+                
+                document.getElementById('admin-db-size').textContent = data.database.size_mb;
+                document.getElementById('admin-db-grabs').textContent = data.database.grabs;
+                document.getElementById('admin-db-logs').textContent = data.database.sync_logs;
+                
+                document.getElementById('admin-torrent-count').textContent = data.torrents.count;
+                document.getElementById('admin-torrent-size').textContent = data.torrents.total_size_mb;
+                
+                document.getElementById('admin-memory').textContent = data.system.memory_mb;
+                document.getElementById('admin-cpu').textContent = data.system.cpu_percent;
+                
+                const uptime = data.system.uptime_seconds;
+                const hours = Math.floor(uptime / 3600);
+                const minutes = Math.floor((uptime % 3600) / 60);
+                document.getElementById('admin-uptime').textContent = hours + 'h ' + minutes + 'm';
+                
+            } catch (e) {
+                console.error("Erreur loadAdminStats:", e);
+                alert("❌ Erreur lors du chargement des stats: " + e);
+            }
+        }
+
+        async function loadSystemLogs() {
+            const level = document.getElementById('log-level-filter').value;
+            
+            try {
+                const res = await fetch(API_BASE + '/logs/system?limit=50&level=' + level);
+                const data = await res.json();
+                
+                const container = document.getElementById('system-logs-container');
+                
+                if (data.logs.length === 0) {
+                    container.innerHTML = '<p style="text-align: center; color: #888; padding: 20px;">Aucun log trouvé</p>';
+                    return;
+                }
+                
+                const logIcons = {
+                    'success': '✅',
+                    'error': '❌',
+                    'warning': '⚠️',
+                    'info': 'ℹ️'
+                };
+                
+                container.innerHTML = data.logs.map(log => 
+                    '<div class="log-item ' + log.level + '">' +
+                    '<div class="log-header">' +
+                    '<span class="log-level ' + log.level + '">' +
+                    (logIcons[log.level] || '•') + ' ' + log.level.toUpperCase() +
+                    '</span>' +
+                    '<span class="log-time">' + new Date(log.timestamp).toLocaleString('fr-FR') + '</span>' +
+                    '</div>' +
+                    '<div class="log-message">' + log.message + '</div>' +
+                    (log.details ? '<div class="log-details">' + log.details + '</div>' : '') +
+                    '</div>'
+                ).join('');
+                
+            } catch (e) {
+                console.error("Erreur loadSystemLogs:", e);
+                alert("❌ Erreur lors du chargement des logs: " + e);
+            }
+        }
+
+        async function clearCache() {
+            if (confirm("Vider tous les caches (trackers + imports Radarr/Sonarr) ?")) {
+                try {
+                    const res = await fetch(API_BASE + '/cache/clear', { method: "POST" });
+                    const data = await res.json();
+                    alert("✅ " + data.message);
+                    await loadAdminStats();
+                } catch (e) {
+                    alert("❌ Erreur: " + e);
+                }
+            }
+        }
+
+        async function vacuumDatabase() {
+            if (confirm("Optimiser la base de données (VACUUM) ? Cela peut prendre quelques secondes.")) {
+                try {
+                    const res = await fetch(API_BASE + '/db/vacuum', { method: "POST" });
+                    const data = await res.json();
+                    alert("✅ " + data.message + "\\nEspace libéré: " + data.saved_mb + " MB");
+                    await loadAdminStats();
+                } catch (e) {
+                    alert("❌ Erreur: " + e);
+                }
+            }
+        }
+
+        async function reloadConfigFromEnv() {
+            if (confirm("⚠️  Attention : Cette action va ÉCRASER la configuration actuelle en base de données avec les valeurs du fichier .env.\\n\\nÊtes-vous sûr de vouloir continuer ?")) {
+                try {
+                    const res = await fetch(API_BASE + '/config/reload', { method: "POST" });
+                    const data = await res.json();
+                    alert("✅ " + data.message + "\\n\\n⚠️  " + data.warning + "\\n\\nPour appliquer complètement les changements, redémarrez l'application :\\n  docker compose restart grab2rss");
+                    await loadConfig();  // Recharger l'onglet config
+                } catch (e) {
+                    alert("❌ Erreur: " + e);
+                }
+            }
+        }
+
+        async function purgeOldGrabs() {
+            const hours = prompt("Supprimer les grabs plus anciens que combien d'heures ?\\n(168 = 7 jours, 336 = 14 jours, 720 = 30 jours)", "168");
+            
+            if (hours === null) return;
+            
+            const hoursInt = parseInt(hours);
+            if (isNaN(hoursInt) || hoursInt < 1) {
+                alert("❌ Valeur invalide");
+                return;
+            }
+            
+            if (confirm("Supprimer tous les grabs > " + hoursInt + "h ?")) {
+                try {
+                    const res = await fetch(API_BASE + '/purge/retention?hours=' + hoursInt, { method: "POST" });
+                    const data = await res.json();
+                    alert("✅ " + data.message);
+                    await refreshData();
+                    await loadAdminStats();
+                } catch (e) {
+                    alert("❌ Erreur: " + e);
+                }
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', async () => {
-            console.log("🚀 Initialisation Grab2RSS...");
+            console.log("🚀 Initialisation Grab2RSS v2.5...");
             
             try {
                 await loadTrackers();
                 await refreshData();
                 await loadGrabs();
                 
-                // Rafraîchir toutes les 30s
                 setInterval(refreshData, 30000);
                 
                 console.log("✅ Application initialisée");
@@ -1111,3 +1400,4 @@ async def web_ui():
     </script>
 </body>
 </html>"""
+    return HTMLResponse(content=html_content)

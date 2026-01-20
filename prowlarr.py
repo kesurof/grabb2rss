@@ -124,3 +124,18 @@ def extract_grabs(records: list) -> Generator[Dict[str, Any], None, None]:
             except Exception as e:
                 print(f"❌ Erreur extraction grab: {e}")
                 continue
+
+def clear_tracker_cache():
+    """Vide le cache des trackers"""
+    global _TRACKER_CACHE
+    count = len(_TRACKER_CACHE)
+    _TRACKER_CACHE.clear()
+    print(f"🗑️  Cache trackers vidé ({count} entrées)")
+    return count
+
+def get_tracker_cache_info() -> dict:
+    """Retourne des informations sur le cache des trackers"""
+    return {
+        "count": len(_TRACKER_CACHE),
+        "trackers": list(_TRACKER_CACHE.values())
+    }

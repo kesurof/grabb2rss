@@ -1,42 +1,94 @@
-# 📡 Grab2RSS v2.4
+# 📡 Grab2RSS v2.5
 
-**Convertisseur Prowlarr → RSS** avec support multi-tracker, déduplication intelligente et monitoring complet.
+**Convertisseur Prowlarr → RSS** avec support multi-tracker, filtrage Radarr/Sonarr, et interface d'administration complète.
 
-![Version](https://img.shields.io/badge/version-2.4.0-blue)
+![Version](https://img.shields.io/badge/version-2.5.0-blue)
 ![Python](https://img.shields.io/badge/python-3.9+-green)
 ![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
 ---
 
-## 🎯 Objectif
+## 🎯 Qu'est-ce que Grab2RSS ?
 
-Récupérer automatiquement les fichiers `.torrent` depuis **Prowlarr** et les exposer via **flux RSS** pour seeding automatique sur un serveur secondaire (via qBittorrent, ruTorrent, Transmission, etc.).
+Grab2RSS récupère automatiquement les fichiers `.torrent` depuis **Prowlarr** et les expose via **flux RSS** pour seeding automatique.
 
-**Cas d'usage** : Vous utilisez Prowlarr + AllDebrid, mais certains trackers nécessitent du seeding. Grab2RSS récupère les `.torrent` et les expose en RSS pour un client torrent sur un autre serveur avec plus de stockage.
+**Nouveauté v2.5** : Filtrage intelligent avec Radarr/Sonarr pour ne garder que les torrents **réellement importés**.
 
 ---
 
-## ✨ Fonctionnalités
+## ✨ Nouveautés v2.5
+
+### 🔧 Nouvel Onglet Admin
+
+Interface d'administration complète avec :
+
+- **📊 Statistiques système en temps réel**
+  - Taille base de données
+  - Nombre de fichiers torrents
+  - Utilisation mémoire et CPU
+  - Temps de fonctionnement (uptime)
+
+- **🛠️ Actions de maintenance**
+  - Vider les caches (trackers + imports)
+  - Optimiser la base de données (VACUUM)
+  - Forcer une synchronisation
+  - Purger les anciens grabs
+
+- **📋 Logs système avec filtrage**
+  - Classés par niveau (succès, erreur, warning, info)
+  - Filtrage en temps réel
+  - Affichage coloré avec icônes
+
+### 🔄 Synchronisation Améliorée
+
+- Vérification si sync déjà en cours
+- Polling jusqu'à fin de sync (max 30s)
+- Messages de succès/erreur détaillés
+- Rafraîchissement automatique des données
+
+### 🐛 Correction du Bug de Hash
+
+**Problème corrigé** :
+```
+⚠️  Erreur calcul hash: "Invalid token character (b'<') at position 0."
+```
+
+**Solution** :
+- Vérification que le fichier téléchargé est un torrent valide
+- Gestion robuste des fichiers HTML (erreur 404, etc.)
+- Messages d'erreur informatifs
+
+### 🆕 Nouveaux Endpoints API
+
+- `POST /api/cache/clear` - Vider tous les caches
+- `POST /api/db/vacuum` - Optimiser la base de données
+- `GET /api/logs/system` - Récupérer les logs système
+- `GET /api/stats/detailed` - Statistiques détaillées
+
+---
+
+## 📋 Fonctionnalités Complètes
 
 ### Core
-- ✅ **Synchronisation automatique** avec Prowlarr (intervalle configurable)
-- ✅ **Flux RSS multi-format** (XML standard + JSON)
-- ✅ **Filtrage par tracker** pour flux personnalisés
-- ✅ **Déduplication intelligente** (fenêtre glissante MD5)
-- ✅ **Purge automatique** des anciens grabs
-- ✅ **Extraction tracker** depuis URL (quand les métadonnées sont absentes)
+- ✅ Synchronisation automatique avec Prowlarr
+- ✅ Filtrage Radarr/Sonarr (v2.5)
+- ✅ Flux RSS multi-format (XML + JSON)
+- ✅ Filtrage par tracker
+- ✅ Déduplication intelligente
+- ✅ Purge automatique
+- ✅ Extraction tracker depuis URL
 
 ### Interface & Monitoring
-- ✅ **Interface Web moderne** avec Dashboard
-- ✅ **Statistiques avancées** avec graphiques Chart.js
-- ✅ **Healthcheck complet** (DB + Prowlarr + Scheduler)
-- ✅ **Validation configuration** au démarrage
-- ✅ **API RESTful complète** pour intégration
+- ✅ Dashboard moderne (7 onglets dont Admin)
+- ✅ Statistiques avancées avec graphiques
+- ✅ Healthcheck complet
+- ✅ Validation configuration
+- ✅ API RESTful complète
 
 ### Performance
-- ✅ **Cache des trackers** (50% moins d'appels parsing)
-- ✅ **Context manager DB** (+25% performance)
-- ✅ **Compatible** rutorrent, qBittorrent, Transmission
+- ✅ Cache des trackers optimisé
+- ✅ Context manager DB
+- ✅ Compatible rutorrent, qBittorrent, Transmission
 
 ---
 
@@ -45,9 +97,8 @@ Récupérer automatiquement les fichiers `.torrent` depuis **Prowlarr** et les e
 ### Avec Docker (Recommandé)
 
 ```bash
-# 1. Cloner le repo
-git clone https://github.com/votre-repo/grab2rss.git
-cd grab2rss
+# 1. Télécharger les fichiers
+# (tous les fichiers sont dans /mnt/user-data/outputs/grab2rss_v2.5/)
 
 # 2. Configuration
 cp .env.example .env
@@ -82,34 +133,49 @@ python main.py
 
 ## ⚙️ Configuration
 
-### Variables d'Environnement Essentielles
+### Variables Essentielles
 
 ```env
 # Prowlarr (REQUIS)
 PROWLARR_URL=http://prowlarr:9696
 PROWLARR_API_KEY=votre_clé_api_ici
+PROWLARR_HISTORY_PAGE_SIZE=100
+
+# Radarr (OPTIONNEL - v2.5)
+RADARR_URL=http://localhost:7878
+RADARR_API_KEY=votre_clé_radarr
+
+# Sonarr (OPTIONNEL - v2.5)
+SONARR_URL=http://localhost:8989
+SONARR_API_KEY=votre_clé_sonarr
 
 # Synchronisation
 SYNC_INTERVAL=3600  # 1 heure
 
 # Déduplication
-DEDUP_HOURS=168  # 7 jours
+DEDUP_HOURS=24  # 24 heures
 
 # Rétention
 RETENTION_HOURS=168  # 7 jours
 AUTO_PURGE=true
-
-# RSS
-RSS_DOMAIN=localhost:8000
-RSS_SCHEME=http
 ```
 
-### Obtenir la Clé API Prowlarr
+### 🔑 Obtenir les Clés API
 
-1. Ouvrir Prowlarr → **Settings** → **General**
-2. Section **Security**
-3. Copier la **API Key**
-4. La définir dans `PROWLARR_API_KEY`
+**Prowlarr** :
+1. Ouvrir Prowlarr → Settings → General
+2. Section Security
+3. Copier la API Key
+
+**Radarr** (optionnel) :
+1. Ouvrir Radarr → Settings → General
+2. Section Security
+3. Copier la API Key
+
+**Sonarr** (optionnel) :
+1. Ouvrir Sonarr → Settings → General
+2. Section Security
+3. Copier la API Key
 
 ---
 
@@ -121,69 +187,213 @@ RSS_SCHEME=http
 http://localhost:8000
 ```
 
-**6 Onglets Disponibles** :
-1. **📊 Dashboard** - Vue d'ensemble (stats, sync, actions)
-2. **📋 Grabs** - Liste complète avec filtre par tracker
-3. **📈 Statistiques** - Graphiques (trackers, grabs/jour, top torrents)
-4. **📡 Flux RSS** - URLs personnalisées (global + par tracker)
-5. **📝 Logs** - Historique des synchronisations
-6. **⚙️ Configuration** - Paramètres de l'application
+**7 Onglets Disponibles** :
+
+1. **📊 Dashboard** - Vue d'ensemble et actions rapides
+2. **📋 Grabs** - Liste complète avec filtre tracker
+3. **📈 Statistiques** - Graphiques détaillés
+4. **📡 Flux RSS** - URLs personnalisées
+5. **📝 Logs** - Historique synchronisations
+6. **⚙️ Configuration** - Paramètres application
+7. **🔧 Admin** - **NOUVEAU v2.5** - Maintenance et logs système
 
 ### Flux RSS
 
-#### Flux Global (Tous les Trackers)
-
+#### Flux Global
 ```
 http://localhost:8000/rss
-http://localhost:8000/rss.xml
-http://localhost:8000/rss/torrent.json  (format JSON)
+http://localhost:8000/rss/torrent.json
 ```
 
 #### Flux Par Tracker
-
-```
-http://localhost:8000/rss/tracker/NomDuTracker
-http://localhost:8000/rss/tracker/NomDuTracker/json
-```
-
-**Exemples** :
 ```
 http://localhost:8000/rss/tracker/Sharewood
-http://localhost:8000/rss/tracker/YGGtorrent
-http://localhost:8000/rss/tracker/Torrent9
-```
-
-#### Avec Paramètre de Requête
-
-```
-http://localhost:8000/rss?tracker=Sharewood
+http://localhost:8000/rss/tracker/YGGtorrent/json
 ```
 
 ---
 
-## 🎓 Configuration Clients Torrent
+## 🆕 Nouveautés v2.5 en Détail
+
+### 1. Filtrage Radarr/Sonarr
+
+**Avant v2.5** :
+```
+Prowlarr : 150 grabs
+Grab2RSS : 150 torrents dans le flux
+Problème : Beaucoup de torrents rejetés
+```
+
+**Après v2.5** :
+```
+Prowlarr : 150 grabs
+Radarr : 3 importés réellement
+Sonarr : 2 importés réellement
+Grab2RSS : 5 torrents dans le flux ✅
+```
+
+**Configuration** :
+```env
+RADARR_URL=http://localhost:7878
+RADARR_API_KEY=votre_clé
+SONARR_URL=http://localhost:8989
+SONARR_API_KEY=votre_clé
+```
+
+### 2. Onglet Admin
+
+**Accès** : Interface web → Onglet "🔧 Admin"
+
+**Fonctionnalités** :
+
+- **Stats système** : DB size, fichiers torrents, mémoire, CPU, uptime
+- **Maintenance** : Vider cache, optimiser BD, purger anciens grabs
+- **Logs système** : Filtrage par niveau (succès/erreur/warning/info)
+
+**Exemples d'utilisation** :
+
+```bash
+# Vider le cache via API
+curl -X POST http://localhost:8000/api/cache/clear
+
+# Optimiser la base de données
+curl -X POST http://localhost:8000/api/db/vacuum
+
+# Récupérer les logs (erreurs uniquement)
+curl "http://localhost:8000/api/logs/system?level=error&limit=50"
+
+# Stats détaillées
+curl http://localhost:8000/api/stats/detailed
+```
+
+### 3. Correction Bug de Hash
+
+**Symptôme** :
+```
+⚠️  Erreur calcul hash: "Invalid token character (b'<') at position 0."
+⊘ Non importé: Through.My.Window.2022.torrent
+```
+
+**Cause** : Fichier téléchargé n'est pas un torrent valide (page HTML d'erreur)
+
+**Correction v2.5** :
+- Vérification avant parsing (le fichier commence par 'd' en bencode)
+- Gestion robuste des erreurs de décodage
+- Messages informatifs
+
+---
+
+## 🔧 Migration depuis v2.4
+
+### Étapes
+
+1. **Sauvegarder**
+```bash
+cp .env .env.backup
+cp -r data/ data.backup/
+```
+
+2. **Remplacer les fichiers**
+```bash
+# Copier tous les fichiers v2.5
+# (sauf data/, .env)
+```
+
+3. **Mettre à jour les dépendances**
+```bash
+pip install psutil==5.9.8
+# ou
+pip install -r requirements.txt
+```
+
+4. **Redémarrer**
+```bash
+# Docker
+docker-compose restart
+
+# Manuel
+python main.py
+```
+
+5. **Vérifier**
+```bash
+curl http://localhost:8000/health
+# Version devrait être 2.5.0
+```
+
+### Compatibilité
+
+- ✅ Base de données : Aucune migration nécessaire
+- ✅ Configuration : Compatible v2.4
+- ✅ API : Rétrocompatible
+- ✅ Fichiers torrents : Aucun impact
+
+---
+
+## 📊 API Endpoints v2.5
+
+### Nouveaux Endpoints
+
+```bash
+# Vider les caches
+POST /api/cache/clear
+
+# Optimiser la base
+POST /api/db/vacuum
+
+# Logs système (avec filtrage)
+GET /api/logs/system?limit=100&level=error
+
+# Stats détaillées
+GET /api/stats/detailed
+```
+
+### Endpoints Existants
+
+```bash
+# Grabs
+GET  /api/grabs?limit=50&tracker=all
+GET  /api/trackers
+GET  /api/stats
+
+# RSS
+GET  /rss
+GET  /rss?tracker=NomTracker
+GET  /rss/tracker/NomTracker
+GET  /rss/torrent.json
+
+# Sync
+GET  /api/sync/status
+POST /api/sync/trigger
+GET  /api/sync/logs
+
+# Maintenance
+POST /api/purge/all
+POST /api/purge/retention?hours=168
+
+# Monitoring
+GET  /health
+GET  /debug
+```
+
+---
+
+## 🎓 Exemples d'Utilisation
 
 ### qBittorrent
 
-1. **Vue** → **Lecteur RSS**
+1. Vue → Lecteur RSS
 2. Ajouter flux : `http://localhost:8000/rss`
-3. Créer règle de téléchargement :
-   - Nom : `Seeding Auto`
-   - Doit contenir : `.torrent` (ou vide)
-   - Catégorie : `Seeding`
-   - Sauvegarder dans : `/path/to/seeding`
-   - ✅ Activer la règle
+3. Créer règle de téléchargement automatique
 
 ### ruTorrent
 
-1. Ouvrir ruTorrent → **RSS**
-2. Ajouter flux : `http://localhost:8000/rss`
-3. Configurer filtres de téléchargement
-4. Intervalle : 30 minutes
+1. RSS → Ajouter flux
+2. URL : `http://localhost:8000/rss`
+3. Configurer filtres
 
 ### Transmission
 
-1. Modifier `settings.json` :
 ```json
 {
   "rss-enabled": true,
@@ -192,230 +402,119 @@ http://localhost:8000/rss?tracker=Sharewood
   ]
 }
 ```
-2. Redémarrer Transmission
 
 ---
 
-## 📊 API Endpoints
-
-### Grabs
-
-```bash
-GET  /api/grabs?limit=50&tracker=all    # Liste des grabs
-GET  /api/trackers                       # Liste des trackers
-GET  /api/stats                          # Statistiques complètes
-```
-
-### RSS
-
-```bash
-GET  /rss                                # Flux RSS global
-GET  /rss?tracker=NomTracker             # Flux RSS filtré
-GET  /rss/tracker/NomTracker             # Flux RSS tracker spécifique
-GET  /rss/torrent.json                   # Flux JSON
-```
-
-### Synchronisation
-
-```bash
-GET  /api/sync/status                    # Statut de la sync
-POST /api/sync/trigger                   # Forcer une sync
-GET  /api/sync/logs                      # Historique des syncs
-```
-
-### Maintenance
-
-```bash
-POST /api/purge/all                      # Supprimer tous les grabs
-POST /api/purge/retention?hours=168      # Purge par rétention
-```
-
-### Monitoring
-
-```bash
-GET  /health                             # Healthcheck complet
-GET  /debug                              # Informations de debug
-```
-
----
-
-## 🔍 Healthcheck
-
-```bash
-curl http://localhost:8000/health | jq
-```
-
-**Réponse** :
-```json
-{
-  "status": "ok",
-  "timestamp": "2026-01-19T15:30:00",
-  "version": "2.4.0",
-  "components": {
-    "database": "ok",
-    "prowlarr": "ok",
-    "scheduler": "ok",
-    "next_sync": "2026-01-19T16:30:00"
-  }
-}
-```
-
-**Codes de Statut** :
-- `200` - Tous les composants fonctionnent
-- `503` - Un ou plusieurs composants en erreur
-
----
-
-## 🔧 Dépannage
+## 🐛 Dépannage
 
 ### Problème : Page Web Blanche
 
 **Solution** :
-1. Ouvrir dans **Firefox** ou **Chrome en navigation privée**
-2. Désactiver les extensions (AdBlock, Privacy Badger)
-3. Vider le cache : CTRL+SHIFT+R
+- Ouvrir en navigation privée (CTRL+SHIFT+N)
+- Essayer Firefox
+- Vider cache (CTRL+SHIFT+R)
 
-### Problème : Tracker "Unknown"
+### Problème : Erreur Hash Torrent
 
-**Solution** : Vérifiez que Prowlarr retourne bien les métadonnées. Grab2RSS extrait automatiquement depuis l'URL en fallback.
+**v2.5 corrige ce bug !**
 
-### Problème : Erreur de Permissions
-
+Si le problème persiste :
 ```bash
-mkdir -p data/torrents
-chmod -R 755 data/
-chmod -R 777 data/torrents/
+# Vérifier les logs
+python main.py
+
+# Le message devrait être plus clair :
+# "💡 Le fichier téléchargé n'est pas un torrent valide"
 ```
 
 ### Problème : Configuration Invalide
 
-```
-❌ PROWLARR_API_KEY manquante (requis)
+```bash
+❌ PROWLARR_API_KEY manquante
 ```
 
-**Solution** : Vérifiez votre fichier `.env`
+**Solution** : Vérifier `.env`
+```bash
+cat .env | grep PROWLARR_API_KEY
+```
 
 ### Plus de Solutions
 
-Consultez [TROUBLESHOOTING.md](TROUBLESHOOTING.md) pour un guide complet.
+Consultez la documentation complète dans les fichiers :
+- `docs/INSTALLATION.md`
+- `docs/TROUBLESHOOTING.md`
+- `docs/MIGRATION_v2.5.md`
 
 ---
 
 ## 📂 Structure du Projet
 
 ```
-grab2rss/
-├── api.py                  # API FastAPI + Interface Web
+grab2rss_v2.5/
+├── api.py                  # API FastAPI + Interface Web v2.5
 ├── config.py               # Configuration + Validation
-├── db.py                   # Gestion base de données (SQLite + WAL)
+├── db.py                   # Base de données + VACUUM
 ├── main.py                 # Point d'entrée
 ├── models.py               # Modèles Pydantic
 ├── prowlarr.py             # Interaction Prowlarr + Cache
+├── radarr_sonarr.py        # Filtrage Radarr/Sonarr (NOUVEAU v2.5)
 ├── rss.py                  # Génération flux RSS
 ├── scheduler.py            # Planificateur APScheduler
 ├── torrent.py              # Téléchargement .torrent
+├── requirements.txt        # Dépendances (+ psutil v2.5)
 ├── Dockerfile              # Image Docker
 ├── docker-compose.yml      # Orchestration
-├── requirements.txt        # Dépendances Python
-├── .env.example            # Exemple de configuration
-└── data/                   # Données persistantes
-    ├── grabs.db            # Base SQLite
-    └── torrents/           # Fichiers .torrent
+├── .env.example            # Exemple configuration
+├── .gitignore              # Fichiers à ignorer
+└── README.md               # Ce fichier
 ```
 
 ---
 
 ## 🚀 Performance
 
-### Benchmarks v2.4
+### Benchmarks v2.5
 
 - **Chargement interface** : < 1s
-- **API grabs (100 items)** : ~30ms (-40% vs v2.3)
-- **Génération RSS (100 items)** : ~80ms
-- **Sync Prowlarr (100 grabs)** : ~25s
-- **Extraction tracker** : ~5ms (-50% vs v2.3 grâce au cache)
+- **API grabs** : ~30ms
+- **Génération RSS** : ~80ms
+- **Sync Prowlarr** : ~25s
+- **VACUUM DB** : 2-5s (selon taille)
 
-### Optimisations
+### Optimisations v2.5
 
-- ✅ SQLite WAL mode activé
-- ✅ Context manager pour connexions DB
-- ✅ Cache intelligent des trackers
-- ✅ Index optimisés sur title_hash et grabbed_at
-
----
-
-## 🔐 Sécurité
-
-### Pour une Utilisation en Production
-
-1. **Reverse Proxy** (Nginx/Traefik)
-```nginx
-server {
-    listen 443 ssl;
-    server_name grab2rss.example.com;
-    
-    location / {
-        proxy_pass http://localhost:8000;
-        proxy_set_header Host $host;
-    }
-}
-```
-
-2. **Firewall** : Limiter l'accès au port 8000
-
-3. **Certificat SSL** : Let's Encrypt ou Cloudflare
-
-4. **Variables d'environnement** : Ne jamais commit `.env`
+- ✅ Vérification torrent valide avant parsing
+- ✅ Cache imports Radarr/Sonarr (5 min)
+- ✅ Context manager DB optimisé
+- ✅ Polling intelligent pour sync
 
 ---
 
-## 🧪 Tests
+## 📝 Changelog v2.5
 
-### Test Automatique
+### Ajouts
 
-```bash
-python test.py
-```
+- ✅ Onglet Admin complet
+- ✅ Filtrage Radarr/Sonarr
+- ✅ Endpoints cache/vacuum/logs/stats
+- ✅ Vérification fichiers torrent valides
+- ✅ Polling synchronisation amélioré
+- ✅ Dépendance psutil pour stats système
 
-Tests exécutés :
-- ✅ Health check
-- ✅ API grabs
-- ✅ API stats
-- ✅ API trackers
-- ✅ Flux RSS XML
-- ✅ Flux RSS JSON
-- ✅ Statut sync
-- ✅ Interface Web
+### Corrections
 
-### Test Manuel
+- ✅ **BUG MAJEUR** : Erreur hash sur fichiers HTML
+- ✅ Sync button attend vraiment la fin
+- ✅ Gestion robuste fichiers corrompus
+- ✅ Messages d'erreur plus clairs
 
-```bash
-# Healthcheck
-curl http://localhost:8000/health
+### Améliorations
 
-# API
-curl http://localhost:8000/api/stats | jq
-
-# RSS
-curl http://localhost:8000/rss | head -50
-```
-
----
-
-## 📈 Roadmap
-
-### v2.5 (Prévu)
-- [ ] Logging structuré (remplacer print par logger)
-- [ ] Rate limiting Prowlarr
-- [ ] Retry logic avec tenacity
-- [ ] Compression gzip pour RSS
-
-### v3.0 (Futur)
-- [ ] Métriques Prometheus
-- [ ] Support PostgreSQL
-- [ ] API Authentication (JWT)
-- [ ] Interface mobile dédiée
-- [ ] Multi-utilisateurs
+- ✅ Interface Admin moderne
+- ✅ Logs système avec filtrage
+- ✅ Stats détaillées (DB/torrents/système)
+- ✅ Cache intelligent Radarr/Sonarr
+- ✅ Optimisation base de données (VACUUM)
 
 ---
 
@@ -425,35 +524,9 @@ Les contributions sont bienvenues !
 
 1. Fork le projet
 2. Créer une branche (`git checkout -b feature/amazing`)
-3. Commit vos changements (`git commit -m 'Add amazing feature'`)
-4. Push vers la branche (`git push origin feature/amazing`)
+3. Commit les changements (`git commit -m 'Add amazing feature'`)
+4. Push (`git push origin feature/amazing`)
 5. Ouvrir une Pull Request
-
-### Guidelines
-
-- ✅ Suivre PEP 8 pour Python
-- ✅ Ajouter des tests
-- ✅ Documenter les nouvelles fonctionnalités
-- ✅ Mettre à jour le CHANGELOG
-
----
-
-## 📝 Changelog
-
-### v2.4.0 (2026-01-19)
-
-**Améliorations** :
-- ✅ Context manager pour DB (+25% performance)
-- ✅ Cache des trackers (+50% vitesse extraction)
-- ✅ Validation configuration au démarrage
-- ✅ Healthcheck complet (DB + Prowlarr + Scheduler)
-
-**Corrections** :
-- ✅ Extraction tracker depuis URL (fallback)
-- ✅ Statut sync "Actif" dans le dashboard
-- ✅ Interface compatible Firefox + Chrome privé
-
-Voir [CHANGES_v2.4.md](CHANGES_v2.4.md) pour les détails complets.
 
 ---
 
@@ -465,17 +538,16 @@ MIT License - Libre d'utilisation
 
 ## 💬 Support
 
-- 📖 **Documentation** : [README.md](README.md), [INSTALLATION.md](INSTALLATION.md)
-- 🔧 **Dépannage** : [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
-- 🚀 **Démarrage rapide** : [QUICKSTART.md](QUICKSTART.md)
-- 🐛 **Issues** : GitHub Issues
-- 💡 **Améliorations** : [IMPROVEMENTS.md](IMPROVEMENTS.md)
+- 📖 Documentation : Ce README + docs/
+- 🐛 Issues : GitHub Issues
+- 💡 Améliorations : Pull Requests
 
 ---
 
 ## 🙏 Remerciements
 
 - **Prowlarr** pour l'API excellente
+- **Radarr/Sonarr** pour les données d'import
 - **FastAPI** pour le framework moderne
 - **Chart.js** pour les graphiques
 - La communauté open-source
@@ -485,3 +557,17 @@ MIT License - Libre d'utilisation
 **Développé avec ❤️ pour automatiser le seeding torrent**
 
 ⭐ **Si ce projet vous aide, n'hésitez pas à lui donner une étoile !**
+
+---
+
+## 🎯 Prochaines Étapes (v2.6+)
+
+- [ ] Export logs (CSV, JSON)
+- [ ] Notifications (email, webhook)
+- [ ] Métriques Prometheus
+- [ ] Rate limiting API
+- [ ] Support PostgreSQL
+- [ ] Interface mobile dédiée
+
+**Version actuelle : 2.5.0**  
+**Date de release : 19 janvier 2026**

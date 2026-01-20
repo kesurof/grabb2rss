@@ -1,6 +1,4 @@
-# =========================
 # Python
-# =========================
 __pycache__/
 *.py[cod]
 *.pyo
@@ -10,49 +8,35 @@ __pycache__/
 .eggs/
 build/
 dist/
-
-# Virtual environments
 venv/
 .env/
 .env.*
 !.env.example
 
-# =========================
-# Project runtime data
-# =========================
+# Project data
 data/
 *.db
 *.sqlite
 *.sqlite3
 *.jsonl
-
-# Logs
 *.log
 
-# =========================
 # Docker
-# =========================
 docker-data/
 docker-volumes/
 *.pid
 
-# =========================
-# IDE / Editor
-# =========================
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 .DS_Store
 
-# =========================
-# Tests / coverage (si ajoutés plus tard)
-# =========================
+# Tests
 .coverage
 htmlcov/
 .pytest_cache/
 
-# =========================
-# OS / Misc
-# =========================
+# OS
 Thumbs.db

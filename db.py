@@ -74,6 +74,50 @@ def init_config_from_env():
     except Exception as e:
         print(f"⚠️  Erreur initialisation config: {e}")
 
+def reload_config_from_env() -> int:
+    """
+    Force le rechargement de la configuration depuis .env vers la DB
+    ATTENTION : Écrase les valeurs existantes en DB avec celles de .env
+    Retourne le nombre de paramètres rechargés
+    """
+    try:
+        from config import (
+            PROWLARR_URL, PROWLARR_API_KEY, PROWLARR_HISTORY_PAGE_SIZE,
+            SYNC_INTERVAL, RETENTION_HOURS, AUTO_PURGE, DEDUP_HOURS,
+            RSS_DOMAIN, RSS_SCHEME, RADARR_URL, RADARR_API_KEY,
+            SONARR_URL, SONARR_API_KEY, DESCRIPTIONS
+        )
+        
+        print("🔄 Rechargement de la configuration depuis .env...")
+        
+        # Définir toutes les valeurs (écrase les existantes)
+        configs = {
+            "PROWLARR_URL": (str(PROWLARR_URL), DESCRIPTIONS.get("PROWLARR_URL", "")),
+            "PROWLARR_API_KEY": (str(PROWLARR_API_KEY), DESCRIPTIONS.get("PROWLARR_API_KEY", "")),
+            "PROWLARR_HISTORY_PAGE_SIZE": (str(PROWLARR_HISTORY_PAGE_SIZE), DESCRIPTIONS.get("PROWLARR_HISTORY_PAGE_SIZE", "")),
+            "RADARR_URL": (str(RADARR_URL), "URL de Radarr (ex: http://localhost:7878) - Optionnel"),
+            "RADARR_API_KEY": (str(RADARR_API_KEY), "Clé API Radarr - Optionnel"),
+            "SONARR_URL": (str(SONARR_URL), "URL de Sonarr (ex: http://localhost:8989) - Optionnel"),
+            "SONARR_API_KEY": (str(SONARR_API_KEY), "Clé API Sonarr - Optionnel"),
+            "SYNC_INTERVAL": (str(SYNC_INTERVAL), DESCRIPTIONS.get("SYNC_INTERVAL", "")),
+            "RETENTION_HOURS": (str(RETENTION_HOURS if RETENTION_HOURS else 0), DESCRIPTIONS.get("RETENTION_HOURS", "")),
+            "AUTO_PURGE": (str(AUTO_PURGE).lower(), DESCRIPTIONS.get("AUTO_PURGE", "")),
+            "DEDUP_HOURS": (str(DEDUP_HOURS), DESCRIPTIONS.get("DEDUP_HOURS", "")),
+            "RSS_DOMAIN": (str(RSS_DOMAIN), DESCRIPTIONS.get("RSS_DOMAIN", "")),
+            "RSS_SCHEME": (str(RSS_SCHEME), DESCRIPTIONS.get("RSS_SCHEME", ""))
+        }
+        
+        # Écrase toutes les valeurs
+        for key, (value, description) in configs.items():
+            set_config(key, value, description)
+        
+        print(f"✅ {len(configs)} paramètres rechargés depuis .env")
+        return len(configs)
+        
+    except Exception as e:
+        print(f"⚠️  Erreur rechargement config: {e}")
+        raise
+
 def init_db():
     """Initialise la base de données avec toutes les tables"""
     conn = get_db_connection()
@@ -364,3 +408,38 @@ def get_all_config() -> Dict[str, Any]:
     with get_db() as conn:
         rows = conn.execute("SELECT key, value, description FROM config").fetchall()
         return {row[0]: {"value": row[1], "description": row[2]} for row in rows}
+
+def vacuum_database() -> Tuple[float, float]:
+    """
+    Optimise la base de données SQLite (VACUUM)
+    Retourne (taille_avant_MB, taille_après_MB)
+    """
+    # Taille avant
+    size_before = DB_PATH.stat().st_size / (1024 * 1024) if DB_PATH.exists() else 0
+    
+    with get_db() as conn:
+        # VACUUM nettoie et compacte la base
+        conn.execute("VACUUM")
+        conn.commit()
+    
+    # Taille après
+    size_after = DB_PATH.stat().st_size / (1024 * 1024) if DB_PATH.exists() else 0
+    
+    return size_before, size_after
+
+def get_db_stats() -> dict:
+    """Récupère des statistiques sur la base de données"""
+    with get_db() as conn:
+        grabs_count = conn.execute("SELECT COUNT(*) FROM grabs").fetchone()[0]
+        sync_logs_count = conn.execute("SELECT COUNT(*) FROM sync_log").fetchone()[0]
+        config_count = conn.execute("SELECT COUNT(*) FROM config").fetchone()[0]
+        
+        size_mb = DB_PATH.stat().st_size / (1024 * 1024) if DB_PATH.exists() else 0
+        
+        return {
+            "path": str(DB_PATH),
+            "size_mb": round(size_mb, 2),
+            "grabs": grabs_count,
+            "sync_logs": sync_logs_count,
+            "config_entries": config_count
+        }

@@ -46,11 +46,11 @@ Grab2RSS : 5 torrents dans le flux RSS
 ```env
 # Radarr (Optionnel mais recommandé)
 RADARR_URL=http://localhost:7878
-RADARR_API_KEY=2b7f06a904c44923a838c3a34bef74e5
+RADARR_API_KEY=2b7f0f74e5
 
 # Sonarr (Optionnel mais recommandé)
 SONARR_URL=http://localhost:8989
-SONARR_API_KEY=9c90833a4e2543cd9ba2b41b002810a2
+SONARR_API_KEY=9c90802810a2
 
 # Prowlarr (augmenter pour récupérer plus)
 PROWLARR_HISTORY_PAGE_SIZE=500
