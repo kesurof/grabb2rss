@@ -254,9 +254,9 @@ async def setup_page():
                         URL de Prowlarr <span class="required">*</span>
                     </label>
                     <input type="url" id="prowlarr_url" name="prowlarr_url"
-                           placeholder="http://prowlarr:9696" required>
+                           value="http://prowlarr:9696" placeholder="http://prowlarr:9696" required>
                     <div class="help-text">
-                        L'URL complète de votre instance Prowlarr (avec le port)
+                        URL complète de votre instance Prowlarr (avec le port)
                     </div>
                 </div>
                 <div class="form-group">
@@ -266,60 +266,56 @@ async def setup_page():
                     <input type="text" id="prowlarr_api_key" name="prowlarr_api_key"
                            placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" required>
                     <div class="help-text">
-                        Vous la trouverez dans Prowlarr > Paramètres > Général > Sécurité
+                        Prowlarr &gt; Paramètres &gt; Général &gt; Sécurité
                     </div>
                 </div>
                 <div class="form-group">
                     <label>Taille de l'historique</label>
                     <input type="number" id="prowlarr_history_page_size"
-                           name="prowlarr_history_page_size" value="500">
+                           name="prowlarr_history_page_size" value="500" min="100" max="1000">
                     <div class="help-text">Nombre de grabs à récupérer par sync (défaut: 500)</div>
                 </div>
             </div>
 
-            <!-- Radarr (Optionnel) -->
+            <!-- Radarr (Obligatoire) -->
             <div class="section">
-                <div class="section-title">🎬 Radarr <span style="color: #888; font-size: 14px;">(Optionnel)</span></div>
-                <div class="checkbox-group">
-                    <input type="checkbox" id="radarr_enabled" name="radarr_enabled">
-                    <label for="radarr_enabled" style="margin: 0;">
-                        Activer le filtrage Radarr (afficher uniquement les grabs Radarr)
+                <div class="section-title">🎬 Radarr (Obligatoire)</div>
+                <div class="form-group">
+                    <label>
+                        URL de Radarr <span class="required">*</span>
                     </label>
+                    <input type="url" id="radarr_url" name="radarr_url"
+                           value="http://radarr:7878" placeholder="http://radarr:7878" required>
+                    <div class="help-text">URL complète de votre instance Radarr</div>
                 </div>
-                <div id="radarr_fields" style="margin-top: 15px; display: none;">
-                    <div class="form-group">
-                        <label>URL de Radarr</label>
-                        <input type="url" id="radarr_url" name="radarr_url"
-                               placeholder="http://radarr:7878">
-                    </div>
-                    <div class="form-group">
-                        <label>Clé API Radarr</label>
-                        <input type="text" id="radarr_api_key" name="radarr_api_key"
-                               placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
-                    </div>
+                <div class="form-group">
+                    <label>
+                        Clé API Radarr <span class="required">*</span>
+                    </label>
+                    <input type="text" id="radarr_api_key" name="radarr_api_key"
+                           placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" required>
+                    <div class="help-text">Radarr &gt; Paramètres &gt; Général &gt; Sécurité</div>
                 </div>
             </div>
 
-            <!-- Sonarr (Optionnel) -->
+            <!-- Sonarr (Obligatoire) -->
             <div class="section">
-                <div class="section-title">📺 Sonarr <span style="color: #888; font-size: 14px;">(Optionnel)</span></div>
-                <div class="checkbox-group">
-                    <input type="checkbox" id="sonarr_enabled" name="sonarr_enabled">
-                    <label for="sonarr_enabled" style="margin: 0;">
-                        Activer le filtrage Sonarr (afficher uniquement les grabs Sonarr)
+                <div class="section-title">📺 Sonarr (Obligatoire)</div>
+                <div class="form-group">
+                    <label>
+                        URL de Sonarr <span class="required">*</span>
                     </label>
+                    <input type="url" id="sonarr_url" name="sonarr_url"
+                           value="http://sonarr:8989" placeholder="http://sonarr:8989" required>
+                    <div class="help-text">URL complète de votre instance Sonarr</div>
                 </div>
-                <div id="sonarr_fields" style="margin-top: 15px; display: none;">
-                    <div class="form-group">
-                        <label>URL de Sonarr</label>
-                        <input type="url" id="sonarr_url" name="sonarr_url"
-                               placeholder="http://sonarr:8989">
-                    </div>
-                    <div class="form-group">
-                        <label>Clé API Sonarr</label>
-                        <input type="text" id="sonarr_api_key" name="sonarr_api_key"
-                               placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
-                    </div>
+                <div class="form-group">
+                    <label>
+                        Clé API Sonarr <span class="required">*</span>
+                    </label>
+                    <input type="text" id="sonarr_api_key" name="sonarr_api_key"
+                           placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" required>
+                    <div class="help-text">Sonarr &gt; Paramètres &gt; Général &gt; Sécurité</div>
                 </div>
             </div>
 
@@ -357,23 +353,13 @@ async def setup_page():
     </div>
 
     <script>
-        // Toggle Radarr fields
-        document.getElementById('radarr_enabled').addEventListener('change', function() {
-            document.getElementById('radarr_fields').style.display = this.checked ? 'block' : 'none';
-        });
-
-        // Toggle Sonarr fields
-        document.getElementById('sonarr_enabled').addEventListener('change', function() {
-            document.getElementById('sonarr_fields').style.display = this.checked ? 'block' : 'none';
-        });
-
         // Test connection
         async function testConnection() {
             const url = document.getElementById('prowlarr_url').value;
             const apiKey = document.getElementById('prowlarr_api_key').value;
 
             if (!url || !apiKey) {
-                showAlert('Veuillez remplir l\'URL et la clé API Prowlarr', 'error');
+                showAlert("Veuillez remplir l'URL et la clé API Prowlarr", 'error');
                 return;
             }
 
@@ -383,18 +369,18 @@ async def setup_page():
                 const response = await fetch('/api/setup/test-prowlarr', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url, api_key: apiKey })
+                    body: JSON.stringify({ url: url, api_key: apiKey })
                 });
 
                 const data = await response.json();
 
                 if (data.success) {
-                    showAlert('✅ Connexion réussie à Prowlarr !', 'success');
+                    showAlert('Connexion réussie à Prowlarr !', 'success');
                 } else {
-                    showAlert('❌ Erreur: ' + (data.error || 'Connexion échouée'), 'error');
+                    showAlert('Erreur: ' + (data.error || 'Connexion échouée'), 'error');
                 }
             } catch (error) {
-                showAlert('❌ Erreur de connexion: ' + error.message, 'error');
+                showAlert('Erreur de connexion: ' + error.message, 'error');
             }
         }
 
@@ -408,18 +394,23 @@ async def setup_page():
                 prowlarr_api_key: formData.get('prowlarr_api_key'),
                 prowlarr_history_page_size: parseInt(formData.get('prowlarr_history_page_size')),
 
-                radarr_enabled: document.getElementById('radarr_enabled').checked,
-                radarr_url: formData.get('radarr_url') || '',
-                radarr_api_key: formData.get('radarr_api_key') || '',
+                radarr_enabled: true,
+                radarr_url: formData.get('radarr_url'),
+                radarr_api_key: formData.get('radarr_api_key'),
 
-                sonarr_enabled: document.getElementById('sonarr_enabled').checked,
-                sonarr_url: formData.get('sonarr_url') || '',
-                sonarr_api_key: formData.get('sonarr_api_key') || '',
+                sonarr_enabled: true,
+                sonarr_url: formData.get('sonarr_url'),
+                sonarr_api_key: formData.get('sonarr_api_key'),
 
                 sync_interval: parseInt(formData.get('sync_interval')),
                 retention_hours: parseInt(formData.get('retention_hours')),
                 auto_purge: document.getElementById('auto_purge').checked,
-                dedup_hours: 168
+                dedup_hours: 168,
+
+                rss_domain: window.location.hostname,
+                rss_scheme: window.location.protocol.replace(':', ''),
+                rss_title: 'Grab2RSS',
+                rss_description: 'Prowlarr to RSS Feed'
             };
 
             // Show loading
@@ -436,19 +427,19 @@ async def setup_page():
                 const data = await response.json();
 
                 if (data.success) {
-                    showAlert('✅ Configuration enregistrée ! Redirection...', 'success');
-                    setTimeout(() => {
+                    showAlert('Configuration enregistrée ! Redirection...', 'success');
+                    setTimeout(function() {
                         window.location.href = '/';
                     }, 2000);
                 } else {
                     document.getElementById('setupForm').style.display = 'block';
                     document.getElementById('loading').style.display = 'none';
-                    showAlert('❌ Erreur: ' + (data.error || 'Impossible de sauvegarder'), 'error');
+                    showAlert('Erreur: ' + (data.error || data.message || 'Impossible de sauvegarder'), 'error');
                 }
             } catch (error) {
                 document.getElementById('setupForm').style.display = 'block';
                 document.getElementById('loading').style.display = 'none';
-                showAlert('❌ Erreur: ' + error.message, 'error');
+                showAlert('Erreur: ' + error.message, 'error');
             }
         });
 
