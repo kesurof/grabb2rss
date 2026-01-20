@@ -1,573 +1,338 @@
-# 📡 Grab2RSS v2.5
+# 📡 Grab2RSS
 
-**Convertisseur Prowlarr → RSS** avec support multi-tracker, filtrage Radarr/Sonarr, et interface d'administration complète.
+[![Version](https://img.shields.io/badge/version-2.6.0-blue)](https://github.com/kesurof/grabb2rss)
+[![Python](https://img.shields.io/badge/python-3.11+-green)](https://www.python.org/)
+[![Docker](https://img.shields.io/badge/docker-supported-blue)](https://www.docker.com/)
+[![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
-![Version](https://img.shields.io/badge/version-2.5.0-blue)
-![Python](https://img.shields.io/badge/python-3.9+-green)
-![License](https://img.shields.io/badge/license-MIT-lightgrey)
+**Prowlarr to RSS Converter** with multi-tracker support, intelligent filtering, and modern web interface.
 
----
-
-## 🎯 Qu'est-ce que Grab2RSS ?
-
-Grab2RSS récupère automatiquement les fichiers `.torrent` depuis **Prowlarr** et les expose via **flux RSS** pour seeding automatique.
-
-**Nouveauté v2.5** : Filtrage intelligent avec Radarr/Sonarr pour ne garder que les torrents **réellement importés**.
+Transform your Prowlarr grabs into RSS feeds for automatic seeding with your favorite torrent clients.
 
 ---
 
-## ✨ Nouveautés v2.5
+## ✨ Features
 
-### 🔧 Nouvel Onglet Admin
-
-Interface d'administration complète avec :
-
-- **📊 Statistiques système en temps réel**
-  - Taille base de données
-  - Nombre de fichiers torrents
-  - Utilisation mémoire et CPU
-  - Temps de fonctionnement (uptime)
-
-- **🛠️ Actions de maintenance**
-  - Vider les caches (trackers + imports)
-  - Optimiser la base de données (VACUUM)
-  - Forcer une synchronisation
-  - Purger les anciens grabs
-
-- **📋 Logs système avec filtrage**
-  - Classés par niveau (succès, erreur, warning, info)
-  - Filtrage en temps réel
-  - Affichage coloré avec icônes
-
-### 🔄 Synchronisation Améliorée
-
-- Vérification si sync déjà en cours
-- Polling jusqu'à fin de sync (max 30s)
-- Messages de succès/erreur détaillés
-- Rafraîchissement automatique des données
-
-### 🐛 Correction du Bug de Hash
-
-**Problème corrigé** :
-```
-⚠️  Erreur calcul hash: "Invalid token character (b'<') at position 0."
-```
-
-**Solution** :
-- Vérification que le fichier téléchargé est un torrent valide
-- Gestion robuste des fichiers HTML (erreur 404, etc.)
-- Messages d'erreur informatifs
-
-### 🆕 Nouveaux Endpoints API
-
-- `POST /api/cache/clear` - Vider tous les caches
-- `POST /api/db/vacuum` - Optimiser la base de données
-- `GET /api/logs/system` - Récupérer les logs système
-- `GET /api/stats/detailed` - Statistiques détaillées
+- 🔄 **Automatic Synchronization** - Fetch torrents from Prowlarr on a schedule
+- 📡 **RSS Feeds** - Generate RSS/JSON feeds compatible with ruTorrent, qBittorrent, Transmission
+- 🎯 **Smart Filtering** - Optional Radarr/Sonarr integration to show only grabbed torrents
+- 🏷️ **Multi-Tracker Support** - Filter feeds by tracker
+- 🔍 **Deduplication** - Intelligent duplicate detection
+- 🗑️ **Auto-Purge** - Automatic cleanup of old torrents
+- 💻 **Modern Web UI** - Dashboard with statistics, logs, and configuration
+- 🐳 **Docker Ready** - LinuxServer.io-inspired permission management (PUID/PGID)
 
 ---
 
-## 📋 Fonctionnalités Complètes
+## 🚀 Quick Start
 
-### Core
-- ✅ Synchronisation automatique avec Prowlarr
-- ✅ Filtrage Radarr/Sonarr (v2.5)
-- ✅ Flux RSS multi-format (XML + JSON)
-- ✅ Filtrage par tracker
-- ✅ Déduplication intelligente
-- ✅ Purge automatique
-- ✅ Extraction tracker depuis URL
+### Prerequisites
 
-### Interface & Monitoring
-- ✅ Dashboard moderne (7 onglets dont Admin)
-- ✅ Statistiques avancées avec graphiques
-- ✅ Healthcheck complet
-- ✅ Validation configuration
-- ✅ API RESTful complète
+- Docker and Docker Compose
+- Running Prowlarr instance
+- (Optional) Radarr and/or Sonarr for filtering
 
-### Performance
-- ✅ Cache des trackers optimisé
-- ✅ Context manager DB
-- ✅ Compatible rutorrent, qBittorrent, Transmission
+### Installation
 
----
-
-## 🚀 Installation Rapide
-
-### Avec Docker (Recommandé)
+1. **Clone the repository**
 
 ```bash
-# 1. Télécharger les fichiers
-# (tous les fichiers sont dans /mnt/user-data/outputs/grab2rss_v2.5/)
-
-# 2. Configuration
-cp .env.example .env
-nano .env  # Éditer PROWLARR_API_KEY
-
-# 3. Lancer
-docker-compose up -d
-
-# 4. Vérifier
-curl http://localhost:8000/health
+git clone https://github.com/kesurof/grabb2rss.git
+cd grabb2rss
 ```
 
-### Installation Manuelle
+2. **Configure environment**
 
 ```bash
-# 1. Prérequis
-python3 -m venv venv
-source venv/bin/activate
-
-# 2. Installation
-pip install -r requirements.txt
-
-# 3. Configuration
 cp .env.example .env
 nano .env
-
-# 4. Lancer
-python main.py
 ```
+
+**Minimal configuration:**
+```env
+# User/Group IDs (run `id` on your host)
+PUID=1000
+PGID=1000
+
+# Prowlarr (Required)
+PROWLARR_URL=http://prowlarr:9696
+PROWLARR_API_KEY=your_api_key_here
+
+# Optional: Radarr/Sonarr filtering
+RADARR_URL=http://radarr:7878
+RADARR_API_KEY=your_api_key_here
+```
+
+3. **Start the container**
+
+```bash
+docker-compose up -d
+```
+
+4. **Access the interface**
+
+Open http://localhost:8000 in your browser.
+
+---
+
+## 📖 Usage
+
+### RSS Feeds
+
+**Global feed (all trackers):**
+```
+http://localhost:8000/rss
+```
+
+**Filtered by tracker:**
+```
+http://localhost:8000/rss/tracker/YourTrackerName
+```
+
+**JSON format:**
+```
+http://localhost:8000/rss.json
+```
+
+### Configuration
+
+All settings can be configured via:
+- Environment variables in `.env`
+- Web interface at http://localhost:8000 (Configuration tab)
+
+### API Endpoints
+
+- `GET /api/stats` - Statistics
+- `GET /api/grabs` - List all grabs
+- `GET /api/trackers` - Available trackers
+- `POST /api/sync/trigger` - Manual sync
+- `GET /health` - Health check
+
+Full API documentation available in the web interface.
 
 ---
 
 ## ⚙️ Configuration
 
-### Variables Essentielles
+### User/Group IDs (PUID/PGID)
 
+Following LinuxServer.io standards, you can set PUID and PGID to match your host user:
+
+```bash
+id $user
+# uid=1000(user) gid=1000(user) groups=1000(user)
+```
+
+Then in `.env`:
 ```env
-# Prowlarr (REQUIS)
-PROWLARR_URL=http://prowlarr:9696
-PROWLARR_API_KEY=votre_clé_api_ici
-PROWLARR_HISTORY_PAGE_SIZE=100
-
-# Radarr (OPTIONNEL - v2.5)
-RADARR_URL=http://localhost:7878
-RADARR_API_KEY=votre_clé_radarr
-
-# Sonarr (OPTIONNEL - v2.5)
-SONARR_URL=http://localhost:8989
-SONARR_API_KEY=votre_clé_sonarr
-
-# Synchronisation
-SYNC_INTERVAL=3600  # 1 heure
-
-# Déduplication
-DEDUP_HOURS=24  # 24 heures
-
-# Rétention
-RETENTION_HOURS=168  # 7 jours
-AUTO_PURGE=true
+PUID=1000
+PGID=1000
 ```
 
-### 🔑 Obtenir les Clés API
+This ensures files created by the container have correct permissions on your host.
 
-**Prowlarr** :
-1. Ouvrir Prowlarr → Settings → General
-2. Section Security
-3. Copier la API Key
+### Key Settings
 
-**Radarr** (optionnel) :
-1. Ouvrir Radarr → Settings → General
-2. Section Security
-3. Copier la API Key
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PUID` | 1000 | User ID for file permissions |
+| `PGID` | 1000 | Group ID for file permissions |
+| `SYNC_INTERVAL` | 3600 | Sync interval in seconds (1 hour) |
+| `RETENTION_HOURS` | 168 | Keep torrents for N hours (7 days) |
+| `AUTO_PURGE` | true | Automatically remove old torrents |
+| `DEDUP_HOURS` | 168 | Deduplication window |
 
-**Sonarr** (optionnel) :
-1. Ouvrir Sonarr → Settings → General
-2. Section Security
-3. Copier la API Key
+See `.env.example` for full configuration options.
 
 ---
 
-## 📡 Utilisation
+## 🐳 Docker Compose
 
-### Interface Web
+### Standalone
 
+```yaml
+version: "3.8"
+
+services:
+  grab2rss:
+    image: grab2rss:latest
+    container_name: grab2rss
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Paris
+      - PROWLARR_URL=http://prowlarr:9696
+      - PROWLARR_API_KEY=your_key
+    volumes:
+      - ./config:/config
+      - ./data:/app/data
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
 ```
-http://localhost:8000
-```
 
-**7 Onglets Disponibles** :
+### With Traefik
 
-1. **📊 Dashboard** - Vue d'ensemble et actions rapides
-2. **📋 Grabs** - Liste complète avec filtre tracker
-3. **📈 Statistiques** - Graphiques détaillés
-4. **📡 Flux RSS** - URLs personnalisées
-5. **📝 Logs** - Historique synchronisations
-6. **⚙️ Configuration** - Paramètres application
-7. **🔧 Admin** - **NOUVEAU v2.5** - Maintenance et logs système
+```yaml
+version: "3.8"
 
-### Flux RSS
+services:
+  grab2rss:
+    image: grab2rss:latest
+    container_name: grab2rss
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - PROWLARR_URL=http://prowlarr:9696
+      - PROWLARR_API_KEY=your_key
+    volumes:
+      - ./config:/config
+      - ./data:/app/data
+    networks:
+      - traefik_proxy
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grab2rss.rule=Host(`rss.example.com`)"
+      - "traefik.http.routers.grab2rss.entrypoints=https"
+      - "traefik.http.routers.grab2rss.tls.certresolver=letsencrypt"
 
-#### Flux Global
-```
-http://localhost:8000/rss
-http://localhost:8000/rss/torrent.json
-```
-
-#### Flux Par Tracker
-```
-http://localhost:8000/rss/tracker/Sharewood
-http://localhost:8000/rss/tracker/YGGtorrent/json
+networks:
+  traefik_proxy:
+    external: true
 ```
 
 ---
 
-## 🆕 Nouveautés v2.5 en Détail
-
-### 1. Filtrage Radarr/Sonarr
-
-**Avant v2.5** :
-```
-Prowlarr : 150 grabs
-Grab2RSS : 150 torrents dans le flux
-Problème : Beaucoup de torrents rejetés
-```
-
-**Après v2.5** :
-```
-Prowlarr : 150 grabs
-Radarr : 3 importés réellement
-Sonarr : 2 importés réellement
-Grab2RSS : 5 torrents dans le flux ✅
-```
-
-**Configuration** :
-```env
-RADARR_URL=http://localhost:7878
-RADARR_API_KEY=votre_clé
-SONARR_URL=http://localhost:8989
-SONARR_API_KEY=votre_clé
-```
-
-### 2. Onglet Admin
-
-**Accès** : Interface web → Onglet "🔧 Admin"
-
-**Fonctionnalités** :
-
-- **Stats système** : DB size, fichiers torrents, mémoire, CPU, uptime
-- **Maintenance** : Vider cache, optimiser BD, purger anciens grabs
-- **Logs système** : Filtrage par niveau (succès/erreur/warning/info)
-
-**Exemples d'utilisation** :
+## 🔧 Building from Source
 
 ```bash
-# Vider le cache via API
-curl -X POST http://localhost:8000/api/cache/clear
-
-# Optimiser la base de données
-curl -X POST http://localhost:8000/api/db/vacuum
-
-# Récupérer les logs (erreurs uniquement)
-curl "http://localhost:8000/api/logs/system?level=error&limit=50"
-
-# Stats détaillées
-curl http://localhost:8000/api/stats/detailed
+git clone https://github.com/kesurof/grabb2rss.git
+cd grabb2rss
+docker build -t grab2rss:latest .
 ```
-
-### 3. Correction Bug de Hash
-
-**Symptôme** :
-```
-⚠️  Erreur calcul hash: "Invalid token character (b'<') at position 0."
-⊘ Non importé: Through.My.Window.2022.torrent
-```
-
-**Cause** : Fichier téléchargé n'est pas un torrent valide (page HTML d'erreur)
-
-**Correction v2.5** :
-- Vérification avant parsing (le fichier commence par 'd' en bencode)
-- Gestion robuste des erreurs de décodage
-- Messages informatifs
 
 ---
 
-## 🔧 Migration depuis v2.4
+## 📊 Architecture
 
-### Étapes
+```
+┌─────────────┐
+│  Prowlarr   │ ← Grabs torrents from indexers
+└──────┬──────┘
+       │ API
+       ▼
+┌─────────────┐
+│  Grab2RSS   │ ← Fetches grabs, generates RSS
+└──────┬──────┘
+       │ RSS Feed
+       ▼
+┌─────────────┐
+│   Torrent   │ ← Auto-downloads from RSS
+│   Client    │   (ruTorrent, qBittorrent, etc.)
+└─────────────┘
+```
 
-1. **Sauvegarder**
+### Optional Filtering
+
+```
+┌──────────┐  ┌──────────┐
+│  Radarr  │  │  Sonarr  │ ← Download clients
+└────┬─────┘  └────┬─────┘
+     │             │
+     └─────┬───────┘
+           │ API (filter grabbed torrents)
+           ▼
+     ┌─────────────┐
+     │  Grab2RSS   │ ← Only shows grabbed torrents
+     └─────────────┘
+```
+
+---
+
+## 🛠️ Troubleshooting
+
+### Container won't start
+
+Check logs:
 ```bash
-cp .env .env.backup
-cp -r data/ data.backup/
+docker logs grab2rss
 ```
 
-2. **Remplacer les fichiers**
+### Permission issues
+
+Verify PUID/PGID match your user:
 ```bash
-# Copier tous les fichiers v2.5
-# (sauf data/, .env)
+id $user
 ```
 
-3. **Mettre à jour les dépendances**
+Update `.env` with correct values and recreate container:
 ```bash
-pip install psutil==5.9.8
-# ou
-pip install -r requirements.txt
+docker-compose down
+docker-compose up -d
 ```
 
-4. **Redémarrer**
-```bash
-# Docker
-docker-compose restart
+### No torrents appearing
 
-# Manuel
-python main.py
-```
-
-5. **Vérifier**
-```bash
-curl http://localhost:8000/health
-# Version devrait être 2.5.0
-```
-
-### Compatibilité
-
-- ✅ Base de données : Aucune migration nécessaire
-- ✅ Configuration : Compatible v2.4
-- ✅ API : Rétrocompatible
-- ✅ Fichiers torrents : Aucun impact
+1. Verify Prowlarr API key is correct
+2. Check Prowlarr has recent grabs (History page)
+3. Trigger manual sync in web interface
+4. Check logs in Admin tab
 
 ---
 
-## 📊 API Endpoints v2.5
+## 📚 Documentation
 
-### Nouveaux Endpoints
-
-```bash
-# Vider les caches
-POST /api/cache/clear
-
-# Optimiser la base
-POST /api/db/vacuum
-
-# Logs système (avec filtrage)
-GET /api/logs/system?limit=100&level=error
-
-# Stats détaillées
-GET /api/stats/detailed
-```
-
-### Endpoints Existants
-
-```bash
-# Grabs
-GET  /api/grabs?limit=50&tracker=all
-GET  /api/trackers
-GET  /api/stats
-
-# RSS
-GET  /rss
-GET  /rss?tracker=NomTracker
-GET  /rss/tracker/NomTracker
-GET  /rss/torrent.json
-
-# Sync
-GET  /api/sync/status
-POST /api/sync/trigger
-GET  /api/sync/logs
-
-# Maintenance
-POST /api/purge/all
-POST /api/purge/retention?hours=168
-
-# Monitoring
-GET  /health
-GET  /debug
-```
+- [Installation Guide](docs/INSTALLATION.md) - Detailed installation instructions
+- [Quick Start Guide](docs/QUICKSTART.md) - Get started in 5 minutes
+- [qBittorrent Setup](docs/QBITTORRENT_SETUP.md) - Configure qBittorrent RSS
+- [Network Setup](docs/NETWORK_SETUP.md) - Docker networking guide
 
 ---
 
-## 🎓 Exemples d'Utilisation
+## 🔐 Security
 
-### qBittorrent
+**⚠️ Important:** Never commit your `.env` file or API keys to version control.
 
-1. Vue → Lecteur RSS
-2. Ajouter flux : `http://localhost:8000/rss`
-3. Créer règle de téléchargement automatique
+If you accidentally expose API keys:
+1. Regenerate all API keys in Prowlarr/Radarr/Sonarr
+2. Update your `.env` file
+3. Restart the container
 
-### ruTorrent
-
-1. RSS → Ajouter flux
-2. URL : `http://localhost:8000/rss`
-3. Configurer filtres
-
-### Transmission
-
-```json
-{
-  "rss-enabled": true,
-  "rss-feed-urls": [
-    "http://localhost:8000/rss"
-  ]
-}
-```
+See [SECURITY_INCIDENT.md](SECURITY_INCIDENT.md) for security incident history.
 
 ---
 
-## 🐛 Dépannage
+## 🤝 Contributing
 
-### Problème : Page Web Blanche
+Contributions are welcome! Please:
 
-**Solution** :
-- Ouvrir en navigation privée (CTRL+SHIFT+N)
-- Essayer Firefox
-- Vider cache (CTRL+SHIFT+R)
-
-### Problème : Erreur Hash Torrent
-
-**v2.5 corrige ce bug !**
-
-Si le problème persiste :
-```bash
-# Vérifier les logs
-python main.py
-
-# Le message devrait être plus clair :
-# "💡 Le fichier téléchargé n'est pas un torrent valide"
-```
-
-### Problème : Configuration Invalide
-
-```bash
-❌ PROWLARR_API_KEY manquante
-```
-
-**Solution** : Vérifier `.env`
-```bash
-cat .env | grep PROWLARR_API_KEY
-```
-
-### Plus de Solutions
-
-Consultez la documentation complète dans les fichiers :
-- `docs/INSTALLATION.md`
-- `docs/TROUBLESHOOTING.md`
-- `docs/MIGRATION_v2.5.md`
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
 
 ---
 
-## 📂 Structure du Projet
+## 📝 License
 
-```
-grab2rss_v2.5/
-├── api.py                  # API FastAPI + Interface Web v2.5
-├── config.py               # Configuration + Validation
-├── db.py                   # Base de données + VACUUM
-├── main.py                 # Point d'entrée
-├── models.py               # Modèles Pydantic
-├── prowlarr.py             # Interaction Prowlarr + Cache
-├── radarr_sonarr.py        # Filtrage Radarr/Sonarr (NOUVEAU v2.5)
-├── rss.py                  # Génération flux RSS
-├── scheduler.py            # Planificateur APScheduler
-├── torrent.py              # Téléchargement .torrent
-├── requirements.txt        # Dépendances (+ psutil v2.5)
-├── Dockerfile              # Image Docker
-├── docker-compose.yml      # Orchestration
-├── .env.example            # Exemple configuration
-├── .gitignore              # Fichiers à ignorer
-└── README.md               # Ce fichier
-```
+MIT License - See [LICENSE](LICENSE) file for details
 
 ---
 
-## 🚀 Performance
+## 🙏 Acknowledgments
 
-### Benchmarks v2.5
-
-- **Chargement interface** : < 1s
-- **API grabs** : ~30ms
-- **Génération RSS** : ~80ms
-- **Sync Prowlarr** : ~25s
-- **VACUUM DB** : 2-5s (selon taille)
-
-### Optimisations v2.5
-
-- ✅ Vérification torrent valide avant parsing
-- ✅ Cache imports Radarr/Sonarr (5 min)
-- ✅ Context manager DB optimisé
-- ✅ Polling intelligent pour sync
+- Inspired by [LinuxServer.io](https://www.linuxserver.io/) permission management standards
+- Built with [FastAPI](https://fastapi.tiangolo.com/)
+- Uses [APScheduler](https://apscheduler.readthedocs.io/) for task scheduling
 
 ---
 
-## 📝 Changelog v2.5
+## 📞 Support
 
-### Ajouts
-
-- ✅ Onglet Admin complet
-- ✅ Filtrage Radarr/Sonarr
-- ✅ Endpoints cache/vacuum/logs/stats
-- ✅ Vérification fichiers torrent valides
-- ✅ Polling synchronisation amélioré
-- ✅ Dépendance psutil pour stats système
-
-### Corrections
-
-- ✅ **BUG MAJEUR** : Erreur hash sur fichiers HTML
-- ✅ Sync button attend vraiment la fin
-- ✅ Gestion robuste fichiers corrompus
-- ✅ Messages d'erreur plus clairs
-
-### Améliorations
-
-- ✅ Interface Admin moderne
-- ✅ Logs système avec filtrage
-- ✅ Stats détaillées (DB/torrents/système)
-- ✅ Cache intelligent Radarr/Sonarr
-- ✅ Optimisation base de données (VACUUM)
+- 🐛 [Report Issues](https://github.com/kesurof/grabb2rss/issues)
+- 💬 [Discussions](https://github.com/kesurof/grabb2rss/discussions)
 
 ---
 
-## 🤝 Contribution
-
-Les contributions sont bienvenues !
-
-1. Fork le projet
-2. Créer une branche (`git checkout -b feature/amazing`)
-3. Commit les changements (`git commit -m 'Add amazing feature'`)
-4. Push (`git push origin feature/amazing`)
-5. Ouvrir une Pull Request
-
----
-
-## 📄 Licence
-
-MIT License - Libre d'utilisation
-
----
-
-## 💬 Support
-
-- 📖 Documentation : Ce README + docs/
-- 🐛 Issues : GitHub Issues
-- 💡 Améliorations : Pull Requests
-
----
-
-## 🙏 Remerciements
-
-- **Prowlarr** pour l'API excellente
-- **Radarr/Sonarr** pour les données d'import
-- **FastAPI** pour le framework moderne
-- **Chart.js** pour les graphiques
-- La communauté open-source
-
----
-
-**Développé avec ❤️ pour automatiser le seeding torrent**
-
-⭐ **Si ce projet vous aide, n'hésitez pas à lui donner une étoile !**
-
----
-
-## 🎯 Prochaines Étapes (v2.6+)
-
-- [ ] Export logs (CSV, JSON)
-- [ ] Notifications (email, webhook)
-- [ ] Métriques Prometheus
-- [ ] Rate limiting API
-- [ ] Support PostgreSQL
-- [ ] Interface mobile dédiée
-
-**Version actuelle : 2.5.0**  
-**Date de release : 19 janvier 2026**
+**Made with ❤️ for the selfhosting community**
