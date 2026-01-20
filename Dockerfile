@@ -56,6 +56,10 @@ COPY --from=builder /opt/venv /opt/venv
 # Set PATH to use venv
 ENV PATH="/opt/venv/bin:$PATH"
 
+# Copy and set entrypoint permissions (before WORKDIR to place at root)
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Set working directory
 WORKDIR /app
 
@@ -66,9 +70,8 @@ RUN chmod +x /app/entrypoint.sh
 # Copy application code (do this late to maximize cache)
 COPY . .
 
-# Create necessary directories with proper permissions
-RUN mkdir -p /app/data/torrents /config && \
-    chmod -R 755 /app/data /config
+# Create necessary directories
+RUN mkdir -p /app/data/torrents /config
 
 # Environment variables (LinuxServer.io style)
 ENV PUID=1000 \
