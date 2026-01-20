@@ -5,40 +5,15 @@ from typing import Generator, Dict, Any
 # Cache pour les trackers (indexerId -> nom du tracker)
 _TRACKER_CACHE: Dict[int, str] = {}
 
-def get_config_value(key: str, default: Any) -> Any:
-    """Récupère une valeur de config depuis la DB ou .env"""
-    try:
-        from db import get_config
-        from config import PROWLARR_URL, PROWLARR_API_KEY, PROWLARR_HISTORY_PAGE_SIZE
-        
-        # Valeurs par défaut depuis config.py
-        defaults = {
-            "PROWLARR_URL": PROWLARR_URL,
-            "PROWLARR_API_KEY": PROWLARR_API_KEY,
-            "PROWLARR_HISTORY_PAGE_SIZE": PROWLARR_HISTORY_PAGE_SIZE
-        }
-        
-        # Essayer de lire depuis la DB (priorité)
-        db_value = get_config(key)
-        if db_value is not None:
-            # Convertir en int si c'est PAGE_SIZE
-            if key == "PROWLARR_HISTORY_PAGE_SIZE":
-                return int(db_value)
-            return db_value
-        
-        # Fallback sur .env
-        return defaults.get(key, default)
-    except Exception as e:
-        print(f"⚠️  Erreur lecture config {key}: {e}")
-        return default
-
 def fetch_history() -> list:
-    """Récupère l'historique Prowlarr avec config dynamique"""
+    """Récupère l'historique Prowlarr avec config depuis config.py"""
     try:
-        # Lire la config dynamiquement
-        prowlarr_url = get_config_value("PROWLARR_URL", "http://localhost:9696")
-        prowlarr_api_key = get_config_value("PROWLARR_API_KEY", "")
-        page_size = get_config_value("PROWLARR_HISTORY_PAGE_SIZE", 100)
+        # Lire la config depuis config.py (qui charge settings.yml)
+        from config import PROWLARR_URL, PROWLARR_API_KEY, PROWLARR_HISTORY_PAGE_SIZE
+
+        prowlarr_url = PROWLARR_URL
+        prowlarr_api_key = PROWLARR_API_KEY
+        page_size = PROWLARR_HISTORY_PAGE_SIZE
         
         response = requests.get(
             f"{prowlarr_url}/api/v1/history",

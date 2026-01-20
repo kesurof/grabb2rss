@@ -7,7 +7,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from prowlarr import fetch_history, extract_grabs
 from torrent import download_torrent
-from db import insert_grab, purge_by_retention, log_sync, init_db, is_duplicate, get_config
+from db import insert_grab, purge_by_retention, log_sync, init_db, is_duplicate
 
 logger = logging.getLogger(__name__)
 
@@ -17,60 +17,38 @@ last_sync_error = None
 is_syncing = False
 sync_lock = threading.Lock()
 
-def get_config_value(key: str, default: Any) -> Any:
-    """Récupère une valeur de config depuis la DB ou .env"""
-    try:
-        from config import SYNC_INTERVAL, AUTO_PURGE, RETENTION_HOURS, DEDUP_HOURS
-        
-        defaults = {
-            "SYNC_INTERVAL": SYNC_INTERVAL,
-            "AUTO_PURGE": AUTO_PURGE,
-            "RETENTION_HOURS": RETENTION_HOURS,
-            "DEDUP_HOURS": DEDUP_HOURS
-        }
-        
-        # Essayer de lire depuis la DB (priorité)
-        db_value = get_config(key)
-        if db_value is not None:
-            # Convertir selon le type
-            if key in ["SYNC_INTERVAL", "RETENTION_HOURS", "DEDUP_HOURS"]:
-                return int(db_value)
-            elif key == "AUTO_PURGE":
-                return db_value.lower() == "true"
-            return db_value
-        
-        # Fallback sur .env
-        return defaults.get(key, default)
-    except Exception as e:
-        print(f"⚠️  Erreur lecture config {key}: {e}")
-        return default
-
 def sync_prowlarr():
     """Synchronise avec Prowlarr avec vérification Radarr/Sonarr"""
     global last_sync_time, last_sync_error, is_syncing
-    
+
     with sync_lock:
         if is_syncing:
             print("⚠️  Sync déjà en cours...")
             return
-        
+
         is_syncing = True
-    
+
     try:
-        # Lire la config dynamiquement
-        dedup_hours = get_config_value("DEDUP_HOURS", 168)
-        auto_purge = get_config_value("AUTO_PURGE", True)
-        retention_hours = get_config_value("RETENTION_HOURS", 168)
-        
+        # Lire la config depuis config.py (qui charge settings.yml)
+        from config import (
+            DEDUP_HOURS, AUTO_PURGE, RETENTION_HOURS,
+            RADARR_URL, RADARR_API_KEY, RADARR_ENABLED,
+            SONARR_URL, SONARR_API_KEY, SONARR_ENABLED
+        )
+
+        dedup_hours = DEDUP_HOURS
+        auto_purge = AUTO_PURGE
+        retention_hours = RETENTION_HOURS
+
         # Récupérer les URLs Radarr/Sonarr
-        radarr_url = get_config_value("RADARR_URL", "")
-        radarr_api_key = get_config_value("RADARR_API_KEY", "")
-        sonarr_url = get_config_value("SONARR_URL", "")
-        sonarr_api_key = get_config_value("SONARR_API_KEY", "")
-        
+        radarr_url = RADARR_URL if RADARR_ENABLED else None
+        radarr_api_key = RADARR_API_KEY if RADARR_ENABLED else None
+        sonarr_url = SONARR_URL if SONARR_ENABLED else None
+        sonarr_api_key = SONARR_API_KEY if SONARR_ENABLED else None
+
         print(f"⏱️  Sync Prowlarr en cours... ({datetime.utcnow().isoformat()})")
-        
-        # Récupérer les downloadId grabbed (choisis) depuis Radarr/Sonarr (si configurés)
+
+        # Récupérer les downloadId grabbed (choisis) depuis Radarr/Sonarr (si configurés ET activés)
         imported_download_ids = set()
         if (radarr_url and radarr_api_key) or (sonarr_url and sonarr_api_key):
             from radarr_sonarr import get_all_imported_download_ids
@@ -155,11 +133,11 @@ def sync_prowlarr():
         is_syncing = False
 
 def start_scheduler():
-    """Démarre le scheduler avec config dynamique"""
+    """Démarre le scheduler avec config depuis config.py"""
     init_db()
 
     # Vérifier si le setup est complété
-    from config import is_setup_completed
+    from config import is_setup_completed, SYNC_INTERVAL
     if not is_setup_completed():
         print("⚙️  Setup Wizard non complété - Scheduler en attente")
         print("💡 Configurez l'application via http://localhost:8000/setup")
@@ -167,8 +145,8 @@ def start_scheduler():
         scheduler.start()
         return
 
-    # Lire l'intervalle depuis la config dynamique
-    sync_interval = get_config_value("SYNC_INTERVAL", 3600)
+    # Lire l'intervalle depuis config.py
+    sync_interval = SYNC_INTERVAL
 
     scheduler.add_job(
         sync_prowlarr,
@@ -221,8 +199,9 @@ def restart_scheduler_after_setup():
         if scheduler.get_job("sync_prowlarr"):
             scheduler.remove_job("sync_prowlarr")
 
-        # Relire la config
-        sync_interval = get_config_value("SYNC_INTERVAL", 3600)
+        # Relire la config depuis config.py
+        from config import SYNC_INTERVAL
+        sync_interval = SYNC_INTERVAL
 
         # Ajouter le nouveau job
         scheduler.add_job(
