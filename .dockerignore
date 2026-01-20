@@ -54,3 +54,8 @@ config/
 tmp/
 temp/
 *.tmp
+
+# Environment files (contain secrets, should not be in image)
+.env
+.env.local
+.env.*.local
