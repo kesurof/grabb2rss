@@ -1,168 +1,62 @@
 # 📡 Grab2RSS
 
-[![Version](https://img.shields.io/badge/version-2.6.0-blue)](https://github.com/kesurof/grabb2rss)
+[![Version](https://img.shields.io/badge/version-2.6.1-blue)](https://github.com/kesurof/grabb2rss)
+[![Docker](https://img.shields.io/badge/docker-ghcr.io-blue)](https://ghcr.io/kesurof/grabb2rss)
 [![Python](https://img.shields.io/badge/python-3.11+-green)](https://www.python.org/)
-[![Docker](https://img.shields.io/badge/docker-supported-blue)](https://www.docker.com/)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
-**Prowlarr to RSS Converter** with multi-tracker support, intelligent filtering, and modern web interface.
+**Convertisseur Prowlarr vers RSS** avec support multi-tracker, filtrage intelligent et interface web moderne.
 
-Transform your Prowlarr grabs into RSS feeds for automatic seeding with your favorite torrent clients.
-
----
-
-## ✨ Features
-
-- 🔄 **Automatic Synchronization** - Fetch torrents from Prowlarr on a schedule
-- 📡 **RSS Feeds** - Generate RSS/JSON feeds compatible with ruTorrent, qBittorrent, Transmission
-- 🎯 **Smart Filtering** - Optional Radarr/Sonarr integration to show only grabbed torrents
-- 🏷️ **Multi-Tracker Support** - Filter feeds by tracker
-- 🔍 **Deduplication** - Intelligent duplicate detection
-- 🗑️ **Auto-Purge** - Automatic cleanup of old torrents
-- 💻 **Modern Web UI** - Dashboard with statistics, logs, and configuration
-- 🐳 **Docker Ready** - LinuxServer.io-inspired permission management (PUID/PGID)
+Transformez vos grabs Prowlarr en flux RSS pour le seeding automatique avec vos clients torrent préférés.
 
 ---
 
-## 🚀 Quick Start
+## ✨ Fonctionnalités
 
-### Prerequisites
+- 🔄 **Synchronisation Automatique** - Récupère les torrents depuis Prowlarr selon un intervalle défini
+- 📡 **Flux RSS** - Génère des flux RSS/JSON compatibles avec ruTorrent, qBittorrent, Transmission
+- 🎯 **Filtrage Intelligent** - Intégration optionnelle Radarr/Sonarr pour afficher uniquement les grabs souhaités
+- 🏷️ **Multi-Tracker** - Filtrage des flux par tracker
+- 🔍 **Déduplication** - Détection intelligente des doublons
+- 🗑️ **Purge Automatique** - Nettoyage automatique des anciens torrents
+- 💻 **Interface Web Moderne** - Dashboard avec statistiques, logs et configuration
+- 🐳 **Prêt pour Docker** - Gestion des permissions PUID/PGID à la LinuxServer.io
+- 🚀 **Setup Wizard** - Configuration en français au premier lancement
 
-- Docker and Docker Compose
-- Running Prowlarr instance
-- (Optional) Radarr and/or Sonarr for filtering
+---
 
-### Installation
+## 🚀 Installation Rapide
 
-1. **Clone the repository**
+### Prérequis
+
+- Docker et Docker Compose installés
+- Une instance Prowlarr en fonctionnement
+- (Optionnel) Radarr et/ou Sonarr pour le filtrage
+
+### Méthode Recommandée (Image Pré-construite)
+
+**Installation en 3 étapes :**
+
+1. **Télécharger le fichier docker-compose.yml**
 
 ```bash
-git clone https://github.com/kesurof/grabb2rss.git
-cd grabb2rss
+mkdir grab2rss && cd grab2rss
+curl -o docker-compose.yml https://raw.githubusercontent.com/kesurof/grabb2rss/main/docker-compose.example.yml
 ```
 
-2. **Configure environment**
-
-```bash
-cp .env.example .env
-nano .env
-```
-
-**Minimal configuration:**
-```env
-# User/Group IDs (run `id` on your host)
-PUID=1000
-PGID=1000
-
-# Prowlarr (Required)
-PROWLARR_URL=http://prowlarr:9696
-PROWLARR_API_KEY=your_api_key_here
-
-# Optional: Radarr/Sonarr filtering
-RADARR_URL=http://radarr:7878
-RADARR_API_KEY=your_api_key_here
-```
-
-3. **Start the container**
-
-```bash
-docker-compose up -d
-```
-
-4. **Access the interface**
-
-Open http://localhost:8000 in your browser.
-
----
-
-## 📖 Usage
-
-### RSS Feeds
-
-**Global feed (all trackers):**
-```
-http://localhost:8000/rss
-```
-
-**Filtered by tracker:**
-```
-http://localhost:8000/rss/tracker/YourTrackerName
-```
-
-**JSON format:**
-```
-http://localhost:8000/rss.json
-```
-
-### Configuration
-
-All settings can be configured via:
-- Environment variables in `.env`
-- Web interface at http://localhost:8000 (Configuration tab)
-
-### API Endpoints
-
-- `GET /api/stats` - Statistics
-- `GET /api/grabs` - List all grabs
-- `GET /api/trackers` - Available trackers
-- `POST /api/sync/trigger` - Manual sync
-- `GET /health` - Health check
-
-Full API documentation available in the web interface.
-
----
-
-## ⚙️ Configuration
-
-### User/Group IDs (PUID/PGID)
-
-Following LinuxServer.io standards, you can set PUID and PGID to match your host user:
-
-```bash
-id $user
-# uid=1000(user) gid=1000(user) groups=1000(user)
-```
-
-Then in `.env`:
-```env
-PUID=1000
-PGID=1000
-```
-
-This ensures files created by the container have correct permissions on your host.
-
-### Key Settings
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PUID` | 1000 | User ID for file permissions |
-| `PGID` | 1000 | Group ID for file permissions |
-| `SYNC_INTERVAL` | 3600 | Sync interval in seconds (1 hour) |
-| `RETENTION_HOURS` | 168 | Keep torrents for N hours (7 days) |
-| `AUTO_PURGE` | true | Automatically remove old torrents |
-| `DEDUP_HOURS` | 168 | Deduplication window |
-
-See `.env.example` for full configuration options.
-
----
-
-## 🐳 Docker Compose
-
-### Standalone
+Ou créez manuellement le fichier `docker-compose.yml` :
 
 ```yaml
 version: "3.8"
 
 services:
   grab2rss:
-    image: grab2rss:latest
+    image: ghcr.io/kesurof/grabb2rss:latest
     container_name: grab2rss
     environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Paris
-      - PROWLARR_URL=http://prowlarr:9696
-      - PROWLARR_API_KEY=your_key
+      - PUID=1000  # Votre User ID (trouvez-le avec: id -u)
+      - PGID=1000  # Votre Group ID (trouvez-le avec: id -g)
+      - TZ=Europe/Paris  # Votre timezone
     volumes:
       - ./config:/config
       - ./data:/app/data
@@ -171,20 +65,111 @@ services:
     restart: unless-stopped
 ```
 
-### With Traefik
+2. **Démarrer le container**
+
+```bash
+docker-compose up -d
+```
+
+3. **Configurer via le Setup Wizard**
+
+Ouvrez votre navigateur sur **http://localhost:8000**
+
+Vous serez automatiquement redirigé vers le **Setup Wizard** où vous pourrez configurer :
+- ✅ Prowlarr (URL + Clé API) - **Obligatoire**
+- ✅ Radarr (URL + Clé API) - Optionnel
+- ✅ Sonarr (URL + Clé API) - Optionnel
+- ✅ Paramètres de synchronisation et rétention
+
+**C'est tout !** 🎉 Votre configuration est sauvegardée dans `/config/settings.yml`
+
+---
+
+## 📖 Utilisation
+
+### Flux RSS
+
+Une fois configuré, accédez à vos flux RSS :
+
+**Flux global (tous les trackers) :**
+```
+http://localhost:8000/rss
+```
+
+**Filtré par tracker :**
+```
+http://localhost:8000/rss/tracker/NomDuTracker
+```
+
+**Format JSON :**
+```
+http://localhost:8000/rss.json
+```
+
+### Configuration
+
+La configuration peut être modifiée :
+- ✅ Via l'interface web : http://localhost:8000 (onglet Configuration)
+- ✅ En éditant directement `/config/settings.yml`
+
+### API
+
+Consultez la documentation API complète sur http://localhost:8000/docs
+
+Endpoints principaux :
+- `GET /api/stats` - Statistiques
+- `GET /api/grabs` - Liste des grabs
+- `GET /api/trackers` - Trackers disponibles
+- `POST /api/sync/trigger` - Synchronisation manuelle
+- `GET /health` - Health check
+
+---
+
+## ⚙️ Configuration Avancée
+
+### User/Group IDs (PUID/PGID)
+
+Suivant les standards LinuxServer.io, vous pouvez définir PUID et PGID pour matcher votre utilisateur hôte :
+
+```bash
+id $USER
+# uid=1000(user) gid=1000(user) groups=1000(user)
+```
+
+Puis dans docker-compose.yml :
+```yaml
+environment:
+  - PUID=1000
+  - PGID=1000
+```
+
+Cela garantit que les fichiers créés par le container ont les bonnes permissions sur votre hôte.
+
+### Paramètres Clés
+
+| Variable | Défaut | Description |
+|----------|--------|-------------|
+| `PUID` | 1000 | User ID pour les permissions fichiers |
+| `PGID` | 1000 | Group ID pour les permissions fichiers |
+| `TZ` | Europe/Paris | Timezone du container |
+
+Tous les autres paramètres sont configurables via le Setup Wizard ou l'interface web.
+
+---
+
+## 🐳 Docker Compose avec Traefik
 
 ```yaml
 version: "3.8"
 
 services:
   grab2rss:
-    image: grab2rss:latest
+    image: ghcr.io/kesurof/grabb2rss:latest
     container_name: grab2rss
     environment:
       - PUID=1000
       - PGID=1000
-      - PROWLARR_URL=http://prowlarr:9696
-      - PROWLARR_API_KEY=your_key
+      - TZ=Europe/Paris
     volumes:
       - ./config:/config
       - ./data:/app/data
@@ -204,135 +189,159 @@ networks:
 
 ---
 
-## 🔧 Building from Source
-
-```bash
-git clone https://github.com/kesurof/grabb2rss.git
-cd grabb2rss
-docker build -t grab2rss:latest .
-```
-
----
-
 ## 📊 Architecture
 
 ```
 ┌─────────────┐
-│  Prowlarr   │ ← Grabs torrents from indexers
+│  Prowlarr   │ ← Récupère les torrents depuis les indexeurs
 └──────┬──────┘
        │ API
        ▼
 ┌─────────────┐
-│  Grab2RSS   │ ← Fetches grabs, generates RSS
+│  Grab2RSS   │ ← Récupère les grabs, génère les flux RSS
 └──────┬──────┘
-       │ RSS Feed
+       │ Flux RSS
        ▼
 ┌─────────────┐
-│   Torrent   │ ← Auto-downloads from RSS
-│   Client    │   (ruTorrent, qBittorrent, etc.)
+│   Client    │ ← Télécharge automatiquement depuis le flux RSS
+│  Torrent    │   (ruTorrent, qBittorrent, etc.)
 └─────────────┘
 ```
 
-### Optional Filtering
+### Filtrage Optionnel
 
 ```
 ┌──────────┐  ┌──────────┐
-│  Radarr  │  │  Sonarr  │ ← Download clients
+│  Radarr  │  │  Sonarr  │ ← Clients de téléchargement
 └────┬─────┘  └────┬─────┘
      │             │
      └─────┬───────┘
-           │ API (filter grabbed torrents)
+           │ API (filtre les torrents grabbed)
            ▼
      ┌─────────────┐
-     │  Grab2RSS   │ ← Only shows grabbed torrents
+     │  Grab2RSS   │ ← Affiche uniquement les torrents grabbed
      └─────────────┘
 ```
 
 ---
 
-## 🛠️ Troubleshooting
+## 🛠️ Dépannage
 
-### Container won't start
+### Le container ne démarre pas
 
-Check logs:
+Vérifiez les logs :
 ```bash
 docker logs grab2rss
 ```
 
-### Permission issues
+### Problèmes de permissions
 
-Verify PUID/PGID match your user:
+Vérifiez que PUID/PGID correspondent à votre utilisateur :
 ```bash
-id $user
+id $USER
 ```
 
-Update `.env` with correct values and recreate container:
+Mettez à jour docker-compose.yml et recréez le container :
 ```bash
 docker-compose down
 docker-compose up -d
 ```
 
-### No torrents appearing
+### Aucun torrent n'apparaît
 
-1. Verify Prowlarr API key is correct
-2. Check Prowlarr has recent grabs (History page)
-3. Trigger manual sync in web interface
-4. Check logs in Admin tab
+1. Vérifiez que la clé API Prowlarr est correcte
+2. Vérifiez que Prowlarr a des grabs récents (page Historique)
+3. Déclenchez une synchronisation manuelle dans l'interface web
+4. Consultez les logs dans l'onglet Admin
+
+### Reconfigurer l'application
+
+Si vous souhaitez revenir au Setup Wizard :
+
+```bash
+docker-compose down
+rm config/settings.yml
+docker-compose up -d
+```
+
+---
+
+## 🔄 Mise à Jour
+
+Pour mettre à jour vers la dernière version :
+
+```bash
+docker-compose pull
+docker-compose up -d
+```
+
+Votre configuration dans `/config` sera préservée.
 
 ---
 
 ## 📚 Documentation
 
-- [Installation Guide](docs/INSTALLATION.md) - Detailed installation instructions
-- [Quick Start Guide](docs/QUICKSTART.md) - Get started in 5 minutes
-- [qBittorrent Setup](docs/QBITTORRENT_SETUP.md) - Configure qBittorrent RSS
-- [Network Setup](docs/NETWORK_SETUP.md) - Docker networking guide
+- [Installation Détaillée](docs/INSTALLATION.md)
+- [Guide Rapide](docs/QUICKSTART.md)
+- [Configuration qBittorrent](docs/QBITTORRENT_SETUP.md)
+- [Configuration Réseau](docs/NETWORK_SETUP.md)
 
 ---
 
-## 🔐 Security
+## 🔐 Sécurité
 
-**⚠️ Important:** Never commit your `.env` file or API keys to version control.
+**⚠️ Important :** Ne partagez jamais vos clés API publiquement.
 
-If you accidentally expose API keys:
-1. Regenerate all API keys in Prowlarr/Radarr/Sonarr
-2. Update your `.env` file
-3. Restart the container
+Si vous exposez accidentellement des clés API :
+1. Régénérez toutes les clés API dans Prowlarr/Radarr/Sonarr
+2. Reconfigurez via le Setup Wizard ou l'interface web
+3. Redémarrez le container
 
-See [SECURITY_INCIDENT.md](SECURITY_INCIDENT.md) for security incident history.
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
+Consultez [SECURITY_INCIDENT.md](SECURITY_INCIDENT.md) pour l'historique des incidents de sécurité.
 
 ---
 
-## 📝 License
+## 🤝 Contribuer
 
-MIT License - See [LICENSE](LICENSE) file for details
+Les contributions sont les bienvenues ! Pour contribuer :
+
+1. Forkez le dépôt
+2. Créez une branche pour votre fonctionnalité
+3. Faites vos modifications
+4. Soumettez une pull request
+
+### Build Local (Développeurs)
+
+Si vous souhaitez builder localement pour le développement :
+
+```bash
+git clone https://github.com/kesurof/grabb2rss.git
+cd grabb2rss
+docker-compose -f docker-compose.dev.yml up --build
+```
 
 ---
 
-## 🙏 Acknowledgments
+## 📝 Licence
 
-- Inspired by [LinuxServer.io](https://www.linuxserver.io/) permission management standards
-- Built with [FastAPI](https://fastapi.tiangolo.com/)
-- Uses [APScheduler](https://apscheduler.readthedocs.io/) for task scheduling
+Licence MIT - Voir le fichier [LICENSE](LICENSE) pour plus de détails
+
+---
+
+## 🙏 Remerciements
+
+- Inspiré par les standards de gestion des permissions de [LinuxServer.io](https://www.linuxserver.io/)
+- Construit avec [FastAPI](https://fastapi.tiangolo.com/)
+- Utilise [APScheduler](https://apscheduler.readthedocs.io/) pour la planification des tâches
 
 ---
 
 ## 📞 Support
 
-- 🐛 [Report Issues](https://github.com/kesurof/grabb2rss/issues)
+- 🐛 [Signaler un Bug](https://github.com/kesurof/grabb2rss/issues)
 - 💬 [Discussions](https://github.com/kesurof/grabb2rss/discussions)
+- 📖 [Documentation](https://github.com/kesurof/grabb2rss/wiki)
 
 ---
 
-**Made with ❤️ for the selfhosting community**
+**Fait avec ❤️ pour la communauté self-hosting**
