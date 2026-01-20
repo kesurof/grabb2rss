@@ -71,15 +71,30 @@ def save_config(config: Dict[str, Any]) -> bool:
     """Sauvegarde la configuration dans le fichier YAML"""
     try:
         # Créer le répertoire si nécessaire
+        print(f"📁 Création du répertoire: {CONFIG_DIR}")
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
+        # Vérifier les permissions
+        import os
+        if CONFIG_DIR.exists():
+            print(f"✅ Répertoire existe: {CONFIG_DIR}")
+            print(f"   Permissions: {oct(os.stat(CONFIG_DIR).st_mode)[-3:]}")
+            print(f"   User ID: {os.getuid()}, Group ID: {os.getgid()}")
+
+        print(f"💾 Sauvegarde dans: {CONFIG_FILE}")
         with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
             yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
 
         print(f"✅ Configuration sauvegardée: {CONFIG_FILE}")
         return True
+    except PermissionError as e:
+        print(f"❌ Erreur de permissions: {e}")
+        print(f"   Vérifiez que l'utilisateur a les droits d'écriture sur {CONFIG_DIR}")
+        return False
     except Exception as e:
         print(f"❌ Erreur sauvegarde config: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 

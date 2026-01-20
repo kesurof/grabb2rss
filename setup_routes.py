@@ -487,6 +487,9 @@ async def test_prowlarr(data: dict):
 async def save_setup(config: SetupConfigModel):
     """Sauvegarde la configuration initiale"""
     try:
+        print("🔧 Début sauvegarde configuration setup...")
+        print(f"   Prowlarr URL: {config.prowlarr_url}")
+
         # Construire la config
         new_config = {
             "prowlarr": {
@@ -523,9 +526,15 @@ async def save_setup(config: SetupConfigModel):
         success = setup.save_config(new_config)
 
         if success:
+            print("✅ Configuration sauvegardée avec succès")
             # Redémarrer le scheduler avec la nouvelle config
-            from scheduler import restart_scheduler_after_setup
-            scheduler_started = restart_scheduler_after_setup()
+            try:
+                from scheduler import restart_scheduler_after_setup
+                scheduler_started = restart_scheduler_after_setup()
+                print(f"   Scheduler: {'démarré' if scheduler_started else 'erreur'}")
+            except Exception as sched_err:
+                print(f"⚠️  Erreur démarrage scheduler: {sched_err}")
+                scheduler_started = False
 
             return {
                 "success": True,
@@ -533,10 +542,18 @@ async def save_setup(config: SetupConfigModel):
                 "scheduler_started": scheduler_started
             }
         else:
-            raise HTTPException(status_code=500, detail="Erreur de sauvegarde")
+            error_msg = "Impossible de sauvegarder la configuration. Vérifiez les permissions sur /config"
+            print(f"❌ {error_msg}")
+            raise HTTPException(status_code=500, detail=error_msg)
 
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        error_msg = f"Erreur lors de la sauvegarde: {str(e)}"
+        print(f"❌ {error_msg}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=error_msg)
 
 
 @router.get("/api/setup/status")
