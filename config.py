@@ -3,16 +3,92 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Charger le fichier .env s'il existe
-env_path = Path(__file__).parent / '.env'
-if env_path.exists():
-    load_dotenv(env_path)
-    print(f"✅ Configuration chargée depuis {env_path}")
-else:
-    print(f"⚠️  Fichier .env non trouvé à {env_path}")
+# Fonction pour charger la configuration
+def load_configuration():
+    """
+    Charge la configuration avec priorité:
+    1. /config/settings.yml (si setup complété)
+    2. .env (fallback)
+    3. Variables d'environnement
+    4. Valeurs par défaut
+    """
+    config = {}
+
+    # Essayer de charger depuis /config/settings.yml (priorité 1)
+    settings_file = Path("/config/settings.yml")
+    if settings_file.exists():
+        try:
+            import yaml
+            with open(settings_file, 'r', encoding='utf-8') as f:
+                yaml_config = yaml.safe_load(f)
+                if yaml_config and yaml_config.get("setup_completed"):
+                    print(f"✅ Configuration chargée depuis {settings_file}")
+
+                    # Mapper la config YAML vers les variables
+                    prowlarr = yaml_config.get("prowlarr", {})
+                    config["PROWLARR_URL"] = prowlarr.get("url", "")
+                    config["PROWLARR_API_KEY"] = prowlarr.get("api_key", "")
+                    config["PROWLARR_HISTORY_PAGE_SIZE"] = prowlarr.get("history_page_size", 100)
+
+                    radarr = yaml_config.get("radarr", {})
+                    if radarr.get("enabled"):
+                        config["RADARR_URL"] = radarr.get("url", "")
+                        config["RADARR_API_KEY"] = radarr.get("api_key", "")
+
+                    sonarr = yaml_config.get("sonarr", {})
+                    if sonarr.get("enabled"):
+                        config["SONARR_URL"] = sonarr.get("url", "")
+                        config["SONARR_API_KEY"] = sonarr.get("api_key", "")
+
+                    sync = yaml_config.get("sync", {})
+                    config["SYNC_INTERVAL"] = sync.get("interval", 3600)
+                    config["RETENTION_HOURS"] = sync.get("retention_hours", 168)
+                    config["AUTO_PURGE"] = sync.get("auto_purge", True)
+                    config["DEDUP_HOURS"] = sync.get("dedup_hours", 168)
+
+                    rss = yaml_config.get("rss", {})
+                    config["RSS_DOMAIN"] = rss.get("domain", "localhost:8000")
+                    config["RSS_SCHEME"] = rss.get("scheme", "http")
+                    config["RSS_TITLE"] = rss.get("title", "Grab2RSS")
+                    config["RSS_DESCRIPTION"] = rss.get("description", "Prowlarr to RSS Feed")
+
+                    return config
+        except Exception as e:
+            print(f"⚠️  Erreur lecture {settings_file}: {e}")
+
+    # Fallback sur .env (priorité 2)
+    env_path = Path(__file__).parent / '.env'
+    if env_path.exists():
+        load_dotenv(env_path)
+        print(f"✅ Configuration chargée depuis {env_path}")
+    else:
+        print(f"⚠️  Aucun fichier de configuration trouvé")
+        print(f"💡 Démarrage en mode Setup Wizard")
+
+    return config
+
+# Charger la configuration
+_loaded_config = load_configuration()
+
+# Helper pour récupérer une valeur avec fallback
+def _get_config(key: str, default: any, convert_type: type = str):
+    """Récupère une config depuis YAML ou env avec fallback"""
+    if key in _loaded_config:
+        value = _loaded_config[key]
+        if convert_type == bool and isinstance(value, str):
+            return value.lower() == "true"
+        return convert_type(value) if value else default
+
+    env_value = os.getenv(key)
+    if env_value:
+        if convert_type == bool:
+            return env_value.lower() == "true"
+        return convert_type(env_value)
+
+    return default
 
 # Chemins
-DATA_DIR = Path(os.getenv("DATA_DIR", "data"))
+DATA_DIR = Path(os.getenv("DATA_DIR", "/app/data"))
 DB_PATH = DATA_DIR / "grabs.db"
 TORRENT_DIR = DATA_DIR / "torrents"
 
@@ -27,39 +103,39 @@ except Exception as e:
 
 
 # Prowlarr
-PROWLARR_URL = os.getenv("PROWLARR_URL", "http://localhost:9696")
-PROWLARR_API_KEY = os.getenv("PROWLARR_API_KEY", "")
-PROWLARR_HISTORY_PAGE_SIZE = int(os.getenv("PROWLARR_HISTORY_PAGE_SIZE", "100"))
+PROWLARR_URL = _get_config("PROWLARR_URL", "http://localhost:9696", str)
+PROWLARR_API_KEY = _get_config("PROWLARR_API_KEY", "", str)
+PROWLARR_HISTORY_PAGE_SIZE = _get_config("PROWLARR_HISTORY_PAGE_SIZE", 100, int)
 
-# Radarr (optionnel - pour vérification)
-RADARR_URL = os.getenv("RADARR_URL", "")
-RADARR_API_KEY = os.getenv("RADARR_API_KEY", "")
+# Radarr (optionnel)
+RADARR_URL = _get_config("RADARR_URL", "", str)
+RADARR_API_KEY = _get_config("RADARR_API_KEY", "", str)
 
-# Sonarr (optionnel - pour vérification)
-SONARR_URL = os.getenv("SONARR_URL", "")
-SONARR_API_KEY = os.getenv("SONARR_API_KEY", "")
+# Sonarr (optionnel)
+SONARR_URL = _get_config("SONARR_URL", "", str)
+SONARR_API_KEY = _get_config("SONARR_API_KEY", "", str)
 
 # Rétention et purge
-RETENTION_HOURS = int(os.getenv("RETENTION_HOURS", "0")) or None
-AUTO_PURGE = os.getenv("AUTO_PURGE", "false").lower() == "true"
+RETENTION_HOURS = _get_config("RETENTION_HOURS", 168, int) or None
+AUTO_PURGE = _get_config("AUTO_PURGE", True, bool)
 
 # Déduplication
-DEDUP_HOURS = int(os.getenv("DEDUP_HOURS", "24"))
+DEDUP_HOURS = _get_config("DEDUP_HOURS", 168, int)
 
 # Scheduler
-SYNC_INTERVAL = int(os.getenv("SYNC_INTERVAL", "3600"))
+SYNC_INTERVAL = _get_config("SYNC_INTERVAL", 3600, int)
 
 # Web
 APP_HOST = os.getenv("APP_HOST", "0.0.0.0")
 APP_PORT = int(os.getenv("APP_PORT", "8000"))
 
 # Multi-domaine
-RSS_DOMAIN = os.getenv("RSS_DOMAIN", "localhost:8000")
-RSS_SCHEME = os.getenv("RSS_SCHEME", "http")
+RSS_DOMAIN = _get_config("RSS_DOMAIN", "localhost:8000", str)
+RSS_SCHEME = _get_config("RSS_SCHEME", "http", str)
 
 # API
-RSS_TITLE = "Grab2RSS"
-RSS_DESCRIPTION = "Derniers torrents grabbés via Prowlarr"
+RSS_TITLE = _get_config("RSS_TITLE", "Grab2RSS", str)
+RSS_DESCRIPTION = _get_config("RSS_DESCRIPTION", "Derniers torrents grabbés via Prowlarr", str)
 
 # Descriptions pour l'UI
 DESCRIPTIONS = {
@@ -74,53 +150,75 @@ DESCRIPTIONS = {
     "RSS_SCHEME": "Protocole pour les URLs RSS (http ou https)"
 }
 
+def is_setup_completed() -> bool:
+    """Vérifie si le setup wizard a été complété"""
+    settings_file = Path("/config/settings.yml")
+    if not settings_file.exists():
+        return False
+
+    try:
+        import yaml
+        with open(settings_file, 'r', encoding='utf-8') as f:
+            yaml_config = yaml.safe_load(f)
+            return yaml_config and yaml_config.get("setup_completed", False)
+    except:
+        return False
+
+
 def validate_config() -> bool:
     """
     Valide la configuration au démarrage.
     Retourne True si tout est OK, False si erreurs critiques.
+
+    Si le setup n'est pas complété, retourne True (mode wizard).
     """
+    # Si setup non complété, on skip la validation (mode wizard)
+    if not is_setup_completed():
+        print("⚙️  Mode Setup Wizard - Configuration à effectuer via l'interface web")
+        return True
+
     errors = []
     warnings = []
-    
+
     # Vérifications critiques
     if not PROWLARR_API_KEY:
         errors.append("❌ PROWLARR_API_KEY manquante (requis)")
-    
+
     if not PROWLARR_URL:
         errors.append("❌ PROWLARR_URL manquante (requis)")
-    
+
     # Vérifications avertissements
     if SYNC_INTERVAL < 60:
         warnings.append("⚠️  SYNC_INTERVAL < 60s (peut surcharger Prowlarr)")
-    
+
     if SYNC_INTERVAL > 86400:
         warnings.append("⚠️  SYNC_INTERVAL > 24h (sync très espacées)")
-    
+
     if DEDUP_HOURS < 1:
         warnings.append("⚠️  DEDUP_HOURS < 1h (risque élevé de doublons)")
-    
+
     if DEDUP_HOURS > 720:
         warnings.append("⚠️  DEDUP_HOURS > 30j (fenêtre très large)")
-    
+
     if PROWLARR_HISTORY_PAGE_SIZE > 500:
         warnings.append("⚠️  PROWLARR_HISTORY_PAGE_SIZE > 500 (peut être lent)")
-    
+
     if AUTO_PURGE and not RETENTION_HOURS:
         warnings.append("⚠️  AUTO_PURGE activé mais RETENTION_HOURS = 0 (aucune purge)")
-    
+
     # Affichage
     if errors:
         print("\n🚨 Erreurs de configuration critiques:")
         for error in errors:
             print(f"  {error}")
-        print("\n💡 Corrigez le fichier .env et relancez l'application\n")
+        print("\n💡 Corrigez la configuration via l'interface web ou /config/settings.yml\n")
         return False
-    
+
     if warnings:
         print("\n⚠️  Avertissements de configuration:")
         for warning in warnings:
             print(f"  {warning}")
         print()
-    
+
     print("✅ Configuration valide")
     return True

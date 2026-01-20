@@ -157,10 +157,19 @@ def sync_prowlarr():
 def start_scheduler():
     """Démarre le scheduler avec config dynamique"""
     init_db()
-    
+
+    # Vérifier si le setup est complété
+    from config import is_setup_completed
+    if not is_setup_completed():
+        print("⚙️  Setup Wizard non complété - Scheduler en attente")
+        print("💡 Configurez l'application via http://localhost:8000/setup")
+        # On démarre quand même le scheduler mais sans job
+        scheduler.start()
+        return
+
     # Lire l'intervalle depuis la config dynamique
     sync_interval = get_config_value("SYNC_INTERVAL", 3600)
-    
+
     scheduler.add_job(
         sync_prowlarr,
         "interval",
@@ -169,10 +178,10 @@ def start_scheduler():
         name="Sync Prowlarr",
         replace_existing=True
     )
-    
+
     scheduler.start()
     print(f"🚀 Scheduler démarré (intervalle: {sync_interval}s)")
-    
+
     # Sync immédiate au démarrage
     sync_prowlarr()
 
@@ -200,3 +209,37 @@ def trigger_sync():
         threading.Thread(target=sync_prowlarr, daemon=True).start()
         return True
     return False
+
+
+def restart_scheduler_after_setup():
+    """
+    Redémarre le scheduler après completion du setup wizard.
+    Utilisé après la première configuration.
+    """
+    try:
+        # Arrêter les jobs existants
+        if scheduler.get_job("sync_prowlarr"):
+            scheduler.remove_job("sync_prowlarr")
+
+        # Relire la config
+        sync_interval = get_config_value("SYNC_INTERVAL", 3600)
+
+        # Ajouter le nouveau job
+        scheduler.add_job(
+            sync_prowlarr,
+            "interval",
+            seconds=sync_interval,
+            id="sync_prowlarr",
+            name="Sync Prowlarr",
+            replace_existing=True
+        )
+
+        print(f"🔄 Scheduler redémarré après setup (intervalle: {sync_interval}s)")
+
+        # Lancer une sync immédiate
+        threading.Thread(target=sync_prowlarr, daemon=True).start()
+
+        return True
+    except Exception as e:
+        print(f"❌ Erreur redémarrage scheduler: {e}")
+        return False

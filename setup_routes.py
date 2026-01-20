@@ -523,7 +523,15 @@ async def save_setup(config: SetupConfigModel):
         success = setup.save_config(new_config)
 
         if success:
-            return {"success": True, "message": "Configuration enregistrée"}
+            # Redémarrer le scheduler avec la nouvelle config
+            from scheduler import restart_scheduler_after_setup
+            scheduler_started = restart_scheduler_after_setup()
+
+            return {
+                "success": True,
+                "message": "Configuration enregistrée",
+                "scheduler_started": scheduler_started
+            }
         else:
             raise HTTPException(status_code=500, detail="Erreur de sauvegarde")
 
