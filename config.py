@@ -31,14 +31,14 @@ def load_configuration():
                     config["PROWLARR_HISTORY_PAGE_SIZE"] = prowlarr.get("history_page_size", 100)
 
                     radarr = yaml_config.get("radarr", {})
-                    if radarr.get("enabled"):
-                        config["RADARR_URL"] = radarr.get("url", "")
-                        config["RADARR_API_KEY"] = radarr.get("api_key", "")
+                    config["RADARR_URL"] = radarr.get("url", "")
+                    config["RADARR_API_KEY"] = radarr.get("api_key", "")
+                    config["RADARR_ENABLED"] = radarr.get("enabled", False)
 
                     sonarr = yaml_config.get("sonarr", {})
-                    if sonarr.get("enabled"):
-                        config["SONARR_URL"] = sonarr.get("url", "")
-                        config["SONARR_API_KEY"] = sonarr.get("api_key", "")
+                    config["SONARR_URL"] = sonarr.get("url", "")
+                    config["SONARR_API_KEY"] = sonarr.get("api_key", "")
+                    config["SONARR_ENABLED"] = sonarr.get("enabled", False)
 
                     sync = yaml_config.get("sync", {})
                     config["SYNC_INTERVAL"] = sync.get("interval", 3600)
@@ -110,10 +110,12 @@ PROWLARR_HISTORY_PAGE_SIZE = _get_config("PROWLARR_HISTORY_PAGE_SIZE", 100, int)
 # Radarr (optionnel)
 RADARR_URL = _get_config("RADARR_URL", "", str)
 RADARR_API_KEY = _get_config("RADARR_API_KEY", "", str)
+RADARR_ENABLED = _get_config("RADARR_ENABLED", False, bool)
 
 # Sonarr (optionnel)
 SONARR_URL = _get_config("SONARR_URL", "", str)
 SONARR_API_KEY = _get_config("SONARR_API_KEY", "", str)
+SONARR_ENABLED = _get_config("SONARR_ENABLED", False, bool)
 
 # Rétention et purge
 RETENTION_HOURS = _get_config("RETENTION_HOURS", 168, int) or None
