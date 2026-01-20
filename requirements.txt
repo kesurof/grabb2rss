@@ -8,3 +8,4 @@ pydantic-settings==2.1.0
 python-dotenv==1.0.0
 bencodepy==0.9.5
 psutil==5.9.8
+pyyaml==6.0.1

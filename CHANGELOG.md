@@ -5,6 +5,54 @@ All notable changes to Grab2RSS will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.1] - 2026-01-20
+
+### Added
+- **🚀 Setup Wizard** - Configuration initiale en français au premier lancement
+  - Interface web intuitive pour la première configuration
+  - Configuration de Prowlarr (obligatoire)
+  - Configuration optionnelle de Radarr et Sonarr
+  - Paramètres de synchronisation et rétention
+  - Test de connexion intégré
+  - Configuration sauvegardée dans `/config/settings.yml`
+
+- **Automated Docker Builds** - GitHub Actions pour builds automatiques
+  - Build multi-architecture (amd64, arm64, arm/v7)
+  - Publication automatique sur GitHub Container Registry (GHCR)
+  - Tags sémantiques (latest, version, branch)
+  - Cache optimisé pour builds rapides
+
+- **Simplified Deployment**
+  - Docker Compose simplifié avec image pré-construite
+  - Plus besoin de builder localement
+  - Installation en 3 étapes seulement
+  - `docker-compose.example.yml` pour les utilisateurs
+  - `docker-compose.dev.yml` pour les développeurs
+
+- **Configuration Persistence**
+  - Configuration stockée dans `/config/settings.yml` (format YAML)
+  - Module `setup.py` pour gestion de la configuration
+  - Détection automatique du premier lancement
+  - Middleware de redirection vers le setup wizard
+
+### Changed
+- **Méthode d'installation recommandée** - Image pré-construite au lieu du build local
+- README.md complètement réécrit avec focus sur l'installation simplifiée
+- docker-compose.yml simplifié (seulement PUID/PGID/TZ + volumes)
+- Version de l'API FastAPI bump à 2.6.1
+- Suppression de la méthode manuelle du README
+
+### Added Dependencies
+- `pyyaml==6.0.1` pour la gestion de la configuration YAML
+
+### Improved
+- Expérience utilisateur grandement améliorée
+- Déploiement plus simple et rapide
+- Configuration plus intuitive
+- Documentation plus claire et concise
+
+---
+
 ## [2.6.0] - 2026-01-20
 
 ### Added

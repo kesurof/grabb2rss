@@ -1,8 +1,9 @@
 # api.py
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import Response, HTMLResponse, JSONResponse
+from fastapi.responses import Response, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 import logging
 import psutil
 import time
@@ -17,6 +18,8 @@ from db import (
 from rss import generate_rss, generate_torrent_json
 from models import GrabOut, GrabStats, SyncStatus
 from scheduler import start_scheduler, stop_scheduler, get_sync_status, trigger_sync
+import setup
+from setup_routes import router as setup_router
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +29,29 @@ start_time = time.time()
 app = FastAPI(
     title="Grab2RSS API",
     description="API pour Grab2RSS - Convert Prowlarr grabs en RSS",
-    version="2.5.0"
+    version="2.6.1"
 )
+
+
+# Middleware pour rediriger vers /setup si premier lancement
+class SetupRedirectMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # Ne pas rediriger si déjà sur /setup ou sur les routes API de setup
+        if request.url.path.startswith('/setup') or request.url.path.startswith('/api/setup'):
+            return await call_next(request)
+
+        # Ne pas rediriger les assets statiques
+        if request.url.path.startswith('/torrents'):
+            return await call_next(request)
+
+        # Vérifier si c'est le premier lancement
+        if setup.is_first_run():
+            return RedirectResponse(url='/setup', status_code=307)
+
+        return await call_next(request)
+
+# Ajouter les middlewares
+app.add_middleware(SetupRedirectMiddleware)
 
 # CORS
 app.add_middleware(
@@ -37,6 +61,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Inclure les routes du setup wizard
+app.include_router(setup_router)
 
 # Monter le dossier torrents
 if TORRENT_DIR.exists():
