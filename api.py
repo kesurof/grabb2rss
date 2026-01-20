@@ -13,7 +13,8 @@ from config import TORRENT_DIR, DB_PATH, DEDUP_HOURS, DESCRIPTIONS, PROWLARR_URL
 from db import (
     init_db, get_grabs, get_stats, purge_all, purge_by_retention,
     get_config, set_config, get_all_config, get_sync_logs, get_trackers, get_db,
-    vacuum_database, get_db_stats
+    vacuum_database, get_db_stats, get_torrent_files_with_info, cleanup_orphan_torrents,
+    delete_torrent_file, purge_all_torrents, delete_log, purge_all_logs
 )
 from rss import generate_rss, generate_torrent_json
 from models import GrabOut, GrabStats, SyncStatus
@@ -522,6 +523,103 @@ async def test_history_limits():
         logger.error(f"Erreur test_history_limits: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# ==================== TORRENTS MANAGEMENT ====================
+
+@app.get("/api/torrents")
+async def list_torrents():
+    """Liste tous les fichiers torrents avec leurs informations détaillées"""
+    try:
+        torrents = get_torrent_files_with_info()
+        return {
+            "torrents": torrents,
+            "total": len(torrents)
+        }
+    except Exception as e:
+        logger.error(f"Erreur list_torrents: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/torrents/cleanup-orphans")
+async def cleanup_torrents():
+    """Supprime les fichiers torrents orphelins (sans grab associé)"""
+    try:
+        deleted_count, deleted_files = cleanup_orphan_torrents()
+        return {
+            "status": "cleaned",
+            "message": f"{deleted_count} torrents orphelins supprimés",
+            "deleted_count": deleted_count,
+            "deleted_files": deleted_files
+        }
+    except Exception as e:
+        logger.error(f"Erreur cleanup_torrents: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/torrents/{filename}")
+async def delete_torrent(filename: str):
+    """Supprime un fichier torrent spécifique"""
+    try:
+        success = delete_torrent_file(filename)
+        if success:
+            return {
+                "status": "deleted",
+                "message": f"Torrent {filename} supprimé",
+                "filename": filename
+            }
+        else:
+            raise HTTPException(status_code=404, detail=f"Torrent {filename} non trouvé")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erreur delete_torrent: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/torrents/purge-all")
+async def purge_torrents():
+    """Supprime TOUS les fichiers torrents"""
+    try:
+        deleted_count, size_freed = purge_all_torrents()
+        return {
+            "status": "purged",
+            "message": f"{deleted_count} torrents supprimés ({size_freed} MB libérés)",
+            "deleted_count": deleted_count,
+            "size_freed_mb": size_freed
+        }
+    except Exception as e:
+        logger.error(f"Erreur purge_torrents: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/logs/{log_id}")
+async def delete_sync_log(log_id: int):
+    """Supprime un log de synchronisation spécifique"""
+    try:
+        success = delete_log(log_id)
+        if success:
+            return {
+                "status": "deleted",
+                "message": f"Log {log_id} supprimé",
+                "log_id": log_id
+            }
+        else:
+            raise HTTPException(status_code=404, detail=f"Log {log_id} non trouvé")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erreur delete_sync_log: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/logs/purge-all")
+async def purge_logs():
+    """Supprime tous les logs de synchronisation"""
+    try:
+        deleted_count = purge_all_logs()
+        return {
+            "status": "purged",
+            "message": f"{deleted_count} logs supprimés",
+            "deleted_count": deleted_count
+        }
+    except Exception as e:
+        logger.error(f"Erreur purge_logs: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ==================== WEB UI ====================
 
 @app.get("/test", response_class=HTMLResponse)
@@ -664,6 +762,7 @@ async def web_ui():
         <div class="tabs">
             <button class="tab-button active" onclick="switchTab('dashboard')">📊 Dashboard</button>
             <button class="tab-button" onclick="switchTab('grabs')">📋 Grabs</button>
+            <button class="tab-button" onclick="switchTab('torrents')">📦 Torrents</button>
             <button class="tab-button" onclick="switchTab('stats')">📈 Statistiques</button>
             <button class="tab-button" onclick="switchTab('rss')">📡 Flux RSS</button>
             <button class="tab-button" onclick="switchTab('logs')">📝 Logs</button>
@@ -673,45 +772,98 @@ async def web_ui():
 
         <!-- TAB: DASHBOARD -->
         <div id="dashboard" class="tab-content active">
+            <div class="alert info" style="margin-bottom: 20px;">
+                <strong>👋 Bienvenue sur Grab2RSS v2.6.5</strong><br>
+                <span style="color: #ddd;">Votre convertisseur Prowlarr → RSS est opérationnel. Surveillez vos grabs, gérez vos torrents et configurez vos flux RSS personnalisés.</span>
+            </div>
+
             <div class="grid">
                 <div class="card">
-                    <h3>Total Grabs</h3>
+                    <h3>📋 Total Grabs</h3>
                     <div class="value" id="total-grabs">-</div>
+                    <p style="color: #888; font-size: 12px; margin-top: 10px;">Grabs enregistrés en base</p>
                 </div>
                 <div class="card">
-                    <h3>Stockage</h3>
+                    <h3>📦 Fichiers Torrents</h3>
+                    <div class="value" id="dashboard-torrent-count">-</div>
+                    <p style="color: #888; font-size: 12px; margin-top: 10px;">
+                        Taille: <span id="dashboard-torrent-size">-</span> MB
+                    </p>
+                </div>
+                <div class="card">
+                    <h3>💾 Stockage Total</h3>
                     <div class="value"><span id="storage-size">-</span><span class="unit">MB</span></div>
+                    <p style="color: #888; font-size: 12px; margin-top: 10px;">Base + Torrents</p>
                 </div>
                 <div class="card">
-                    <h3>Dernier Grab</h3>
-                    <div class="value" id="latest-grab" style="font-size: 14px; margin-top: 10px;">-</div>
-                </div>
-                <div class="card">
-                    <h3>Statut Sync</h3>
+                    <h3>📡 Statut Sync</h3>
                     <div class="status" id="sync-status"></div>
                     <div class="date" id="next-sync" style="margin-top: 10px;">-</div>
                 </div>
             </div>
 
-            <h2>🎯 Actions</h2>
+            <div class="grid" style="margin-top: 20px;">
+                <div class="card">
+                    <h3>🕒 Dernier Grab</h3>
+                    <div class="value" id="latest-grab" style="font-size: 14px; margin-top: 10px;">-</div>
+                </div>
+                <div class="card">
+                    <h3>🎯 Trackers Actifs</h3>
+                    <div class="value" id="dashboard-trackers-count">-</div>
+                    <p style="color: #888; font-size: 12px; margin-top: 10px;">Trackers différents</p>
+                </div>
+                <div class="card">
+                    <h3>📊 Grabs Aujourd'hui</h3>
+                    <div class="value" id="dashboard-grabs-today">-</div>
+                    <p style="color: #888; font-size: 12px; margin-top: 10px;">Dernières 24h</p>
+                </div>
+                <div class="card">
+                    <h3>⏱️ Uptime</h3>
+                    <div class="value" id="dashboard-uptime" style="font-size: 20px;">-</div>
+                    <p style="color: #888; font-size: 12px; margin-top: 10px;">Temps d'activité</p>
+                </div>
+            </div>
+
+            <h2>🎯 Actions Rapides</h2>
             <div class="actions">
-                <button class="button" onclick="refreshData()">🔄 Actualiser</button>
-                <button class="button success" id="sync-btn" onclick="syncNow()">📡 Sync Maintenant</button>
-                <button class="button danger" onclick="purgeAllGrabs()">🗑️ Vider Tout</button>
+                <button class="button" onclick="refreshData()">🔄 Actualiser Dashboard</button>
+                <button class="button success" id="sync-btn" onclick="syncNow()">📡 Synchroniser Maintenant</button>
+                <button class="button" onclick="switchTab('torrents'); event.target=document.querySelector('.tab-button:nth-child(3)');">📦 Gérer les Torrents</button>
+                <button class="button danger" onclick="purgeAllGrabs()">🗑️ Vider Tous les Grabs</button>
+            </div>
+
+            <h2 style="margin-top: 30px;">🔗 Accès Rapides</h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
+                <a href="/rss" target="_blank" style="background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 15px; text-decoration: none; color: #1e90ff; display: block; transition: 0.2s;">
+                    <strong style="display: block; margin-bottom: 5px;">📡 Flux RSS Global</strong>
+                    <span style="color: #888; font-size: 12px;">Tous les trackers</span>
+                </a>
+                <a href="/api/stats" target="_blank" style="background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 15px; text-decoration: none; color: #1e90ff; display: block; transition: 0.2s;">
+                    <strong style="display: block; margin-bottom: 5px;">📊 Statistiques API</strong>
+                    <span style="color: #888; font-size: 12px;">Format JSON</span>
+                </a>
+                <a href="/health" target="_blank" style="background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 15px; text-decoration: none; color: #1e90ff; display: block; transition: 0.2s;">
+                    <strong style="display: block; margin-bottom: 5px;">💚 Health Check</strong>
+                    <span style="color: #888; font-size: 12px;">État des services</span>
+                </a>
+                <a href="javascript:void(0)" onclick="switchTab('config'); event.target=document.querySelector('.tab-button:nth-child(7)');" style="background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 15px; text-decoration: none; color: #1e90ff; display: block; transition: 0.2s;">
+                    <strong style="display: block; margin-bottom: 5px;">⚙️ Configuration</strong>
+                    <span style="color: #888; font-size: 12px;">Modifier les paramètres</span>
+                </a>
             </div>
         </div>
 
         <!-- TAB: GRABS -->
         <div id="grabs" class="tab-content">
             <h2>📋 Derniers Grabs</h2>
-            
+
             <div class="filter-bar">
                 <label for="tracker-filter-grabs" style="margin: 0; color: #1e90ff; font-weight: 600;">Filtrer par Tracker:</label>
                 <select id="tracker-filter-grabs" onchange="filterGrabs()" style="flex: 0 0 auto; min-width: 200px;">
                     <option value="all">Tous les trackers</option>
                 </select>
             </div>
-            
+
             <table>
                 <thead>
                     <tr>
@@ -725,6 +877,59 @@ async def web_ui():
                     <tr><td colspan="4" style="text-align: center; color: #888;">Chargement...</td></tr>
                 </tbody>
             </table>
+        </div>
+
+        <!-- TAB: TORRENTS -->
+        <div id="torrents" class="tab-content">
+            <h2>📦 Gestion des Fichiers Torrents</h2>
+            <p style="color: #888; margin-bottom: 20px;">Gérez vos fichiers torrents : téléchargement, suppression, nettoyage des orphelins</p>
+
+            <div class="grid" style="margin-bottom: 20px;">
+                <div class="card">
+                    <h3>Total Fichiers</h3>
+                    <div class="value" id="torrents-total">-</div>
+                </div>
+                <div class="card">
+                    <h3>Taille Totale</h3>
+                    <div class="value"><span id="torrents-size">-</span><span class="unit">MB</span></div>
+                </div>
+                <div class="card">
+                    <h3>Avec Grab</h3>
+                    <div class="value" id="torrents-with-grab">-</div>
+                </div>
+                <div class="card">
+                    <h3>Orphelins</h3>
+                    <div class="value" id="torrents-orphans" style="color: #ff6b6b;">-</div>
+                </div>
+            </div>
+
+            <div class="actions" style="margin-bottom: 20px;">
+                <button class="button" onclick="loadTorrents()">🔄 Actualiser</button>
+                <button class="button" onclick="cleanupOrphanTorrents()">🗑️ Nettoyer Orphelins</button>
+                <button class="button danger" onclick="purgeAllTorrents()">🗑️ Vider Tous les Torrents</button>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 40px;"><input type="checkbox" id="select-all-torrents" onchange="toggleAllTorrents()"></th>
+                        <th>Fichier</th>
+                        <th>Titre</th>
+                        <th>Tracker</th>
+                        <th>Date Grab</th>
+                        <th>Taille</th>
+                        <th>Statut</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="torrents-table">
+                    <tr><td colspan="8" style="text-align: center; color: #888;">Chargement...</td></tr>
+                </tbody>
+            </table>
+
+            <div class="actions" style="margin-top: 20px;" id="bulk-actions" style="display: none;">
+                <button class="button danger" onclick="deleteBulkTorrents()">🗑️ Supprimer la sélection</button>
+            </div>
         </div>
 
         <!-- TAB: STATISTIQUES -->
@@ -841,7 +1046,7 @@ async def web_ui():
                     <h3>Base de Données</h3>
                     <div class="value"><span id="admin-db-size">-</span><span class="unit">MB</span></div>
                     <p style="color: #888; font-size: 12px; margin-top: 10px;">
-                        Grabs: <span id="admin-db-grabs">-</span> | 
+                        Grabs: <span id="admin-db-grabs">-</span> |
                         Logs: <span id="admin-db-logs">-</span>
                     </p>
                 </div>
@@ -849,7 +1054,8 @@ async def web_ui():
                     <h3>Fichiers Torrents</h3>
                     <div class="value"><span id="admin-torrent-count">-</span></div>
                     <p style="color: #888; font-size: 12px; margin-top: 10px;">
-                        Taille: <span id="admin-torrent-size">-</span> MB
+                        Taille: <span id="admin-torrent-size">-</span> MB<br>
+                        Orphelins: <span id="admin-torrent-orphans" style="color: #ff6b6b;">-</span>
                     </p>
                 </div>
                 <div class="card">
@@ -882,7 +1088,7 @@ async def web_ui():
                 Un redémarrage peut être nécessaire pour certains paramètres (SYNC_INTERVAL, etc.).
             </div>
             
-            <h3 style="margin-top: 30px; margin-bottom: 15px;">📋 Logs Système</h3>
+            <h3 style="margin-top: 30px; margin-bottom: 15px;">📋 Logs de Synchronisation</h3>
             <div class="filter-bar">
                 <label for="log-level-filter" style="margin: 0; color: #1e90ff; font-weight: 600;">Niveau:</label>
                 <select id="log-level-filter" onchange="loadSystemLogs()" style="flex: 0 0 auto; min-width: 150px;">
@@ -892,9 +1098,15 @@ async def web_ui():
                     <option value="warning">Avertissements</option>
                     <option value="info">Informations</option>
                 </select>
+                <button class="button danger" onclick="purgeAllLogs()" style="margin-left: auto;">🗑️ Vider Tous les Logs</button>
             </div>
-            <div id="system-logs-container" style="max-height: 500px; overflow-y: auto;">
+            <div id="system-logs-container" style="max-height: 500px; overflow-y: auto; margin-top: 15px;">
                 <p style="text-align: center; color: #888; padding: 20px;">Chargement des logs...</p>
+            </div>
+
+            <div class="alert info" style="margin-top: 15px;">
+                <strong>💡 À propos des logs :</strong>
+                Les logs affichent l'historique des synchronisations avec Prowlarr. Chaque log contient le nombre de grabs récupérés, les doublons détectés et les éventuelles erreurs. Vous pouvez supprimer individuellement les logs ou vider tous les logs pour libérer de l'espace.
             </div>
 
             <h3 style="margin-top: 30px; margin-bottom: 15px;">📊 Test des Limites d'Historique</h3>
@@ -931,10 +1143,11 @@ async def web_ui():
             document.querySelectorAll('.tab-button').forEach(el => el.classList.remove('active'));
             document.getElementById(tab).classList.add('active');
             event.target.classList.add('active');
-            
+
             if (tab === 'config') loadConfig();
             if (tab === 'logs') loadLogs();
             if (tab === 'grabs') loadGrabs();
+            if (tab === 'torrents') loadTorrents();
             if (tab === 'stats') loadStats();
             if (tab === 'rss') loadRssUrls();
             if (tab === 'admin') loadAdminTab();
@@ -1123,20 +1336,44 @@ async def web_ui():
 
         async function refreshData() {
             try {
-                const [stats, sync] = await Promise.all([
+                const [stats, sync, detailedStats, torrentsData] = await Promise.all([
                     fetch(API_BASE + '/stats').then(r => r.json()),
-                    fetch(API_BASE + '/sync/status').then(r => r.json())
+                    fetch(API_BASE + '/sync/status').then(r => r.json()),
+                    fetch(API_BASE + '/stats/detailed').then(r => r.json()),
+                    fetch(API_BASE + '/torrents').then(r => r.json())
                 ]);
 
+                // Statistiques principales
                 document.getElementById("total-grabs").textContent = stats.total_grabs;
                 document.getElementById("storage-size").textContent = stats.storage_size_mb;
                 document.getElementById("latest-grab").textContent = stats.latest_grab ? new Date(stats.latest_grab).toLocaleString('fr-FR') : "-";
 
+                // Nouvelles statistiques dashboard
+                document.getElementById("dashboard-torrent-count").textContent = torrentsData.total;
+                const totalSize = torrentsData.torrents.reduce((acc, t) => acc + t.size_mb, 0);
+                document.getElementById("dashboard-torrent-size").textContent = totalSize.toFixed(2);
+
+                // Nombre de trackers différents
+                const uniqueTrackers = new Set(stats.tracker_stats.map(t => t.tracker)).size;
+                document.getElementById("dashboard-trackers-count").textContent = uniqueTrackers;
+
+                // Grabs aujourd'hui (dernières 24h)
+                const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+                const grabsToday = stats.grabs_by_day[0]?.count || 0;
+                document.getElementById("dashboard-grabs-today").textContent = grabsToday;
+
+                // Uptime
+                const uptime = detailedStats.system.uptime_seconds;
+                const hours = Math.floor(uptime / 3600);
+                const minutes = Math.floor((uptime % 3600) / 60);
+                document.getElementById("dashboard-uptime").textContent = hours + 'h ' + minutes + 'm';
+
+                // Statut sync
                 const statusEl = document.getElementById("sync-status");
-                
+
                 let statusClass = "status offline";
                 let statusText = "Inactif";
-                
+
                 if (sync.is_running) {
                     statusClass = "status online";
                     statusText = "Sync en cours...";
@@ -1150,7 +1387,7 @@ async def web_ui():
                     statusClass = "status offline";
                     statusText = "En attente";
                 }
-                
+
                 statusEl.className = statusClass;
                 statusEl.textContent = statusText;
 
@@ -1302,24 +1539,31 @@ async def web_ui():
 
         async function loadAdminStats() {
             try {
-                const res = await fetch(API_BASE + '/stats/detailed');
-                const data = await res.json();
-                
-                document.getElementById('admin-db-size').textContent = data.database.size_mb;
-                document.getElementById('admin-db-grabs').textContent = data.database.grabs;
-                document.getElementById('admin-db-logs').textContent = data.database.sync_logs;
-                
-                document.getElementById('admin-torrent-count').textContent = data.torrents.count;
-                document.getElementById('admin-torrent-size').textContent = data.torrents.total_size_mb;
-                
-                document.getElementById('admin-memory').textContent = data.system.memory_mb;
-                document.getElementById('admin-cpu').textContent = data.system.cpu_percent;
-                
-                const uptime = data.system.uptime_seconds;
+                const [detailedStats, torrentsData] = await Promise.all([
+                    fetch(API_BASE + '/stats/detailed').then(r => r.json()),
+                    fetch(API_BASE + '/torrents').then(r => r.json())
+                ]);
+
+                document.getElementById('admin-db-size').textContent = detailedStats.database.size_mb;
+                document.getElementById('admin-db-grabs').textContent = detailedStats.database.grabs;
+                document.getElementById('admin-db-logs').textContent = detailedStats.database.sync_logs;
+
+                document.getElementById('admin-torrent-count').textContent = torrentsData.total;
+                const totalSize = torrentsData.torrents.reduce((acc, t) => acc + t.size_mb, 0);
+                document.getElementById('admin-torrent-size').textContent = totalSize.toFixed(2);
+
+                // Compter les orphelins
+                const orphans = torrentsData.torrents.filter(t => !t.has_grab).length;
+                document.getElementById('admin-torrent-orphans').textContent = orphans;
+
+                document.getElementById('admin-memory').textContent = detailedStats.system.memory_mb;
+                document.getElementById('admin-cpu').textContent = detailedStats.system.cpu_percent;
+
+                const uptime = detailedStats.system.uptime_seconds;
                 const hours = Math.floor(uptime / 3600);
                 const minutes = Math.floor((uptime % 3600) / 60);
                 document.getElementById('admin-uptime').textContent = hours + 'h ' + minutes + 'm';
-                
+
             } catch (e) {
                 console.error("Erreur loadAdminStats:", e);
                 alert("❌ Erreur lors du chargement des stats: " + e);
@@ -1328,38 +1572,58 @@ async def web_ui():
 
         async function loadSystemLogs() {
             const level = document.getElementById('log-level-filter').value;
-            
+
             try {
-                const res = await fetch(API_BASE + '/logs/system?limit=50&level=' + level);
-                const data = await res.json();
-                
+                // Récupérer tous les logs de sync
+                const res = await fetch(API_BASE + '/sync/logs?limit=100');
+                const logs = await res.json();
+
                 const container = document.getElementById('system-logs-container');
-                
-                if (data.logs.length === 0) {
+
+                if (logs.length === 0) {
                     container.innerHTML = '<p style="text-align: center; color: #888; padding: 20px;">Aucun log trouvé</p>';
                     return;
                 }
-                
+
+                // Filtrer par niveau
+                let filteredLogs = logs;
+                if (level === 'success') {
+                    filteredLogs = logs.filter(l => l.status === 'success');
+                } else if (level === 'error') {
+                    filteredLogs = logs.filter(l => l.status !== 'success');
+                }
+
+                if (filteredLogs.length === 0) {
+                    container.innerHTML = '<p style="text-align: center; color: #888; padding: 20px;">Aucun log trouvé pour ce niveau</p>';
+                    return;
+                }
+
                 const logIcons = {
                     'success': '✅',
-                    'error': '❌',
-                    'warning': '⚠️',
-                    'info': 'ℹ️'
+                    'error': '❌'
                 };
-                
-                container.innerHTML = data.logs.map(log => 
-                    '<div class="log-item ' + log.level + '">' +
-                    '<div class="log-header">' +
-                    '<span class="log-level ' + log.level + '">' +
-                    (logIcons[log.level] || '•') + ' ' + log.level.toUpperCase() +
-                    '</span>' +
-                    '<span class="log-time">' + new Date(log.timestamp).toLocaleString('fr-FR') + '</span>' +
-                    '</div>' +
-                    '<div class="log-message">' + log.message + '</div>' +
-                    (log.details ? '<div class="log-details">' + log.details + '</div>' : '') +
-                    '</div>'
-                ).join('');
-                
+
+                container.innerHTML = filteredLogs.map(log => {
+                    const logLevel = log.status === 'success' ? 'success' : 'error';
+                    const icon = logIcons[logLevel] || '•';
+                    const timestamp = new Date(log.sync_at).toLocaleString('fr-FR');
+                    const message = `Sync: ${log.grabs_count} grabs récupérés, ${log.deduplicated_count || 0} doublons ignorés`;
+                    const details = log.error ? `Erreur: ${log.error}` : '';
+
+                    return `
+                        <div class="log-item ${logLevel}" style="position: relative;">
+                            <div class="log-header">
+                                <span class="log-level ${logLevel}">
+                                    ${icon} ${logLevel.toUpperCase()}
+                                </span>
+                                <span class="log-time">${timestamp}</span>
+                            </div>
+                            <div class="log-message">${message}</div>
+                            ${details ? '<div class="log-details">' + details + '</div>' : ''}
+                        </div>
+                    `;
+                }).join('');
+
             } catch (e) {
                 console.error("Erreur loadSystemLogs:", e);
                 alert("❌ Erreur lors du chargement des logs: " + e);
@@ -1413,6 +1677,179 @@ async def web_ui():
                 } catch (e) {
                     alert("❌ Erreur: " + e);
                 }
+            }
+        }
+
+        async function loadTorrents() {
+            try {
+                const res = await fetch(API_BASE + '/torrents');
+                const data = await res.json();
+
+                // Mettre à jour les statistiques
+                document.getElementById('torrents-total').textContent = data.total;
+
+                const totalSize = data.torrents.reduce((acc, t) => acc + t.size_mb, 0);
+                document.getElementById('torrents-size').textContent = totalSize.toFixed(2);
+
+                const withGrab = data.torrents.filter(t => t.has_grab).length;
+                document.getElementById('torrents-with-grab').textContent = withGrab;
+
+                const orphans = data.torrents.filter(t => !t.has_grab).length;
+                document.getElementById('torrents-orphans').textContent = orphans;
+
+                // Remplir le tableau
+                const tbody = document.getElementById('torrents-table');
+                if (data.torrents.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #888;">Aucun fichier torrent</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = data.torrents.map(t => {
+                    const statusColor = t.has_grab ? '#00aa00' : '#ff6b6b';
+                    const statusText = t.has_grab ? '✓ Avec Grab' : '⚠ Orphelin';
+                    const grabDate = t.grabbed_at ? new Date(t.grabbed_at).toLocaleString('fr-FR') : '-';
+
+                    return `
+                        <tr>
+                            <td><input type="checkbox" class="torrent-checkbox" value="${t.filename}"></td>
+                            <td style="font-family: monospace; font-size: 11px; word-break: break-all;">${t.filename}</td>
+                            <td>${t.title}</td>
+                            <td><strong style="color: #1e90ff;">${t.tracker}</strong></td>
+                            <td class="date">${grabDate}</td>
+                            <td>${t.size_mb} MB</td>
+                            <td><span style="color: ${statusColor}; font-weight: bold;">${statusText}</span></td>
+                            <td>
+                                <a href="/torrents/${encodeURIComponent(t.filename)}" target="_blank" class="button" style="text-decoration: none; padding: 5px 10px; font-size: 12px; display: inline-block;">📥 DL</a>
+                                <button class="button danger" onclick="deleteSingleTorrent('${t.filename}')" style="padding: 5px 10px; font-size: 12px; margin-left: 5px;">🗑️</button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+
+                // Gérer l'affichage du bouton d'actions groupées
+                updateBulkActionsVisibility();
+
+            } catch (e) {
+                console.error("Erreur loadTorrents:", e);
+                alert("❌ Erreur lors du chargement des torrents: " + e);
+            }
+        }
+
+        function toggleAllTorrents() {
+            const selectAll = document.getElementById('select-all-torrents');
+            const checkboxes = document.querySelectorAll('.torrent-checkbox');
+            checkboxes.forEach(cb => cb.checked = selectAll.checked);
+            updateBulkActionsVisibility();
+        }
+
+        function updateBulkActionsVisibility() {
+            const checkboxes = document.querySelectorAll('.torrent-checkbox:checked');
+            const bulkActions = document.getElementById('bulk-actions');
+            if (checkboxes.length > 0) {
+                bulkActions.style.display = 'flex';
+            } else {
+                bulkActions.style.display = 'none';
+            }
+        }
+
+        // Écouter les changements sur les checkboxes
+        document.addEventListener('change', (e) => {
+            if (e.target.classList.contains('torrent-checkbox')) {
+                updateBulkActionsVisibility();
+            }
+        });
+
+        async function deleteSingleTorrent(filename) {
+            if (!confirm(`Supprimer le torrent "${filename}" ?`)) return;
+
+            try {
+                const res = await fetch(API_BASE + '/torrents/' + encodeURIComponent(filename), {
+                    method: 'DELETE'
+                });
+
+                if (res.ok) {
+                    alert('✅ Torrent supprimé');
+                    await loadTorrents();
+                } else {
+                    alert('❌ Erreur lors de la suppression');
+                }
+            } catch (e) {
+                alert('❌ Erreur: ' + e);
+            }
+        }
+
+        async function deleteBulkTorrents() {
+            const checkboxes = document.querySelectorAll('.torrent-checkbox:checked');
+            const filenames = Array.from(checkboxes).map(cb => cb.value);
+
+            if (filenames.length === 0) {
+                alert('⚠️ Aucun torrent sélectionné');
+                return;
+            }
+
+            if (!confirm(`Supprimer ${filenames.length} torrent(s) sélectionné(s) ?`)) return;
+
+            try {
+                let successCount = 0;
+                let errorCount = 0;
+
+                for (const filename of filenames) {
+                    try {
+                        const res = await fetch(API_BASE + '/torrents/' + encodeURIComponent(filename), {
+                            method: 'DELETE'
+                        });
+                        if (res.ok) successCount++;
+                        else errorCount++;
+                    } catch (e) {
+                        errorCount++;
+                    }
+                }
+
+                alert(`✅ ${successCount} torrent(s) supprimé(s)${errorCount > 0 ? ', ' + errorCount + ' erreur(s)' : ''}`);
+                await loadTorrents();
+
+            } catch (e) {
+                alert('❌ Erreur: ' + e);
+            }
+        }
+
+        async function cleanupOrphanTorrents() {
+            if (!confirm('Supprimer tous les torrents orphelins (sans grab associé) ?')) return;
+
+            try {
+                const res = await fetch(API_BASE + '/torrents/cleanup-orphans', { method: 'POST' });
+                const data = await res.json();
+                alert('✅ ' + data.message);
+                await loadTorrents();
+            } catch (e) {
+                alert('❌ Erreur: ' + e);
+            }
+        }
+
+        async function purgeAllTorrents() {
+            if (!confirm('⚠️ ATTENTION : Supprimer TOUS les fichiers torrents ? Cette action est irréversible !')) return;
+
+            try {
+                const res = await fetch(API_BASE + '/torrents/purge-all', { method: 'POST' });
+                const data = await res.json();
+                alert('✅ ' + data.message);
+                await loadTorrents();
+                await loadAdminStats(); // Rafraîchir les stats admin
+            } catch (e) {
+                alert('❌ Erreur: ' + e);
+            }
+        }
+
+        async function purgeAllLogs() {
+            if (!confirm('Supprimer tous les logs de synchronisation ?')) return;
+
+            try {
+                const res = await fetch(API_BASE + '/logs/purge-all', { method: 'POST' });
+                const data = await res.json();
+                alert('✅ ' + data.message);
+                await loadSystemLogs();
+            } catch (e) {
+                alert('❌ Erreur: ' + e);
             }
         }
 
