@@ -6,6 +6,10 @@ Utilise les downloadId pour faire le lien entre grabbed et downloadFolderImporte
 import requests
 from typing import Set, Optional
 from datetime import datetime
+from pathlib import Path
+
+# Import de TORRENT_DIR pour reconstruire les chemins
+from config import TORRENT_DIR
 
 # Cache des downloadId importés (rafraîchi toutes les 5 minutes)
 _imported_cache = {}
@@ -159,34 +163,86 @@ def extract_download_id_from_url(torrent_url: str) -> Optional[str]:
     
     return None
 
+def is_valid_torrent_file(file_path: str) -> bool:
+    """
+    Vérifie si un fichier est un torrent valide avant de le parser
+    Un fichier torrent bencodé commence toujours par 'd' (dictionnaire)
+    """
+    try:
+        path = Path(file_path)
+        if not path.exists() or path.stat().st_size == 0:
+            return False
+        
+        with open(file_path, 'rb') as f:
+            first_byte = f.read(1)
+            # Un fichier torrent bencodé commence toujours par 'd'
+            # Si ça commence par '<', c'est du HTML (erreur 404, etc.)
+            if first_byte != b'd':
+                return False
+        
+        return True
+    except Exception:
+        return False
+
 def calculate_torrent_hash(torrent_file_path: str) -> Optional[str]:
     """
     Calcule le hash SHA1 (info_hash) d'un fichier .torrent
     C'est ce hash qui est utilisé comme downloadId par Radarr/Sonarr
+    
+    CORRIGÉ v2.5: Vérifie que le fichier est un torrent valide avant parsing
     """
     try:
+        # Vérification préalable du fichier
+        if not is_valid_torrent_file(torrent_file_path):
+            print(f"⚠️  Fichier torrent invalide ou corrompu: {torrent_file_path}")
+            return None
+        
         import hashlib
         import bencodepy
         
         with open(torrent_file_path, 'rb') as f:
             torrent_data = bencodepy.decode(f.read())
+            
+            # Vérifier que 'info' existe
+            if b'info' not in torrent_data:
+                print(f"⚠️  Fichier torrent sans clé 'info': {torrent_file_path}")
+                return None
+            
             info = bencodepy.encode(torrent_data[b'info'])
             info_hash = hashlib.sha1(info).hexdigest().upper()
             return info_hash
+            
+    except bencodepy.exceptions.BencodeDecodeError as e:
+        print(f"⚠️  Erreur décodage torrent {torrent_file_path}: {e}")
+        # Le fichier n'est probablement pas un torrent valide (HTML, page d'erreur, etc.)
+        print(f"💡 Le fichier téléchargé n'est pas un torrent valide. Vérifiez l'URL source.")
+        return None
     except Exception as e:
-        print(f"⚠️  Erreur calcul hash {torrent_file_path}: {e}")
+        print(f"⚠️  Erreur inattendue calcul hash {torrent_file_path}: {e}")
         return None
 
-def is_download_id_imported(torrent_file_path: str, imported_download_ids: Set[str]) -> bool:
+def is_download_id_imported(torrent_file: str, imported_download_ids: Set[str]) -> bool:
     """
     Vérifie si le downloadId du fichier .torrent a été importé dans Radarr/Sonarr
+    
+    Args:
+        torrent_file: Nom du fichier torrent OU chemin complet
+        imported_download_ids: Set des downloadId importés
+    
+    CORRIGÉ v2.5.1: Accepte maintenant seulement le nom de fichier (reconstruit le chemin)
     """
+    # Si c'est juste un nom de fichier (pas de slash), reconstruire le chemin complet
+    if '/' not in torrent_file and '\\' not in torrent_file:
+        torrent_file_path = str(TORRENT_DIR / torrent_file)
+    else:
+        torrent_file_path = torrent_file
+    
     # Calculer le hash du .torrent
     download_id = calculate_torrent_hash(torrent_file_path)
     
     if not download_id:
         # Si on ne peut pas calculer le hash, on ne peut pas vérifier
-        # On retourne False pour être strict
+        # On retourne False pour être strict (le fichier n'est pas un torrent valide)
         return False
     
     return download_id in imported_download_ids
@@ -196,4 +252,24 @@ def clear_cache():
     global _imported_cache, _cache_timestamp
     _imported_cache = {}
     _cache_timestamp = None
-    print("🗑️  Cache vidé")
+    print("🗑️  Cache Radarr/Sonarr vidé")
+
+def get_cache_info() -> dict:
+    """Retourne des informations sur le cache"""
+    global _imported_cache, _cache_timestamp
+    
+    if not _cache_timestamp:
+        return {
+            "cached": False,
+            "count": 0,
+            "age_seconds": None
+        }
+    
+    age = (datetime.utcnow() - _cache_timestamp).total_seconds()
+    
+    return {
+        "cached": True,
+        "count": len(_imported_cache),
+        "age_seconds": int(age),
+        "expires_in_seconds": int(max(0, CACHE_DURATION - age))
+    }
