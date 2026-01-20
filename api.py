@@ -36,12 +36,24 @@ app = FastAPI(
 # Middleware pour rediriger vers /setup si premier lancement
 class SetupRedirectMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        # Ne pas rediriger si déjà sur /setup ou sur les routes API de setup
-        if request.url.path.startswith('/setup') or request.url.path.startswith('/api/setup'):
+        # Ne pas rediriger les routes API (pour éviter les erreurs JSON)
+        if request.url.path.startswith('/api'):
+            return await call_next(request)
+
+        # Ne pas rediriger si déjà sur /setup
+        if request.url.path.startswith('/setup'):
             return await call_next(request)
 
         # Ne pas rediriger les assets statiques
         if request.url.path.startswith('/torrents'):
+            return await call_next(request)
+
+        # Ne pas rediriger les routes utilitaires
+        if request.url.path in ['/health', '/debug', '/test', '/minimal']:
+            return await call_next(request)
+
+        # Ne pas rediriger les flux RSS
+        if request.url.path.startswith('/rss') or request.url.path.startswith('/feed'):
             return await call_next(request)
 
         # Vérifier si c'est le premier lancement
@@ -344,12 +356,10 @@ async def sync_logs(limit: int = Query(20, ge=1, le=100)):
 
 @app.get("/api/config")
 async def get_configuration():
-    """Récupère toute la configuration"""
+    """Récupère toute la configuration depuis settings.yml"""
     try:
-        config = get_all_config()
-        for key, desc in DESCRIPTIONS.items():
-            if key not in config:
-                config[key] = {"value": "", "description": desc}
+        from setup import get_config_for_ui
+        config = get_config_for_ui()
         return config
     except Exception as e:
         logger.error(f"Erreur get_config: {e}")
@@ -357,22 +367,18 @@ async def get_configuration():
 
 @app.post("/api/config")
 async def update_configuration(config_data: dict):
-    """Met à jour la configuration"""
+    """Met à jour la configuration dans settings.yml"""
     try:
-        for key, data in config_data.items():
-            if isinstance(data, dict):
-                value = str(data.get("value", ""))
-                desc = data.get("description", DESCRIPTIONS.get(key, ""))
-            else:
-                value = str(data)
-                desc = DESCRIPTIONS.get(key, "")
-            
-            set_config(key, value, desc)
-        
-        return {
-            "status": "updated",
-            "message": "Configuration mise à jour"
-        }
+        from setup import save_config_from_ui
+        success = save_config_from_ui(config_data)
+
+        if success:
+            return {
+                "status": "updated",
+                "message": "Configuration sauvegardée dans /config/settings.yml. Redémarrez l'application pour appliquer certains paramètres (SYNC_INTERVAL, etc.)"
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Erreur lors de la sauvegarde")
     except Exception as e:
         logger.error(f"Erreur update_config: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -418,25 +424,6 @@ async def vacuum_db():
         logger.error(f"Erreur vacuum_db: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/config/reload")
-async def reload_config_from_env():
-    """
-    Recharge la configuration depuis le fichier .env
-    ATTENTION : Écrase la configuration actuelle en DB avec les valeurs de .env
-    """
-    try:
-        from db import reload_config_from_env
-        count = reload_config_from_env()
-        
-        return {
-            "status": "reloaded",
-            "message": f"Configuration rechargée depuis .env ({count} paramètres)",
-            "count": count,
-            "warning": "L'application doit être redémarrée pour certains paramètres (SYNC_INTERVAL, etc.)"
-        }
-    except Exception as e:
-        logger.error(f"Erreur reload_config: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/logs/system")
 async def get_system_logs(
@@ -864,15 +851,15 @@ async def web_ui():
                 <button class="button" onclick="loadAdminStats()">🔄 Rafraîchir Stats</button>
                 <button class="button" onclick="clearCache()">🗑️ Vider Cache</button>
                 <button class="button" onclick="vacuumDatabase()">🔧 Optimiser BD</button>
-                <button class="button" onclick="reloadConfigFromEnv()">📄 Recharger .env</button>
                 <button class="button success" onclick="syncNow()">📡 Forcer Sync</button>
                 <button class="button danger" onclick="purgeOldGrabs()">🗑️ Purger Anciens</button>
             </div>
-            
+
             <div class="alert info" style="margin-top: 15px;">
-                <strong>💡 Configuration :</strong> 
-                Vous pouvez modifier la configuration via l'onglet <strong>Configuration</strong> ou via le fichier <strong>.env</strong>. 
-                Si vous modifiez .env, cliquez sur <strong>"Recharger .env"</strong> pour appliquer les changements (redémarrage requis pour certains paramètres).
+                <strong>💡 Configuration :</strong>
+                Vous pouvez modifier la configuration via l'onglet <strong>Configuration</strong>.
+                Les paramètres sont sauvegardés dans <strong>/config/settings.yml</strong>.
+                Un redémarrage peut être nécessaire pour certains paramètres (SYNC_INTERVAL, etc.).
             </div>
             
             <h3 style="margin-top: 30px; margin-bottom: 15px;">📋 Logs Système</h3>
@@ -1365,19 +1352,6 @@ async def web_ui():
                     const data = await res.json();
                     alert("✅ " + data.message + "\\nEspace libéré: " + data.saved_mb + " MB");
                     await loadAdminStats();
-                } catch (e) {
-                    alert("❌ Erreur: " + e);
-                }
-            }
-        }
-
-        async function reloadConfigFromEnv() {
-            if (confirm("⚠️  Attention : Cette action va ÉCRASER la configuration actuelle en base de données avec les valeurs du fichier .env.\\n\\nÊtes-vous sûr de vouloir continuer ?")) {
-                try {
-                    const res = await fetch(API_BASE + '/config/reload', { method: "POST" });
-                    const data = await res.json();
-                    alert("✅ " + data.message + "\\n\\n⚠️  " + data.warning + "\\n\\nPour appliquer complètement les changements, redémarrez l'application :\\n  docker compose restart grab2rss");
-                    await loadConfig();  // Recharger l'onglet config
                 } catch (e) {
                     alert("❌ Erreur: " + e);
                 }

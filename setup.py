@@ -168,3 +168,186 @@ def create_initial_config_if_needed():
     if not CONFIG_FILE.exists():
         print("📝 Création de la configuration initiale...")
         save_config(DEFAULT_CONFIG)
+
+
+def get_config_for_ui() -> Dict[str, Any]:
+    """
+    Récupère la configuration au format attendu par l'UI
+    Retourne un dict avec {key: {value: ..., description: ...}}
+    """
+    config = load_config()
+
+    # Descriptions pour l'UI
+    descriptions = {
+        "prowlarr_url": "URL de votre serveur Prowlarr (ex: http://prowlarr:9696)",
+        "prowlarr_api_key": "Clé API Prowlarr (obtenue depuis Prowlarr Settings → API)",
+        "prowlarr_history_page_size": "Nombre d'enregistrements à récupérer par sync (50-500)",
+        "radarr_url": "URL de Radarr (ex: http://radarr:7878) - Optionnel",
+        "radarr_api_key": "Clé API Radarr - Optionnel",
+        "radarr_enabled": "Activer l'intégration Radarr (true/false)",
+        "sonarr_url": "URL de Sonarr (ex: http://sonarr:8989) - Optionnel",
+        "sonarr_api_key": "Clé API Sonarr - Optionnel",
+        "sonarr_enabled": "Activer l'intégration Sonarr (true/false)",
+        "sync_interval": "Intervalle entre chaque sync en secondes (3600 = 1 heure)",
+        "sync_retention_hours": "Nombre d'heures avant suppression automatique (168 = 7j, 0 = infini)",
+        "sync_dedup_hours": "Fenêtre de déduplication en heures (24 = 24h glissant)",
+        "sync_auto_purge": "Activer la suppression automatique des anciens grabs (true/false)",
+        "rss_domain": "Domaine pour les URLs RSS (ex: grabb2rss.example.com)",
+        "rss_scheme": "Protocole pour les URLs RSS (http ou https)",
+        "rss_title": "Titre du flux RSS",
+        "rss_description": "Description du flux RSS"
+    }
+
+    # Convertir la config YAML en format UI
+    ui_config = {}
+
+    # Prowlarr
+    prowlarr = config.get("prowlarr", {})
+    ui_config["prowlarr_url"] = {
+        "value": prowlarr.get("url", ""),
+        "description": descriptions.get("prowlarr_url", "")
+    }
+    ui_config["prowlarr_api_key"] = {
+        "value": prowlarr.get("api_key", ""),
+        "description": descriptions.get("prowlarr_api_key", "")
+    }
+    ui_config["prowlarr_history_page_size"] = {
+        "value": str(prowlarr.get("history_page_size", 500)),
+        "description": descriptions.get("prowlarr_history_page_size", "")
+    }
+
+    # Radarr
+    radarr = config.get("radarr", {})
+    ui_config["radarr_url"] = {
+        "value": radarr.get("url", ""),
+        "description": descriptions.get("radarr_url", "")
+    }
+    ui_config["radarr_api_key"] = {
+        "value": radarr.get("api_key", ""),
+        "description": descriptions.get("radarr_api_key", "")
+    }
+    ui_config["radarr_enabled"] = {
+        "value": str(radarr.get("enabled", False)).lower(),
+        "description": descriptions.get("radarr_enabled", "")
+    }
+
+    # Sonarr
+    sonarr = config.get("sonarr", {})
+    ui_config["sonarr_url"] = {
+        "value": sonarr.get("url", ""),
+        "description": descriptions.get("sonarr_url", "")
+    }
+    ui_config["sonarr_api_key"] = {
+        "value": sonarr.get("api_key", ""),
+        "description": descriptions.get("sonarr_api_key", "")
+    }
+    ui_config["sonarr_enabled"] = {
+        "value": str(sonarr.get("enabled", False)).lower(),
+        "description": descriptions.get("sonarr_enabled", "")
+    }
+
+    # Sync
+    sync = config.get("sync", {})
+    ui_config["sync_interval"] = {
+        "value": str(sync.get("interval", 3600)),
+        "description": descriptions.get("sync_interval", "")
+    }
+    ui_config["sync_retention_hours"] = {
+        "value": str(sync.get("retention_hours", 168)),
+        "description": descriptions.get("sync_retention_hours", "")
+    }
+    ui_config["sync_dedup_hours"] = {
+        "value": str(sync.get("dedup_hours", 168)),
+        "description": descriptions.get("sync_dedup_hours", "")
+    }
+    ui_config["sync_auto_purge"] = {
+        "value": str(sync.get("auto_purge", True)).lower(),
+        "description": descriptions.get("sync_auto_purge", "")
+    }
+
+    # RSS
+    rss = config.get("rss", {})
+    ui_config["rss_domain"] = {
+        "value": rss.get("domain", "localhost:8000"),
+        "description": descriptions.get("rss_domain", "")
+    }
+    ui_config["rss_scheme"] = {
+        "value": rss.get("scheme", "http"),
+        "description": descriptions.get("rss_scheme", "")
+    }
+    ui_config["rss_title"] = {
+        "value": rss.get("title", "Grab2RSS"),
+        "description": descriptions.get("rss_title", "")
+    }
+    ui_config["rss_description"] = {
+        "value": rss.get("description", "Prowlarr to RSS Feed"),
+        "description": descriptions.get("rss_description", "")
+    }
+
+    return ui_config
+
+
+def save_config_from_ui(ui_config: Dict[str, Any]) -> bool:
+    """
+    Sauvegarde la configuration depuis l'UI dans settings.yml
+    ui_config est au format {key: {value: ..., description: ...}}
+    """
+    # Charger la config actuelle
+    config = load_config()
+
+    # Helper pour convertir les valeurs
+    def get_value(key: str, default: Any = ""):
+        if key in ui_config:
+            if isinstance(ui_config[key], dict):
+                return ui_config[key].get("value", default)
+            return ui_config[key]
+        return default
+
+    def to_bool(value):
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.lower() == "true"
+        return False
+
+    def to_int(value, default=0):
+        try:
+            return int(value) if value else default
+        except:
+            return default
+
+    # Mettre à jour la config
+    config["prowlarr"] = {
+        "url": get_value("prowlarr_url"),
+        "api_key": get_value("prowlarr_api_key"),
+        "history_page_size": to_int(get_value("prowlarr_history_page_size"), 500)
+    }
+
+    config["radarr"] = {
+        "url": get_value("radarr_url"),
+        "api_key": get_value("radarr_api_key"),
+        "enabled": to_bool(get_value("radarr_enabled"))
+    }
+
+    config["sonarr"] = {
+        "url": get_value("sonarr_url"),
+        "api_key": get_value("sonarr_api_key"),
+        "enabled": to_bool(get_value("sonarr_enabled"))
+    }
+
+    config["sync"] = {
+        "interval": to_int(get_value("sync_interval"), 3600),
+        "retention_hours": to_int(get_value("sync_retention_hours"), 168),
+        "dedup_hours": to_int(get_value("sync_dedup_hours"), 168),
+        "auto_purge": to_bool(get_value("sync_auto_purge", "true"))
+    }
+
+    config["rss"] = {
+        "domain": get_value("rss_domain", "localhost:8000"),
+        "scheme": get_value("rss_scheme", "http"),
+        "title": get_value("rss_title", "Grab2RSS"),
+        "description": get_value("rss_description", "Prowlarr to RSS Feed")
+    }
+
+    # Sauvegarder
+    return save_config(config)

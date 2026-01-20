@@ -1,4 +1,4 @@
-# 📦 Guide d'Installation - Grab2RSS v2.4
+# 📦 Guide d'Installation - Grab2RSS v2.6+
 
 ## 🎯 Installation Rapide (Docker)
 
@@ -8,46 +8,73 @@
 - Docker Compose >= 1.29
 - Prowlarr installé et configuré
 
-### Étape 1 : Récupérer le Projet
+### Étape 1 : Créer le fichier docker-compose.yml
 
 ```bash
-# Option A : Cloner depuis Git
-git clone https://github.com/votre-repo/grab2rss.git
-cd grab2rss
-
-# Option B : Télécharger et extraire
-wget https://github.com/votre-repo/grab2rss/archive/main.zip
-unzip main.zip
-cd grab2rss-main
+mkdir grab2rss && cd grab2rss
 ```
 
-### Étape 2 : Configuration
+Créez un fichier `docker-compose.yml` :
+
+```yaml
+version: "3.8"
+
+services:
+  grab2rss:
+    image: ghcr.io/kesurof/grabb2rss:latest
+    container_name: grab2rss
+    environment:
+      - PUID=1000  # Votre User ID (id -u)
+      - PGID=1000  # Votre Group ID (id -g)
+      - TZ=Europe/Paris
+    volumes:
+      - ./config:/config
+      - ./data:/app/data
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+```
+
+### Étape 2 : Démarrage
 
 ```bash
-# Copier l'exemple de configuration
-cp .env.example .env
-
-# Éditer la configuration
-nano .env
-```
-
-**Configuration minimale requise** :
-
-```env
-PROWLARR_URL=http://prowlarr:9696
-PROWLARR_API_KEY=VOTRE_CLE_API_ICI
-```
-
-### Étape 3 : Démarrage
-
-```bash
-# Construire et démarrer
+# Démarrer le container
 docker-compose up -d
 
 # Vérifier les logs
 docker-compose logs -f grab2rss
+```
 
-# Vérifier le statut
+### Étape 3 : Configuration via le Setup Wizard
+
+Ouvrez votre navigateur sur **http://localhost:8000**
+
+Vous serez automatiquement redirigé vers le **Setup Wizard** où vous pourrez configurer :
+
+1. **Prowlarr** (obligatoire) :
+   - URL : `http://prowlarr:9696` (ou votre URL)
+   - Clé API : obtenue depuis Prowlarr → Settings → General → API Key
+
+2. **Radarr** (optionnel) :
+   - URL : `http://radarr:7878`
+   - Clé API : obtenue depuis Radarr → Settings → General → API Key
+
+3. **Sonarr** (optionnel) :
+   - URL : `http://sonarr:8989`
+   - Clé API : obtenue depuis Sonarr → Settings → General → API Key
+
+4. **Paramètres de synchronisation** :
+   - Intervalle : 3600 secondes (1 heure)
+   - Rétention : 168 heures (7 jours)
+   - Déduplication : 168 heures
+
+5. **Paramètres RSS** :
+   - Domaine : localhost:8000 (ou votre domaine)
+   - Protocole : http (ou https si derrière un proxy)
+
+**C'est tout !** La configuration est sauvegardée dans `./config/settings.yml`
+
+### Vérifier le statut
 docker-compose ps
 ```
 
@@ -100,21 +127,15 @@ pip install -r requirements.txt
 
 ### Étape 3 : Configuration
 
-```bash
-# Copier l'exemple
-cp .env.example .env
+La configuration se fait maintenant via le **Setup Wizard** accessible au premier lancement sur http://localhost:8000
 
-# Éditer avec votre éditeur préféré
-nano .env
-# OU
-vim .env
-# OU
-code .env  # VSCode
-```
+Vous pouvez également modifier la configuration :
+- Via l'interface web (onglet Configuration)
+- En éditant directement `/config/settings.yml`
 
-**Fichier .env minimal** :
+**Exemple de fichier settings.yml** :
 
-```env
+```yaml
 PROWLARR_URL=http://localhost:9696
 PROWLARR_API_KEY=votre_clé_api_prowlarr
 PROWLARR_HISTORY_PAGE_SIZE=100
@@ -152,7 +173,7 @@ python main.py
 Vous devriez voir :
 
 ```
-✅ Configuration chargée depuis /opt/grab2rss/.env
+✅ Configuration chargée depuis /opt/grab2rss/settings.yml
 ✅ Configuration valide
 
 INFO:     Started server process [12345]
@@ -185,7 +206,7 @@ firefox http://localhost:8000
 3. Onglet **General**
 4. Section **Security**
 5. Copier la **API Key**
-6. Coller dans `PROWLARR_API_KEY` de votre fichier `.env`
+6. Coller dans `PROWLARR_API_KEY` de votre fichier `settings.yml`
 
 ### Méthode 2 : Via le Fichier de Config
 
@@ -499,7 +520,7 @@ restart: unless-stopped
 
 - [ ] Python 3.9+ installé (ou Docker)
 - [ ] Dépendances installées (`pip install -r requirements.txt`)
-- [ ] Fichier `.env` créé et configuré
+- [ ] Fichier `settings.yml` créé et configuré
 - [ ] `PROWLARR_API_KEY` définie
 - [ ] Répertoires `data/` et `data/torrents/` créés
 - [ ] Permissions correctes (755 data/, 777 data/torrents/)
@@ -514,10 +535,10 @@ restart: unless-stopped
 
 ### Erreur : "PROWLARR_API_KEY manquante"
 
-**Solution** : Vérifier que la clé est bien définie dans `.env`
+**Solution** : Vérifier que la clé est bien définie dans `settings.yml`
 
 ```bash
-grep PROWLARR_API_KEY .env
+grep PROWLARR_API_KEY settings.yml
 ```
 
 ### Erreur : "Connection refused" (Prowlarr)
