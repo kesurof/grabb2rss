@@ -11,7 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **🚀 Setup Wizard** - Configuration initiale en français au premier lancement
   - Interface web intuitive pour la première configuration
   - Configuration de Prowlarr (obligatoire)
-  - Configuration optionnelle de Radarr et Sonarr
+  - **Radarr et Sonarr rendus OBLIGATOIRES** (anciennement optionnels)
+  - URLs par défaut pré-remplies (prowlarr:9696, radarr:7878, sonarr:8989)
   - Paramètres de synchronisation et rétention
   - Test de connexion intégré
   - Configuration sauvegardée dans `/config/settings.yml`
@@ -21,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Publication automatique sur GitHub Container Registry (GHCR)
   - Tags sémantiques (latest, version, branch)
   - Cache optimisé pour builds rapides
+  - **Workflow de release automatique** avec génération de changelog
 
 - **Simplified Deployment**
   - Docker Compose simplifié avec image pré-construite
@@ -34,7 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Module `setup.py` pour gestion de la configuration
   - Détection automatique du premier lancement
   - Middleware de redirection vers le setup wizard
-  - **Configuration chargée depuis YAML au démarrage** (Option A)
+  - Configuration chargée depuis YAML au démarrage
   - Système de priorité : YAML > .env > variables d'env > défaut
   - Scheduler démarre automatiquement après setup wizard
   - Configuration persiste entre les redémarrages du container
@@ -46,6 +48,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Version de l'API FastAPI bump à 2.6.1
 - Suppression de la méthode manuelle du README
 
+### Fixed
+- **🚀 Build Docker 80% plus rapide** sur ARM (21min → 3-5min)
+  - Remplacement de `uvicorn[standard]` par `uvicorn` (pas de compilation C)
+  - Suppression de la compilation de `httptools` et `uvloop`
+  - Ajout de piwheels pour les wheels précompilés ARM
+  - Utilisation de build cache avec `--mount=type=cache`
+  - Suppression de `pydantic-settings` (non utilisé)
+
+- **Setup Wizard - Corrections JavaScript**
+  - Correction erreur `SyntaxError: missing ) after argument list`
+  - Correction erreur `ReferenceError: testConnection is not defined`
+  - Remplacement apostrophes échappées (`\'`) par doubles quotes
+  - Suppression emojis dans les alertes (problèmes d'encodage)
+  - Correction de la sérialisation JSON (`url: url` au lieu de `url`)
+
+- **Setup Wizard - Corrections fonctionnelles**
+  - Correction chemin entrypoint (`/entrypoint.sh` → `/app/entrypoint.sh`)
+  - Ajout permissions correctes (755) sur `/config` et `/app/data`
+  - Amélioration logging avec diagnostics de permissions détaillés
+  - Meilleurs messages d'erreur pour le débogage
+  - Validation HTML5 des champs (min/max, required)
+  - Auto-détection du domaine RSS depuis le navigateur
+
 ### Added Dependencies
 - `pyyaml==6.0.1` pour la gestion de la configuration YAML
 
@@ -54,6 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Déploiement plus simple et rapide
 - Configuration plus intuitive
 - Documentation plus claire et concise
+- Build Docker optimisé pour ARM
 
 ---
 
