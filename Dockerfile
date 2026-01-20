@@ -21,7 +21,13 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
 # Copy and install requirements
 COPY requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt
+
+# Use piwheels for ARM builds (precompiled wheels = much faster)
+# This speeds up ARM builds from ~20min to ~3min
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir \
+    --extra-index-url https://www.piwheels.org/simple \
+    -r /tmp/requirements.txt
 
 # ============================================
 # Stage 2: Runtime - Minimal production image
@@ -57,6 +63,10 @@ RUN chmod +x /entrypoint.sh
 # Set working directory
 WORKDIR /app
 
+# Copy entrypoint first (before app code for better layer caching)
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
 # Copy application code (do this late to maximize cache)
 COPY . .
 
@@ -77,4 +87,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Use entrypoint for proper permission handling
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/app/entrypoint.sh"]
