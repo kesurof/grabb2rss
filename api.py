@@ -89,7 +89,7 @@ async def startup():
     """Au démarrage de l'app"""
     init_db()
     start_scheduler()
-    print("✅ Application démarrée v2.5")
+    print("✅ Application démarrée v2.6.8")
 
 @app.on_event("shutdown")
 async def shutdown():
@@ -107,7 +107,7 @@ async def health():
     checks = {
         "status": "ok",
         "timestamp": datetime.utcnow().isoformat(),
-        "version": "2.5.0",
+        "version": "2.8.8",
         "components": {
             "database": "unknown",
             "prowlarr": "unknown",
@@ -384,7 +384,7 @@ async def update_configuration(config_data: dict):
         logger.error(f"Erreur update_config: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# ==================== ADMIN / MAINTENANCE v2.5 ====================
+# ==================== ADMIN / MAINTENANCE v2.6.8 ====================
 
 @app.post("/api/cache/clear")
 async def clear_cache():
@@ -648,7 +648,7 @@ async def minimal_ui():
     <title>Grab2RSS - Test Minimal</title>
 </head>
 <body style="font-family: Arial; max-width: 800px; margin: 50px auto; padding: 20px; background: #0f0f0f; color: #fff;">
-    <h1 style="color: #1e90ff;">🧪 Grab2RSS v2.5 - Test Minimal</h1>
+    <h1 style="color: #1e90ff;">🧪 Grab2RSS v2.6.8 - Test Minimal</h1>
     <p style="color: #00ff00;">✅ Si vous voyez cette page, le serveur fonctionne !</p>
     <h2>📋 Liens de Test</h2>
     <a href="/api/stats" target="_blank" style="color: #1e90ff; display: block; padding: 10px; margin: 10px 0; background: #1a1a1a; border-radius: 4px; text-decoration: none;">📊 Stats (JSON)</a>
@@ -661,13 +661,13 @@ async def minimal_ui():
 
 @app.get("/", response_class=HTMLResponse)
 async def web_ui():
-    """Interface Web complète v2.5 - CORRIGÉE"""
+    """Interface Web complète v2.6.8 - CORRIGÉE"""
     html_content = """<!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grab2RSS v2.5 - Dashboard</title>
+    <title>Grab2RSS v2.6.8 - Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -755,7 +755,7 @@ async def web_ui():
 <body>
     <div class="container">
         <header>
-            <h1>📡 Grabb2RSS v2.6.5</h1>
+            <h1>📡 Grabb2RSS v2.6.8</h1>
             <p class="subtitle">Convertisseur Prowlarr → RSS avec Flux Personnalisés + Admin</p>
         </header>
 
@@ -773,7 +773,7 @@ async def web_ui():
         <!-- TAB: DASHBOARD -->
         <div id="dashboard" class="tab-content active">
             <div class="alert info" style="margin-bottom: 20px;">
-                <strong>👋 Bienvenue sur Grab2RSS v2.6.5</strong><br>
+                <strong>👋 Bienvenue sur Grab2RSS v2.6.8</strong><br>
                 <span style="color: #ddd;">Votre convertisseur Prowlarr → RSS est opérationnel. Surveillez vos grabs, gérez vos torrents et configurez vos flux RSS personnalisés.</span>
             </div>
 
@@ -1036,7 +1036,7 @@ async def web_ui():
             </div>
         </div>
 
-        <!-- TAB: ADMIN (NOUVEAU v2.5) -->
+        <!-- TAB: ADMIN (NOUVEAU v2.6.8) -->
         <div id="admin" class="tab-content">
             <h2>🔧 Administration & Maintenance</h2>
             
@@ -1978,7 +1978,7 @@ async def web_ui():
         }
 
         document.addEventListener('DOMContentLoaded', async () => {
-            console.log("🚀 Initialisation Grab2RSS v2.5...");
+            console.log("🚀 Initialisation Grab2RSS v2.6.8...");
             
             try {
                 await loadTrackers();
