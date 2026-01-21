@@ -52,6 +52,14 @@ def load_configuration():
                     config["RSS_TITLE"] = rss.get("title", "grabb2rss")
                     config["RSS_DESCRIPTION"] = rss.get("description", "Prowlarr to RSS Feed")
 
+                    # Authentification
+                    auth = yaml_config.get("auth", {})
+                    config["AUTH_ENABLED"] = auth.get("enabled", False)
+                    config["AUTH_USERNAME"] = auth.get("username", "admin")
+                    config["AUTH_PASSWORD_HASH"] = auth.get("password_hash", "")
+                    config["AUTH_API_KEY"] = auth.get("api_key", "")
+                    config["AUTH_REQUIRE_FOR_RSS"] = auth.get("require_auth_for_rss", True)
+
                     return config
         except Exception as e:
             print(f"⚠️  Erreur lecture {settings_file}: {e}")
@@ -141,6 +149,13 @@ RSS_INTERNAL_URL = _get_config("RSS_INTERNAL_URL", "http://grabb2rss:8000", str)
 # API
 RSS_TITLE = _get_config("RSS_TITLE", "grabb2rss", str)
 RSS_DESCRIPTION = _get_config("RSS_DESCRIPTION", "Derniers torrents grabbés via Prowlarr", str)
+
+# Authentification
+AUTH_ENABLED = _get_config("AUTH_ENABLED", False, bool)
+AUTH_USERNAME = _get_config("AUTH_USERNAME", "admin", str)
+AUTH_PASSWORD_HASH = _get_config("AUTH_PASSWORD_HASH", "", str)
+AUTH_API_KEY = _get_config("AUTH_API_KEY", "", str)
+AUTH_REQUIRE_FOR_RSS = _get_config("AUTH_REQUIRE_FOR_RSS", True, bool)
 
 # Descriptions pour l'UI
 DESCRIPTIONS = {

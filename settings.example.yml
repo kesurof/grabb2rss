@@ -1,0 +1,51 @@
+# Grabb2RSS Configuration File
+# Ce fichier est généré automatiquement par le setup wizard
+# Vous pouvez le modifier manuellement si nécessaire
+
+# Configuration Prowlarr (REQUIS)
+prowlarr:
+  url: "http://prowlarr:9696"              # URL de votre serveur Prowlarr
+  api_key: "votre_api_key_prowlarr"        # Clé API depuis Prowlarr Settings → API
+  history_page_size: 500                    # Nombre d'items à récupérer par sync (50-500)
+
+# Configuration Radarr (OPTIONNEL)
+radarr:
+  url: "http://radarr:7878"                 # URL de votre serveur Radarr
+  api_key: "votre_api_key_radarr"          # Clé API Radarr
+  enabled: true                             # Activer/désactiver l'intégration Radarr
+
+# Configuration Sonarr (OPTIONNEL)
+sonarr:
+  url: "http://sonarr:8989"                 # URL de votre serveur Sonarr
+  api_key: "votre_api_key_sonarr"          # Clé API Sonarr
+  enabled: true                             # Activer/désactiver l'intégration Sonarr
+
+# Configuration de la synchronisation
+sync:
+  interval: 3600                            # Intervalle de sync en secondes (3600 = 1h)
+  auto_purge: true                          # Activer la purge automatique des vieux grabs
+  retention_hours: 168                      # Durée de rétention en heures (168 = 7 jours, 0 = infini)
+  dedup_hours: 168                          # Fenêtre de déduplication en heures (168 = 7 jours)
+
+# Configuration des flux RSS
+rss:
+  domain: "localhost:8000"                  # Domaine public pour les URLs RSS
+  scheme: "http"                            # Protocole: http ou https
+  title: "Grabb2RSS"                        # Titre du flux RSS
+  description: "Prowlarr to RSS Feed"       # Description du flux RSS
+
+# Configuration de l'authentification
+auth:
+  enabled: false                            # Activer/désactiver l'authentification
+  username: "admin"                         # Nom d'utilisateur pour l'interface web
+  password_hash: ""                         # Hash du mot de passe (généré automatiquement)
+  api_key: ""                               # Clé API pour accès RSS externe (générée automatiquement)
+  require_auth_for_rss: true                # Exiger l'auth pour les flux RSS (sauf accès local)
+
+# Configuration de l'application
+app:
+  host: "0.0.0.0"
+  port: 8000
+
+# Marqueur de setup complété (NE PAS MODIFIER)
+setup_completed: true

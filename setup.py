@@ -40,6 +40,13 @@ DEFAULT_CONFIG = {
         "title": "Grabb2RSS",
         "description": "Prowlarr to RSS Feed"
     },
+    "auth": {
+        "enabled": False,
+        "username": "admin",
+        "password_hash": "",
+        "api_key": "",
+        "require_auth_for_rss": True
+    },
     "app": {
         "host": "0.0.0.0",
         "port": 8000
