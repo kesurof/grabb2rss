@@ -3,13 +3,15 @@
 # ============================================
 FROM python:3.11-slim AS builder
 
-# Install build dependencies
+# Install build dependencies (including crypto libs for passlib and python-jose)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     python3-dev \
     build-essential \
+    libffi-dev \
+    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Create virtual environment for isolation
@@ -43,11 +45,14 @@ LABEL org.opencontainers.image.description="Prowlarr to RSS converter inspired b
 LABEL org.opencontainers.image.licenses="MIT"
 
 # Install only runtime dependencies (no gcc/build tools)
+# Note: libssl3 and libffi8 are needed for crypto operations (passlib, python-jose)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     curl \
     gosu \
     bash \
+    libssl3 \
+    libffi8 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Python virtual environment from builder
