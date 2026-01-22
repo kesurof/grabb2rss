@@ -1,0 +1,1569 @@
+{% extends "base.html" %}
+
+{% block title %}Grabb2RSS - Interface de Gestion{% endblock %}
+
+{% block content %}
+    <div class="container">
+        <header>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h1>📡 Grabb2RSS v2.6.8</h1>
+                    <p class="subtitle">Convertisseur Prowlarr → RSS avec Flux Personnalisés + Admin</p>
+                </div>
+                <div id="auth-info" style="display: none; text-align: right;">
+                    <p style="color: #888; font-size: 13px; margin-bottom: 5px;">
+                        Connecté en tant que: <span id="username-display" style="color: #1e90ff; font-weight: 600;"></span>
+                    </p>
+                    <button class="button" onclick="logout()" style="font-size: 13px; padding: 8px 15px;">
+                        🚪 Déconnexion
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <div class="tabs">
+            <button class="tab-button active" onclick="switchTab('dashboard')">📊 Dashboard</button>
+            <button class="tab-button" onclick="switchTab('grabs')">📋 Grabs</button>
+            <button class="tab-button" onclick="switchTab('torrents')">📦 Torrents</button>
+            <button class="tab-button" onclick="switchTab('stats')">📈 Statistiques</button>
+            <button class="tab-button" onclick="switchTab('rss')">📡 Flux RSS</button>
+            <button class="tab-button" onclick="switchTab('logs')">📝 Logs</button>
+            <button class="tab-button" onclick="switchTab('config')">⚙️ Configuration</button>
+            <button class="tab-button" onclick="switchTab('security')" id="security-tab" style="display: none;">🔐 Sécurité</button>
+            <button class="tab-button" onclick="switchTab('admin')">🔧 Admin</button>
+        </div>
+
+        <!-- TAB: DASHBOARD -->
+        <div id="dashboard" class="tab-content active">
+            <div class="alert info" style="margin-bottom: 20px;">
+                <strong>👋 Bienvenue sur Grab2RSS v2.6.8</strong><br>
+                <span style="color: #ddd;">Votre convertisseur Prowlarr → RSS est opérationnel. Surveillez vos grabs, gérez vos torrents et configurez vos flux RSS personnalisés.</span>
+            </div>
+
+            <div class="grid">
+                <div class="card">
+                    <h3>📋 Total Grabs</h3>
+                    <div class="value" id="total-grabs">-</div>
+                    <p style="color: #888; font-size: 12px; margin-top: 10px;">Grabs enregistrés en base</p>
+                </div>
+                <div class="card">
+                    <h3>📦 Fichiers Torrents</h3>
+                    <div class="value" id="dashboard-torrent-count">-</div>
+                    <p style="color: #888; font-size: 12px; margin-top: 10px;">
+                        Taille: <span id="dashboard-torrent-size">-</span> MB
+                    </p>
+                </div>
+                <div class="card">
+                    <h3>💾 Stockage Total</h3>
+                    <div class="value"><span id="storage-size">-</span><span class="unit">MB</span></div>
+                    <p style="color: #888; font-size: 12px; margin-top: 10px;">Base + Torrents</p>
+                </div>
+                <div class="card">
+                    <h3>📡 Statut Sync</h3>
+                    <div class="status" id="sync-status"></div>
+                    <div class="date" id="next-sync" style="margin-top: 10px;">-</div>
+                </div>
+            </div>
+
+            <div class="grid" style="margin-top: 20px;">
+                <div class="card">
+                    <h3>🕒 Dernier Grab</h3>
+                    <div class="value" id="latest-grab" style="font-size: 14px; margin-top: 10px;">-</div>
+                </div>
+                <div class="card">
+                    <h3>🎯 Trackers Actifs</h3>
+                    <div class="value" id="dashboard-trackers-count">-</div>
+                    <p style="color: #888; font-size: 12px; margin-top: 10px;">Trackers différents</p>
+                </div>
+                <div class="card">
+                    <h3>📊 Grabs Aujourd'hui</h3>
+                    <div class="value" id="dashboard-grabs-today">-</div>
+                    <p style="color: #888; font-size: 12px; margin-top: 10px;">Dernières 24h</p>
+                </div>
+                <div class="card">
+                    <h3>⏱️ Uptime</h3>
+                    <div class="value" id="dashboard-uptime" style="font-size: 20px;">-</div>
+                    <p style="color: #888; font-size: 12px; margin-top: 10px;">Temps d'activité</p>
+                </div>
+            </div>
+
+            <h2>🎯 Actions Rapides</h2>
+            <div class="actions">
+                <button class="button" onclick="refreshData()">🔄 Actualiser Dashboard</button>
+                <button class="button success" id="sync-btn" onclick="syncNow()">📡 Synchroniser Maintenant</button>
+                <button class="button" onclick="switchTab('torrents')">📦 Gérer les Torrents</button>
+                <button class="button danger" onclick="purgeAllGrabs()">🗑️ Vider Tous les Grabs</button>
+            </div>
+
+            <h2 style="margin-top: 30px;">🔗 Accès Rapides</h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
+                <a href="/rss" target="_blank" style="background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 15px; text-decoration: none; color: #1e90ff; display: block; transition: 0.2s;">
+                    <strong style="display: block; margin-bottom: 5px;">📡 Flux RSS Global</strong>
+                    <span style="color: #888; font-size: 12px;">Tous les trackers</span>
+                </a>
+                <a href="/api/stats" target="_blank" style="background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 15px; text-decoration: none; color: #1e90ff; display: block; transition: 0.2s;">
+                    <strong style="display: block; margin-bottom: 5px;">📊 Statistiques API</strong>
+                    <span style="color: #888; font-size: 12px;">Format JSON</span>
+                </a>
+                <a href="/health" target="_blank" style="background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 15px; text-decoration: none; color: #1e90ff; display: block; transition: 0.2s;">
+                    <strong style="display: block; margin-bottom: 5px;">💚 Health Check</strong>
+                    <span style="color: #888; font-size: 12px;">État des services</span>
+                </a>
+                <a href="javascript:void(0)" onclick="switchTab('config')" style="background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 15px; text-decoration: none; color: #1e90ff; display: block; transition: 0.2s;">
+                    <strong style="display: block; margin-bottom: 5px;">⚙️ Configuration</strong>
+                    <span style="color: #888; font-size: 12px;">Modifier les paramètres</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- TAB: GRABS -->
+        <div id="grabs" class="tab-content">
+            <h2>📋 Derniers Grabs</h2>
+
+            <div class="filter-bar">
+                <label for="tracker-filter-grabs" style="margin: 0; color: #1e90ff; font-weight: 600;">Filtrer par Tracker:</label>
+                <select id="tracker-filter-grabs" onchange="filterGrabs()" style="flex: 0 0 auto; min-width: 200px;">
+                    <option value="all">Tous les trackers</option>
+                </select>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Titre</th>
+                        <th>Tracker</th>
+                        <th>Fichier</th>
+                    </tr>
+                </thead>
+                <tbody id="grabs-table">
+                    <tr><td colspan="4" style="text-align: center; color: #888;">Chargement...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- TAB: TORRENTS -->
+        <div id="torrents" class="tab-content">
+            <h2>📦 Gestion des Fichiers Torrents</h2>
+            <p style="color: #888; margin-bottom: 20px;">Gérez vos fichiers torrents : téléchargement, suppression, nettoyage des orphelins</p>
+
+            <div class="grid" style="margin-bottom: 20px;">
+                <div class="card">
+                    <h3>Total Fichiers</h3>
+                    <div class="value" id="torrents-total">-</div>
+                </div>
+                <div class="card">
+                    <h3>Taille Totale</h3>
+                    <div class="value"><span id="torrents-size">-</span><span class="unit">MB</span></div>
+                </div>
+                <div class="card">
+                    <h3>Avec Grab</h3>
+                    <div class="value" id="torrents-with-grab">-</div>
+                </div>
+                <div class="card">
+                    <h3>Orphelins</h3>
+                    <div class="value" id="torrents-orphans" style="color: #ff6b6b;">-</div>
+                </div>
+            </div>
+
+            <div class="actions" style="margin-bottom: 20px;">
+                <button class="button" onclick="loadTorrents()">🔄 Actualiser</button>
+                <button class="button" onclick="cleanupOrphanTorrents()">🗑️ Nettoyer Orphelins</button>
+                <button class="button danger" onclick="purgeAllTorrents()">🗑️ Vider Tous les Torrents</button>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 40px;"><input type="checkbox" id="select-all-torrents" onchange="toggleAllTorrents()"></th>
+                        <th>Fichier</th>
+                        <th>Titre</th>
+                        <th>Tracker</th>
+                        <th>Date Grab</th>
+                        <th>Taille</th>
+                        <th>Statut</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="torrents-table">
+                    <tr><td colspan="8" style="text-align: center; color: #888;">Chargement...</td></tr>
+                </tbody>
+            </table>
+
+            <div class="actions" style="margin-top: 20px;" id="bulk-actions" style="display: none;">
+                <button class="button danger" onclick="deleteBulkTorrents()">🗑️ Supprimer la sélection</button>
+            </div>
+        </div>
+
+        <!-- TAB: STATISTIQUES -->
+        <div id="stats" class="tab-content">
+            <h2>📈 Statistiques Détaillées</h2>
+            
+            <div class="stats-grid">
+                <div class="chart-container chart-small">
+                    <canvas id="trackerChart"></canvas>
+                </div>
+                <div class="chart-container chart-small">
+                    <canvas id="grabsByDayChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="chart-container">
+                <canvas id="topTorrentsChart"></canvas>
+            </div>
+            
+            <h3 style="margin-top: 40px; margin-bottom: 15px;">📊 Grabs par Tracker</h3>
+            <table id="tracker-stats-table">
+                <thead>
+                    <tr>
+                        <th>Tracker</th>
+                        <th>Nombre de grabs</th>
+                        <th>Pourcentage</th>
+                    </tr>
+                </thead>
+                <tbody id="tracker-stats-body">
+                    <tr><td colspan="3" style="text-align: center; color: #888;">Chargement...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- TAB: RSS FEEDS -->
+        <div id="rss" class="tab-content">
+            <h2>📡 Flux RSS Personnalisés</h2>
+            <p style="color: #888; margin-bottom: 20px;">Copiez l'URL appropriée pour votre client torrent</p>
+            
+            <div class="rss-section">
+                <h3>🎯 Flux Global (Tous les Trackers)</h3>
+                <p style="color: #888; font-size: 12px; margin-bottom: 10px;">Compatible rutorrent, qBittorrent, Transmission</p>
+                
+                <p style="margin-bottom: 10px; color: #ddd;"><strong>Format XML:</strong></p>
+                <div class="rss-url" id="rss-global-xml">https://example.com/rss</div>
+                <button class="copy-btn" onclick="copyToClipboard('rss-global-xml')">📋 Copier</button>
+                
+                <p style="margin-top: 15px; margin-bottom: 10px; color: #ddd;"><strong>Format JSON:</strong></p>
+                <div class="rss-url" id="rss-global-json">https://example.com/rss/torrent.json</div>
+                <button class="copy-btn" onclick="copyToClipboard('rss-global-json')">📋 Copier</button>
+            </div>
+            
+            <div class="rss-section">
+                <h3>🔍 Flux par Tracker</h3>
+                <p style="color: #888; font-size: 12px; margin-bottom: 15px;">Sélectionnez un tracker pour générer son flux personnalisé</p>
+                
+                <div class="filter-bar">
+                    <label for="tracker-filter-rss" style="margin: 0;">Tracker:</label>
+                    <select id="tracker-filter-rss" onchange="updateTrackerRssUrls()" style="flex: 0 0 auto; min-width: 250px;">
+                        <option value="all">Tous</option>
+                    </select>
+                </div>
+                
+                <p style="margin-bottom: 10px; color: #ddd;"><strong>Format XML:</strong></p>
+                <div class="rss-url" id="rss-tracker-xml">-</div>
+                <button class="copy-btn" onclick="copyToClipboard('rss-tracker-xml')">📋 Copier</button>
+                
+                <p style="margin-top: 15px; margin-bottom: 10px; color: #ddd;"><strong>Format JSON:</strong></p>
+                <div class="rss-url" id="rss-tracker-json">-</div>
+                <button class="copy-btn" onclick="copyToClipboard('rss-tracker-json')">📋 Copier</button>
+            </div>
+            
+            <div class="alert alert-info">
+                <strong>💡 Utilisation:</strong> Copiez l'URL dans votre client torrent (rutorrent, qBittorrent, Transmission, etc). Les flux se mettent à jour automatiquement.
+            </div>
+        </div>
+
+        <!-- TAB: LOGS -->
+        <div id="logs" class="tab-content">
+            <h2>📝 Historique Synchronisations</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Statut</th>
+                        <th>Grabs</th>
+                        <th>Doublons</th>
+                        <th>Erreur</th>
+                    </tr>
+                </thead>
+                <tbody id="logs-table">
+                    <tr><td colspan="5" style="text-align: center; color: #888;">Chargement...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- TAB: CONFIG -->
+        <div id="config" class="tab-content">
+            <h2>⚙️ Configuration</h2>
+            <div id="config-form"></div>
+            <div style="margin-top: 20px;">
+                <button class="button success" onclick="saveConfig()">💾 Sauvegarder</button>
+                <button class="button" onclick="loadConfig()">🔄 Recharger</button>
+            </div>
+        </div>
+
+        <!-- TAB: ADMIN (NOUVEAU v2.6.8) -->
+        <div id="admin" class="tab-content">
+            <h2>🔧 Administration & Maintenance</h2>
+            
+            <h3 style="margin-top: 20px; margin-bottom: 15px;">📊 Statistiques Système</h3>
+            <div class="grid">
+                <div class="card">
+                    <h3>Base de Données</h3>
+                    <div class="value"><span id="admin-db-size">-</span><span class="unit">MB</span></div>
+                    <p style="color: #888; font-size: 12px; margin-top: 10px;">
+                        Grabs: <span id="admin-db-grabs">-</span> |
+                        Logs: <span id="admin-db-logs">-</span>
+                    </p>
+                </div>
+                <div class="card">
+                    <h3>Fichiers Torrents</h3>
+                    <div class="value"><span id="admin-torrent-count">-</span></div>
+                    <p style="color: #888; font-size: 12px; margin-top: 10px;">
+                        Taille: <span id="admin-torrent-size">-</span> MB<br>
+                        Orphelins: <span id="admin-torrent-orphans" style="color: #ff6b6b;">-</span>
+                    </p>
+                </div>
+                <div class="card">
+                    <h3>Mémoire</h3>
+                    <div class="value"><span id="admin-memory">-</span><span class="unit">MB</span></div>
+                    <p style="color: #888; font-size: 12px; margin-top: 10px;">
+                        CPU: <span id="admin-cpu">-</span>%
+                    </p>
+                </div>
+                <div class="card">
+                    <h3>Uptime</h3>
+                    <div class="value" id="admin-uptime" style="font-size: 20px;">-</div>
+                </div>
+            </div>
+            
+            <h3 style="margin-top: 30px; margin-bottom: 15px;">🛠️ Actions de Maintenance</h3>
+            <div class="actions">
+                <button class="button" onclick="loadAdminStats()">🔄 Rafraîchir Stats</button>
+                <button class="button" onclick="clearCache()">🗑️ Vider Cache</button>
+                <button class="button" onclick="vacuumDatabase()">🔧 Optimiser BD</button>
+                <button class="button success" onclick="syncNow()">📡 Forcer Sync</button>
+                <button class="button danger" onclick="purgeOldGrabs()">🗑️ Purger Anciens</button>
+                <button class="button" onclick="testHistoryLimits()">📊 Tester Limites Historique</button>
+            </div>
+
+            <div class="alert info" style="margin-top: 15px;">
+                <strong>💡 Configuration :</strong>
+                Vous pouvez modifier la configuration via l'onglet <strong>Configuration</strong>.
+                Les paramètres sont sauvegardés dans <strong>/config/settings.yml</strong>.
+                Un redémarrage peut être nécessaire pour certains paramètres (SYNC_INTERVAL, etc.).
+            </div>
+            
+            <h3 style="margin-top: 30px; margin-bottom: 15px;">📋 Logs de Synchronisation</h3>
+            <div class="filter-bar">
+                <label for="log-level-filter" style="margin: 0; color: #1e90ff; font-weight: 600;">Niveau:</label>
+                <select id="log-level-filter" onchange="loadSystemLogs()" style="flex: 0 0 auto; min-width: 150px;">
+                    <option value="all">Tous</option>
+                    <option value="success">Succès</option>
+                    <option value="error">Erreurs</option>
+                    <option value="warning">Avertissements</option>
+                    <option value="info">Informations</option>
+                </select>
+                <button class="button danger" onclick="purgeAllLogs()" style="margin-left: auto;">🗑️ Vider Tous les Logs</button>
+            </div>
+            <div id="system-logs-container" style="max-height: 500px; overflow-y: auto; margin-top: 15px;">
+                <p style="text-align: center; color: #888; padding: 20px;">Chargement des logs...</p>
+            </div>
+
+            <div class="alert info" style="margin-top: 15px;">
+                <strong>💡 À propos des logs :</strong>
+                Les logs affichent l'historique des synchronisations avec Prowlarr. Chaque log contient le nombre de grabs récupérés, les doublons détectés et les éventuelles erreurs. Vous pouvez supprimer individuellement les logs ou vider tous les logs pour libérer de l'espace.
+            </div>
+
+            <h3 style="margin-top: 30px; margin-bottom: 15px;">📊 Test des Limites d'Historique</h3>
+            <div id="history-test-results" style="display: none;">
+                <div class="alert info" style="margin-bottom: 15px;">
+                    <strong>📝 Résultats du test</strong><br>
+                    <span id="history-test-timestamp" style="color: #888; font-size: 12px;"></span>
+                </div>
+                <div style="background: #1a1a1a; padding: 15px; border-radius: 8px; border: 1px solid #333;">
+                    <pre id="history-test-content" style="margin: 0; white-space: pre-wrap; font-size: 12px; color: #ddd; max-height: 400px; overflow-y: auto;"></pre>
+                </div>
+                <div style="margin-top: 10px; text-align: right;">
+                    <a id="history-test-download" href="#" download="history_limits_test.json" class="button" style="text-decoration: none;">💾 Télécharger JSON</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB: SÉCURITÉ -->
+        <div id="security" class="tab-content">
+            <h2>🔐 Sécurité & Authentification</h2>
+            <p style="color: #888; margin-bottom: 20px;">Gérez votre compte, votre mot de passe et vos API keys pour l'accès aux flux RSS</p>
+
+            <!-- Section: Compte -->
+            <div class="card" style="margin-bottom: 30px;">
+                <h3>👤 Mon Compte</h3>
+                <div style="margin-top: 15px;">
+                    <p style="color: #888; margin-bottom: 10px;">
+                        Utilisateur: <strong id="security-username" style="color: #1e90ff;">-</strong>
+                    </p>
+                    <div class="actions">
+                        <button class="button" onclick="showChangePasswordForm()">🔑 Changer le mot de passe</button>
+                    </div>
+                </div>
+
+                <!-- Formulaire de changement de mot de passe -->
+                <div id="change-password-form" style="display: none; margin-top: 20px; padding-top: 20px; border-top: 1px solid #333;">
+                    <h4 style="color: #1e90ff; margin-bottom: 15px;">Changer le mot de passe</h4>
+                    <div class="form-group">
+                        <label>Ancien mot de passe</label>
+                        <input type="password" id="old-password" placeholder="Ancien mot de passe">
+                    </div>
+                    <div class="form-group">
+                        <label>Nouveau mot de passe</label>
+                        <input type="password" id="new-password" placeholder="Minimum 8 caractères">
+                    </div>
+                    <div class="actions">
+                        <button class="button success" onclick="changePassword()">✅ Confirmer</button>
+                        <button class="button" onclick="hideChangePasswordForm()">❌ Annuler</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section: API Keys -->
+            <div class="card">
+                <h3>🔑 API Keys</h3>
+                <p style="color: #888; font-size: 13px; margin-bottom: 15px;">
+                    Les API Keys permettent l'accès aux flux RSS depuis l'extérieur du réseau local.
+                    Ajoutez <code style="background: #0f0f0f; padding: 2px 6px; border-radius: 3px;">?api_key=VOTRE_CLE</code> à l'URL du flux RSS.
+                </p>
+
+                <!-- Création d'API Key -->
+                <div style="background: #0f0f0f; border: 1px solid #333; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+                    <h4 style="color: #1e90ff; margin-bottom: 10px;">Créer une nouvelle API Key</h4>
+                    <div class="form-group" style="margin-bottom: 10px;">
+                        <input type="text" id="api-key-name" placeholder="Nom de l'API Key (ex: qBittorrent)" style="width: 100%;">
+                    </div>
+                    <button class="button success" onclick="createApiKey()">➕ Créer</button>
+                </div>
+
+                <!-- Liste des API Keys -->
+                <div id="api-keys-list">
+                    <p style="color: #888; text-align: center;">Chargement...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = "/api";
+        let configData = {};
+        let statsData = {};
+        let allTrackers = [];
+        let trackerChartInstance = null;
+        let grabsByDayChartInstance = null;
+        let topTorrentsChartInstance = null;
+
+        function getRssBaseUrl() {
+            return window.location.origin;
+        }
+
+        function switchTab(tab) {
+            // Remove active class from all tabs and buttons
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-button').forEach(el => el.classList.remove('active'));
+
+            // Add active class to selected tab
+            const tabElement = document.getElementById(tab);
+            if (tabElement) {
+                tabElement.classList.add('active');
+            }
+
+            // Find and activate the corresponding button by searching for onclick with the tab name
+            const buttons = document.querySelectorAll('.tab-button');
+            buttons.forEach(btn => {
+                const onclick = btn.getAttribute('onclick');
+                if (onclick && onclick.includes(`'${tab}'`)) {
+                    btn.classList.add('active');
+                }
+            });
+
+            // Load tab content
+            if (tab === 'config') loadConfig();
+            if (tab === 'logs') loadLogs();
+            if (tab === 'grabs') loadGrabs();
+            if (tab === 'torrents') loadTorrents();
+            if (tab === 'stats') loadStats();
+            if (tab === 'rss') loadRssUrls();
+            if (tab === 'admin') loadAdminTab();
+            if (tab === 'security') loadApiKeys();
+        }
+
+        function loadRssUrls() {
+            const baseUrl = getRssBaseUrl();
+            document.getElementById('rss-global-xml').textContent = baseUrl + '/rss';
+            document.getElementById('rss-global-json').textContent = baseUrl + '/rss/torrent.json';
+            updateTrackerRssUrls();
+        }
+
+        function updateTrackerRssUrls() {
+            const tracker = document.getElementById('tracker-filter-rss').value;
+            const baseUrl = getRssBaseUrl();
+            
+            if (tracker === 'all') {
+                document.getElementById('rss-tracker-xml').textContent = baseUrl + '/rss';
+                document.getElementById('rss-tracker-json').textContent = baseUrl + '/rss/torrent.json';
+            } else {
+                document.getElementById('rss-tracker-xml').textContent = baseUrl + '/rss/tracker/' + encodeURIComponent(tracker);
+                document.getElementById('rss-tracker-json').textContent = baseUrl + '/rss/tracker/' + encodeURIComponent(tracker) + '/json';
+            }
+        }
+
+        function copyToClipboard(elementId) {
+            const text = document.getElementById(elementId).textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                alert('✅ Copié dans le presse-papiers!');
+            }).catch(() => {
+                alert('❌ Erreur lors de la copie');
+            });
+        }
+
+        async function loadTrackers() {
+            try {
+                const res = await fetch(API_BASE + '/trackers');
+                if (!res.ok) throw new Error('Trackers API error: ' + res.status);
+                
+                const data = await res.json();
+                allTrackers = data.trackers;
+                
+                [document.getElementById('tracker-filter-grabs'), document.getElementById('tracker-filter-rss')].forEach(select => {
+                    if (!select) return;
+                    select.innerHTML = '<option value="all">Tous les trackers</option>';
+                    allTrackers.forEach(tracker => {
+                        const option = document.createElement('option');
+                        option.value = tracker;
+                        option.textContent = tracker;
+                        select.appendChild(option);
+                    });
+                });
+            } catch (e) {
+                console.error("❌ Erreur loadTrackers:", e);
+            }
+        }
+
+        async function filterGrabs() {
+            const tracker = document.getElementById('tracker-filter-grabs').value;
+            const url = API_BASE + '/grabs?limit=100&tracker=' + encodeURIComponent(tracker);
+            
+            try {
+                const grabs = await fetch(url).then(r => r.json());
+                const tbody = document.getElementById("grabs-table");
+                tbody.innerHTML = grabs.length ? grabs.map(g => 
+                    '<tr>' +
+                    '<td class="date">' + new Date(g.grabbed_at).toLocaleString('fr-FR') + '</td>' +
+                    '<td>' + g.title + '</td>' +
+                    '<td><strong style="color: #1e90ff;">' + (g.tracker || 'N/A') + '</strong></td>' +
+                    '<td><a href="/torrents/' + encodeURIComponent(g.torrent_file) + '" target="_blank" style="color: #1e90ff; text-decoration: none;">📥 Download</a></td>' +
+                    '</tr>'
+                ).join("") : '<tr><td colspan="4" style="text-align: center; color: #888;">Aucun grab</td></tr>';
+            } catch (e) {
+                console.error("Erreur filterGrabs:", e);
+            }
+        }
+
+        async function loadStats() {
+            try {
+                const res = await fetch(API_BASE + '/stats');
+                statsData = await res.json();
+                
+                const trackerLabels = statsData.tracker_stats.map(t => t.tracker);
+                const trackerData = statsData.tracker_stats.map(t => t.count);
+                
+                const trackerCtx = document.getElementById('trackerChart').getContext('2d');
+                if (trackerChartInstance) trackerChartInstance.destroy();
+                trackerChartInstance = new Chart(trackerCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: trackerLabels,
+                        datasets: [{
+                            data: trackerData,
+                            backgroundColor: [
+                                '#1e90ff', '#ff6b6b', '#4ecdc4', '#45b7d1', '#f7b731',
+                                '#5f27cd', '#00d2d3', '#ff9ff3', '#54a0ff', '#48dbfb'
+                            ]
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { labels: { color: '#e0e0e0' } },
+                            title: { display: true, text: 'Grabs par Tracker', color: '#1e90ff' }
+                        }
+                    }
+                });
+                
+                const dayLabels = statsData.grabs_by_day.map(d => d.day).reverse();
+                const dayData = statsData.grabs_by_day.map(d => d.count).reverse();
+                
+                const dayCtx = document.getElementById('grabsByDayChart').getContext('2d');
+                if (grabsByDayChartInstance) grabsByDayChartInstance.destroy();
+                grabsByDayChartInstance = new Chart(dayCtx, {
+                    type: 'line',
+                    data: {
+                        labels: dayLabels,
+                        datasets: [{
+                            label: 'Grabs',
+                            data: dayData,
+                            borderColor: '#1e90ff',
+                            backgroundColor: 'rgba(30, 144, 255, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { labels: { color: '#e0e0e0' } },
+                            title: { display: true, text: 'Grabs par Jour (30 derniers jours)', color: '#1e90ff' }
+                        },
+                        scales: {
+                            y: { ticks: { color: '#e0e0e0' }, grid: { color: '#333' } },
+                            x: { ticks: { color: '#e0e0e0' }, grid: { color: '#333' } }
+                        }
+                    }
+                });
+                
+                const topLabels = statsData.top_torrents.map(t => t.title.substring(0, 30) + '...');
+                const topData = Array(statsData.top_torrents.length).fill(1);
+                
+                const topCtx = document.getElementById('topTorrentsChart').getContext('2d');
+                if (topTorrentsChartInstance) topTorrentsChartInstance.destroy();
+                topTorrentsChartInstance = new Chart(topCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: topLabels,
+                        datasets: [{
+                            label: 'Top Torrents',
+                            data: topData,
+                            backgroundColor: '#1e90ff'
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { labels: { color: '#e0e0e0' } },
+                            title: { display: true, text: 'Top 10 des Torrents Récents', color: '#1e90ff' }
+                        },
+                        scales: {
+                            y: { ticks: { color: '#e0e0e0' }, grid: { color: '#333' } },
+                            x: { ticks: { color: '#e0e0e0' }, grid: { color: '#333' } }
+                        }
+                    }
+                });
+                
+                const total = statsData.tracker_stats.reduce((a, b) => a + b.count, 0);
+                let tbody = document.getElementById('tracker-stats-body');
+                tbody.innerHTML = statsData.tracker_stats.map(t => 
+                    '<tr>' +
+                    '<td><strong>' + t.tracker + '</strong></td>' +
+                    '<td>' + t.count + '</td>' +
+                    '<td>' + ((t.count / total) * 100).toFixed(1) + '%</td>' +
+                    '</tr>'
+                ).join("");
+                
+            } catch (e) {
+                console.error("Erreur loadStats:", e);
+            }
+        }
+
+        async function refreshData() {
+            try {
+                const [stats, sync, detailedStats, torrentsData] = await Promise.all([
+                    fetch(API_BASE + '/stats').then(r => r.json()),
+                    fetch(API_BASE + '/sync/status').then(r => r.json()),
+                    fetch(API_BASE + '/stats/detailed').then(r => r.json()),
+                    fetch(API_BASE + '/torrents').then(r => r.json())
+                ]);
+
+                // Statistiques principales
+                document.getElementById("total-grabs").textContent = stats.total_grabs;
+                document.getElementById("storage-size").textContent = stats.storage_size_mb;
+                document.getElementById("latest-grab").textContent = stats.latest_grab ? new Date(stats.latest_grab).toLocaleString('fr-FR') : "-";
+
+                // Nouvelles statistiques dashboard
+                document.getElementById("dashboard-torrent-count").textContent = torrentsData.total;
+                const totalSize = torrentsData.torrents.reduce((acc, t) => acc + t.size_mb, 0);
+                document.getElementById("dashboard-torrent-size").textContent = totalSize.toFixed(2);
+
+                // Nombre de trackers différents
+                const uniqueTrackers = new Set(stats.tracker_stats.map(t => t.tracker)).size;
+                document.getElementById("dashboard-trackers-count").textContent = uniqueTrackers;
+
+                // Grabs aujourd'hui (dernières 24h)
+                const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+                const grabsToday = stats.grabs_by_day[0]?.count || 0;
+                document.getElementById("dashboard-grabs-today").textContent = grabsToday;
+
+                // Uptime
+                const uptime = detailedStats.system.uptime_seconds;
+                const hours = Math.floor(uptime / 3600);
+                const minutes = Math.floor((uptime % 3600) / 60);
+                document.getElementById("dashboard-uptime").textContent = hours + 'h ' + minutes + 'm';
+
+                // Statut sync
+                const statusEl = document.getElementById("sync-status");
+
+                let statusClass = "status offline";
+                let statusText = "Inactif";
+
+                if (sync.is_running) {
+                    statusClass = "status online";
+                    statusText = "Sync en cours...";
+                } else if (sync.next_sync) {
+                    statusClass = "status online";
+                    statusText = "Actif";
+                } else if (sync.last_sync) {
+                    statusClass = "status offline";
+                    statusText = "Arrêté";
+                } else {
+                    statusClass = "status offline";
+                    statusText = "En attente";
+                }
+
+                statusEl.className = statusClass;
+                statusEl.textContent = statusText;
+
+                document.getElementById("next-sync").textContent = sync.next_sync ? 'Prochain: ' + new Date(sync.next_sync).toLocaleString('fr-FR') : "-";
+            } catch (e) {
+                console.error("❌ Erreur refreshData:", e);
+            }
+        }
+
+        async function loadGrabs() {
+            await filterGrabs();
+        }
+
+        async function loadLogs() {
+            try {
+                const logs = await fetch(API_BASE + '/sync/logs?limit=50').then(r => r.json());
+                const tbody = document.getElementById("logs-table");
+                tbody.innerHTML = logs.length ? logs.map(l => 
+                    '<tr>' +
+                    '<td class="date">' + new Date(l.sync_at).toLocaleString('fr-FR') + '</td>' +
+                    '<td><span class="status ' + (l.status === 'success' ? 'online' : 'offline') + '">' + l.status + '</span></td>' +
+                    '<td>' + l.grabs_count + '</td>' +
+                    '<td>' + (l.deduplicated_count || 0) + '</td>' +
+                    '<td style="color: #ff4444; font-size: 12px;">' + (l.error ? l.error.substring(0, 50) : '-') + '</td>' +
+                    '</tr>'
+                ).join("") : '<tr><td colspan="5" style="text-align: center; color: #888;">Aucun log</td></tr>';
+            } catch (e) {
+                console.error("Erreur loadLogs:", e);
+            }
+        }
+
+        async function loadConfig() {
+            try {
+                const response = await fetch(API_BASE + '/config');
+                configData = await response.json();
+                
+                const form = document.getElementById("config-form");
+                form.innerHTML = Object.entries(configData).map(([key, data]) => 
+                    '<div class="form-group">' +
+                    '<label for="' + key + '">' + key + '</label>' +
+                    '<input type="text" id="' + key + '" name="' + key + '" value="' + (data.value || '') + '" placeholder="' + data.description + '">' +
+                    '<small>' + data.description + '</small>' +
+                    '</div>'
+                ).join("");
+            } catch (e) {
+                alert("Erreur lors du chargement de la config: " + e);
+            }
+        }
+
+        async function saveConfig() {
+            try {
+                const updates = {};
+                Object.keys(configData).forEach(key => {
+                    const input = document.getElementById(key);
+                    if (input) {
+                        updates[key] = {
+                            value: input.value,
+                            description: configData[key]?.description || ""
+                        };
+                    }
+                });
+                
+                const res = await fetch(API_BASE + '/config', {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(updates)
+                });
+                
+                if (res.ok) {
+                    alert("✅ Configuration sauvegardée!");
+                    loadConfig();
+                } else {
+                    alert("❌ Erreur lors de la sauvegarde");
+                }
+            } catch (e) {
+                alert("❌ Erreur: " + e);
+            }
+        }
+
+        async function syncNow() {
+            const btn = document.getElementById("sync-btn");
+            btn.disabled = true;
+            btn.textContent = "⏳ Sync en cours...";
+            
+            try {
+                const triggerRes = await fetch(API_BASE + '/sync/trigger', { method: "POST" });
+                const triggerData = await triggerRes.json();
+                
+                if (triggerData.status === "already_running") {
+                    alert("⏳ Une synchronisation est déjà en cours");
+                    btn.disabled = false;
+                    btn.textContent = "📡 Sync Maintenant";
+                    return;
+                }
+                
+                let syncCompleted = false;
+                const maxAttempts = 30;
+                
+                for (let i = 0; i < maxAttempts; i++) {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    
+                    const statusRes = await fetch(API_BASE + '/sync/status');
+                    const status = await statusRes.json();
+                    
+                    if (!status.is_running) {
+                        syncCompleted = true;
+                        
+                        if (status.last_error) {
+                            alert("❌ Erreur sync: " + status.last_error);
+                        } else {
+                            alert("✅ Synchronisation terminée !");
+                        }
+                        break;
+                    }
+                }
+                
+                if (!syncCompleted) {
+                    alert("⏳ La synchronisation prend plus de temps que prévu. Vérifiez les logs.");
+                }
+                
+                await refreshData();
+                
+            } catch (e) {
+                alert("❌ Erreur: " + e);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "📡 Sync Maintenant";
+            }
+        }
+
+        async function purgeAllGrabs() {
+            if (confirm("⚠️  Êtes-vous CERTAIN ? Cela supprimera TOUS les grabs !")) {
+                try {
+                    const res = await fetch(API_BASE + '/purge/all', { method: "POST" });
+                    const data = await res.json();
+                    alert("✅ " + data.message);
+                    refreshData();
+                    loadGrabs();
+                } catch (e) {
+                    alert("❌ Erreur: " + e);
+                }
+            }
+        }
+
+        async function loadAdminTab() {
+            await loadAdminStats();
+            await loadSystemLogs();
+        }
+
+        async function loadAdminStats() {
+            try {
+                const [detailedStats, torrentsData] = await Promise.all([
+                    fetch(API_BASE + '/stats/detailed').then(r => r.json()),
+                    fetch(API_BASE + '/torrents').then(r => r.json())
+                ]);
+
+                document.getElementById('admin-db-size').textContent = detailedStats.database.size_mb;
+                document.getElementById('admin-db-grabs').textContent = detailedStats.database.grabs;
+                document.getElementById('admin-db-logs').textContent = detailedStats.database.sync_logs;
+
+                document.getElementById('admin-torrent-count').textContent = torrentsData.total;
+                const totalSize = torrentsData.torrents.reduce((acc, t) => acc + t.size_mb, 0);
+                document.getElementById('admin-torrent-size').textContent = totalSize.toFixed(2);
+
+                // Compter les orphelins
+                const orphans = torrentsData.torrents.filter(t => !t.has_grab).length;
+                document.getElementById('admin-torrent-orphans').textContent = orphans;
+
+                document.getElementById('admin-memory').textContent = detailedStats.system.memory_mb;
+                document.getElementById('admin-cpu').textContent = detailedStats.system.cpu_percent;
+
+                const uptime = detailedStats.system.uptime_seconds;
+                const hours = Math.floor(uptime / 3600);
+                const minutes = Math.floor((uptime % 3600) / 60);
+                document.getElementById('admin-uptime').textContent = hours + 'h ' + minutes + 'm';
+
+            } catch (e) {
+                console.error("Erreur loadAdminStats:", e);
+                alert("❌ Erreur lors du chargement des stats: " + e);
+            }
+        }
+
+        async function loadSystemLogs() {
+            const level = document.getElementById('log-level-filter').value;
+
+            try {
+                // Récupérer tous les logs de sync
+                const res = await fetch(API_BASE + '/sync/logs?limit=100');
+                const logs = await res.json();
+
+                const container = document.getElementById('system-logs-container');
+
+                if (logs.length === 0) {
+                    container.innerHTML = '<p style="text-align: center; color: #888; padding: 20px;">Aucun log trouvé</p>';
+                    return;
+                }
+
+                // Filtrer par niveau
+                let filteredLogs = logs;
+                if (level === 'success') {
+                    filteredLogs = logs.filter(l => l.status === 'success');
+                } else if (level === 'error') {
+                    filteredLogs = logs.filter(l => l.status !== 'success');
+                }
+
+                if (filteredLogs.length === 0) {
+                    container.innerHTML = '<p style="text-align: center; color: #888; padding: 20px;">Aucun log trouvé pour ce niveau</p>';
+                    return;
+                }
+
+                const logIcons = {
+                    'success': '✅',
+                    'error': '❌'
+                };
+
+                container.innerHTML = filteredLogs.map(log => {
+                    const logLevel = log.status === 'success' ? 'success' : 'error';
+                    const icon = logIcons[logLevel] || '•';
+                    const timestamp = new Date(log.sync_at).toLocaleString('fr-FR');
+                    const message = `Sync: ${log.grabs_count} grabs récupérés, ${log.deduplicated_count || 0} doublons ignorés`;
+                    const details = log.error ? `Erreur: ${log.error}` : '';
+
+                    return `
+                        <div class="log-item ${logLevel}" style="position: relative;">
+                            <div class="log-header">
+                                <span class="log-level ${logLevel}">
+                                    ${icon} ${logLevel.toUpperCase()}
+                                </span>
+                                <span class="log-time">${timestamp}</span>
+                            </div>
+                            <div class="log-message">${message}</div>
+                            ${details ? '<div class="log-details">' + details + '</div>' : ''}
+                        </div>
+                    `;
+                }).join('');
+
+            } catch (e) {
+                console.error("Erreur loadSystemLogs:", e);
+                alert("❌ Erreur lors du chargement des logs: " + e);
+            }
+        }
+
+        async function clearCache() {
+            if (confirm("Vider tous les caches (trackers + imports Radarr/Sonarr) ?")) {
+                try {
+                    const res = await fetch(API_BASE + '/cache/clear', { method: "POST" });
+                    const data = await res.json();
+                    alert("✅ " + data.message);
+                    await loadAdminStats();
+                } catch (e) {
+                    alert("❌ Erreur: " + e);
+                }
+            }
+        }
+
+        async function vacuumDatabase() {
+            if (confirm("Optimiser la base de données (VACUUM) ? Cela peut prendre quelques secondes.")) {
+                try {
+                    const res = await fetch(API_BASE + '/db/vacuum', { method: "POST" });
+                    const data = await res.json();
+                    alert("✅ " + data.message + "\\nEspace libéré: " + data.saved_mb + " MB");
+                    await loadAdminStats();
+                } catch (e) {
+                    alert("❌ Erreur: " + e);
+                }
+            }
+        }
+
+        async function purgeOldGrabs() {
+            const hours = prompt("Supprimer les grabs plus anciens que combien d'heures ?\\n(168 = 7 jours, 336 = 14 jours, 720 = 30 jours)", "168");
+
+            if (hours === null) return;
+
+            const hoursInt = parseInt(hours);
+            if (isNaN(hoursInt) || hoursInt < 1) {
+                alert("❌ Valeur invalide");
+                return;
+            }
+
+            if (confirm("Supprimer tous les grabs > " + hoursInt + "h ?")) {
+                try {
+                    const res = await fetch(API_BASE + '/purge/retention?hours=' + hoursInt, { method: "POST" });
+                    const data = await res.json();
+                    alert("✅ " + data.message);
+                    await refreshData();
+                    await loadAdminStats();
+                } catch (e) {
+                    alert("❌ Erreur: " + e);
+                }
+            }
+        }
+
+        async function loadTorrents() {
+            try {
+                const res = await fetch(API_BASE + '/torrents');
+                const data = await res.json();
+
+                // Mettre à jour les statistiques
+                document.getElementById('torrents-total').textContent = data.total;
+
+                const totalSize = data.torrents.reduce((acc, t) => acc + t.size_mb, 0);
+                document.getElementById('torrents-size').textContent = totalSize.toFixed(2);
+
+                const withGrab = data.torrents.filter(t => t.has_grab).length;
+                document.getElementById('torrents-with-grab').textContent = withGrab;
+
+                const orphans = data.torrents.filter(t => !t.has_grab).length;
+                document.getElementById('torrents-orphans').textContent = orphans;
+
+                // Remplir le tableau
+                const tbody = document.getElementById('torrents-table');
+                if (data.torrents.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #888;">Aucun fichier torrent</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = data.torrents.map(t => {
+                    const statusColor = t.has_grab ? '#00aa00' : '#ff6b6b';
+                    const statusText = t.has_grab ? '✓ Avec Grab' : '⚠ Orphelin';
+                    const grabDate = t.grabbed_at ? new Date(t.grabbed_at).toLocaleString('fr-FR') : '-';
+
+                    return `
+                        <tr>
+                            <td><input type="checkbox" class="torrent-checkbox" value="${t.filename}"></td>
+                            <td style="font-family: monospace; font-size: 11px; word-break: break-all;">${t.filename}</td>
+                            <td>${t.title}</td>
+                            <td><strong style="color: #1e90ff;">${t.tracker}</strong></td>
+                            <td class="date">${grabDate}</td>
+                            <td>${t.size_mb} MB</td>
+                            <td><span style="color: ${statusColor}; font-weight: bold;">${statusText}</span></td>
+                            <td>
+                                <a href="/torrents/${encodeURIComponent(t.filename)}" target="_blank" class="button" style="text-decoration: none; padding: 5px 10px; font-size: 12px; display: inline-block;">📥 DL</a>
+                                <button class="button danger" onclick="deleteSingleTorrent('${t.filename}')" style="padding: 5px 10px; font-size: 12px; margin-left: 5px;">🗑️</button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+
+                // Gérer l'affichage du bouton d'actions groupées
+                updateBulkActionsVisibility();
+
+            } catch (e) {
+                console.error("Erreur loadTorrents:", e);
+                alert("❌ Erreur lors du chargement des torrents: " + e);
+            }
+        }
+
+        function toggleAllTorrents() {
+            const selectAll = document.getElementById('select-all-torrents');
+            const checkboxes = document.querySelectorAll('.torrent-checkbox');
+            checkboxes.forEach(cb => cb.checked = selectAll.checked);
+            updateBulkActionsVisibility();
+        }
+
+        function updateBulkActionsVisibility() {
+            const checkboxes = document.querySelectorAll('.torrent-checkbox:checked');
+            const bulkActions = document.getElementById('bulk-actions');
+            if (checkboxes.length > 0) {
+                bulkActions.style.display = 'flex';
+            } else {
+                bulkActions.style.display = 'none';
+            }
+        }
+
+        // Écouter les changements sur les checkboxes
+        document.addEventListener('change', (e) => {
+            if (e.target.classList.contains('torrent-checkbox')) {
+                updateBulkActionsVisibility();
+            }
+        });
+
+        async function deleteSingleTorrent(filename) {
+            if (!confirm(`Supprimer le torrent "${filename}" ?`)) return;
+
+            try {
+                const res = await fetch(API_BASE + '/torrents/' + encodeURIComponent(filename), {
+                    method: 'DELETE'
+                });
+
+                if (res.ok) {
+                    alert('✅ Torrent supprimé');
+                    await loadTorrents();
+                } else {
+                    alert('❌ Erreur lors de la suppression');
+                }
+            } catch (e) {
+                alert('❌ Erreur: ' + e);
+            }
+        }
+
+        async function deleteBulkTorrents() {
+            const checkboxes = document.querySelectorAll('.torrent-checkbox:checked');
+            const filenames = Array.from(checkboxes).map(cb => cb.value);
+
+            if (filenames.length === 0) {
+                alert('⚠️ Aucun torrent sélectionné');
+                return;
+            }
+
+            if (!confirm(`Supprimer ${filenames.length} torrent(s) sélectionné(s) ?`)) return;
+
+            try {
+                let successCount = 0;
+                let errorCount = 0;
+
+                for (const filename of filenames) {
+                    try {
+                        const res = await fetch(API_BASE + '/torrents/' + encodeURIComponent(filename), {
+                            method: 'DELETE'
+                        });
+                        if (res.ok) successCount++;
+                        else errorCount++;
+                    } catch (e) {
+                        errorCount++;
+                    }
+                }
+
+                alert(`✅ ${successCount} torrent(s) supprimé(s)${errorCount > 0 ? ', ' + errorCount + ' erreur(s)' : ''}`);
+                await loadTorrents();
+
+            } catch (e) {
+                alert('❌ Erreur: ' + e);
+            }
+        }
+
+        async function cleanupOrphanTorrents() {
+            if (!confirm('Supprimer tous les torrents orphelins (sans grab associé) ?')) return;
+
+            try {
+                const res = await fetch(API_BASE + '/torrents/cleanup-orphans', { method: 'POST' });
+                const data = await res.json();
+                alert('✅ ' + data.message);
+                await loadTorrents();
+            } catch (e) {
+                alert('❌ Erreur: ' + e);
+            }
+        }
+
+        async function purgeAllTorrents() {
+            if (!confirm('⚠️ ATTENTION : Supprimer TOUS les fichiers torrents ? Cette action est irréversible !')) return;
+
+            try {
+                const res = await fetch(API_BASE + '/torrents/purge-all', { method: 'POST' });
+                const data = await res.json();
+                alert('✅ ' + data.message);
+                await loadTorrents();
+                await loadAdminStats(); // Rafraîchir les stats admin
+            } catch (e) {
+                alert('❌ Erreur: ' + e);
+            }
+        }
+
+        async function purgeAllLogs() {
+            if (!confirm('Supprimer tous les logs de synchronisation ?')) return;
+
+            try {
+                const res = await fetch(API_BASE + '/logs/purge-all', { method: 'POST' });
+                const data = await res.json();
+                alert('✅ ' + data.message);
+                await loadSystemLogs();
+            } catch (e) {
+                alert('❌ Erreur: ' + e);
+            }
+        }
+
+        async function testHistoryLimits() {
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = "⏳ Test en cours...";
+
+            try {
+                const res = await fetch(API_BASE + '/test-history-limits', { method: "POST" });
+
+                if (!res.ok) {
+                    throw new Error("Erreur HTTP " + res.status);
+                }
+
+                const data = await res.json();
+
+                // Afficher les résultats
+                const resultsDiv = document.getElementById('history-test-results');
+                resultsDiv.style.display = 'block';
+
+                // Timestamp
+                const timestamp = new Date(data.results.timestamp).toLocaleString('fr-FR');
+                document.getElementById('history-test-timestamp').textContent =
+                    "Test effectué le " + timestamp;
+
+                // Formater les résultats de manière lisible
+                const results = data.results;
+                let output = "=".repeat(80) + "\\n";
+                output += "TEST DES LIMITES D'HISTORIQUE\\n";
+                output += "=".repeat(80) + "\\n\\n";
+
+                // Configuration
+                output += "📋 CONFIGURATION\\n";
+                output += "-".repeat(80) + "\\n";
+                output += "Prowlarr URL:      " + results.configuration.prowlarr_url + "\\n";
+                output += "Prowlarr pageSize: " + results.configuration.prowlarr_page_size + "\\n";
+                output += "Radarr activé:     " + results.configuration.radarr_enabled + "\\n";
+                output += "Sonarr activé:     " + results.configuration.sonarr_enabled + "\\n";
+                output += "Sync interval:     " + results.configuration.sync_interval_seconds + "s\\n";
+                output += "Rétention:         " + results.configuration.retention_hours + "h\\n\\n";
+
+                // Prowlarr
+                output += "📡 PROWLARR\\n";
+                output += "-".repeat(80) + "\\n";
+                results.prowlarr.tested_page_sizes.forEach(test => {
+                    const d = test.data;
+                    if (d.error) {
+                        output += "pageSize=" + test.page_size + " → ❌ " + d.error + "\\n";
+                    } else {
+                        output += "pageSize=" + test.page_size + " → ";
+                        output += d.total + " enregistrements, ";
+                        output += d.successful_grabs + " grabs réussis\\n";
+                        if (d.oldest_grab) {
+                            output += "  Plus ancien: " + new Date(d.oldest_grab).toLocaleString('fr-FR') + "\\n";
+                        }
+                    }
+                });
+
+                output += "\\n🔍 ANALYSE\\n";
+                output += "-".repeat(80) + "\\n";
+                output += "Type de limitation: " + results.prowlarr.analysis.limitation_type + "\\n";
+                output += results.prowlarr.analysis.details + "\\n";
+                output += "\\n💡 Recommandation:\\n";
+                output += results.prowlarr.analysis.recommendation + "\\n\\n";
+
+                // Radarr
+                output += "🎬 RADARR\\n";
+                output += "-".repeat(80) + "\\n";
+                if (results.radarr.error) {
+                    output += "⚠️  " + results.radarr.error + "\\n\\n";
+                } else {
+                    output += "Total: " + results.radarr.total + " | Grabs: " + results.radarr.grabs + "\\n";
+                    if (results.radarr.oldest_grab) {
+                        output += "Plus ancien: " + new Date(results.radarr.oldest_grab).toLocaleString('fr-FR') + "\\n";
+                    }
+                    output += "\\n";
+                }
+
+                // Sonarr
+                output += "📺 SONARR\\n";
+                output += "-".repeat(80) + "\\n";
+                if (results.sonarr.error) {
+                    output += "⚠️  " + results.sonarr.error + "\\n\\n";
+                } else {
+                    output += "Total: " + results.sonarr.total + " | Grabs: " + results.sonarr.grabs + "\\n";
+                    if (results.sonarr.oldest_grab) {
+                        output += "Plus ancien: " + new Date(results.sonarr.oldest_grab).toLocaleString('fr-FR') + "\\n";
+                    }
+                    output += "\\n";
+                }
+
+                // Comparaison
+                output += "🔄 COMPARAISON DES PÉRIODES\\n";
+                output += "-".repeat(80) + "\\n";
+                if (results.comparison.prowlarr_oldest) {
+                    output += "Prowlarr: " + new Date(results.comparison.prowlarr_oldest).toLocaleString('fr-FR') + "\\n";
+                }
+                if (results.comparison.radarr_oldest) {
+                    output += "Radarr:   " + new Date(results.comparison.radarr_oldest).toLocaleString('fr-FR') + "\\n";
+                }
+                if (results.comparison.sonarr_oldest) {
+                    output += "Sonarr:   " + new Date(results.comparison.sonarr_oldest).toLocaleString('fr-FR') + "\\n";
+                }
+
+                document.getElementById('history-test-content').textContent = output;
+
+                // Lien de téléchargement
+                const blob = new Blob([JSON.stringify(results, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                document.getElementById('history-test-download').href = url;
+
+                // Scroll vers les résultats
+                resultsDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+                alert("✅ Test terminé !\\n\\nRésultats sauvegardés dans:\\n" + data.output_file);
+
+            } catch (e) {
+                console.error("Erreur testHistoryLimits:", e);
+                alert("❌ Erreur lors du test: " + e);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        }
+
+        // ==================== AUTH & SECURITY ====================
+
+        async function checkAuthStatus() {
+            try {
+                const res = await fetch('/api/auth/status');
+                const data = await res.json();
+
+                if (data.enabled) {
+                    // Auth activée - afficher les éléments d'auth
+                    document.getElementById('security-tab').style.display = 'block';
+                    document.getElementById('auth-info').style.display = 'block';
+                    document.getElementById('username-display').textContent = data.username || 'Utilisateur';
+                    document.getElementById('security-username').textContent = data.username || 'Utilisateur';
+                }
+            } catch (error) {
+                console.error("Erreur vérification auth:", error);
+            }
+        }
+
+        async function logout() {
+            if (!confirm('Êtes-vous sûr de vouloir vous déconnecter ?')) {
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/auth/logout', { method: 'POST' });
+                if (res.ok) {
+                    window.location.href = '/login';
+                }
+            } catch (error) {
+                alert('Erreur lors de la déconnexion');
+                console.error(error);
+            }
+        }
+
+        function showChangePasswordForm() {
+            document.getElementById('change-password-form').style.display = 'block';
+        }
+
+        function hideChangePasswordForm() {
+            document.getElementById('change-password-form').style.display = 'none';
+            document.getElementById('old-password').value = '';
+            document.getElementById('new-password').value = '';
+        }
+
+        async function changePassword() {
+            const oldPassword = document.getElementById('old-password').value;
+            const newPassword = document.getElementById('new-password').value;
+
+            if (!oldPassword || !newPassword) {
+                alert('Veuillez remplir tous les champs');
+                return;
+            }
+
+            if (newPassword.length < 8) {
+                alert('Le nouveau mot de passe doit contenir au moins 8 caractères');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/auth/change-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ old_password: oldPassword, new_password: newPassword })
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    alert('✅ Mot de passe changé avec succès');
+                    hideChangePasswordForm();
+                } else {
+                    alert('❌ Erreur: ' + (data.detail || 'Ancien mot de passe incorrect'));
+                }
+            } catch (error) {
+                alert('❌ Erreur lors du changement de mot de passe');
+                console.error(error);
+            }
+        }
+
+        async function loadApiKeys() {
+            try {
+                const res = await fetch('/api/auth/api-keys');
+                const data = await res.json();
+
+                const list = document.getElementById('api-keys-list');
+
+                if (!data.api_keys || data.api_keys.length === 0) {
+                    list.innerHTML = '<p style="color: #888; text-align: center;">Aucune API Key configurée</p>';
+                    return;
+                }
+
+                let html = '<table style="margin-top: 10px;"><thead><tr><th>Nom</th><th>Clé</th><th>Statut</th><th>Créée le</th><th>Actions</th></tr></thead><tbody>';
+
+                data.api_keys.forEach(key => {
+                    const statusColor = key.enabled ? '#00aa00' : '#888';
+                    const statusText = key.enabled ? '✅ Activée' : '❌ Désactivée';
+                    const createdAt = new Date(key.created_at).toLocaleString('fr-FR');
+
+                    html += `
+                        <tr>
+                            <td><strong>${key.name}</strong></td>
+                            <td>
+                                <code style="background: #0f0f0f; padding: 4px 8px; border-radius: 4px; font-size: 11px;">${key.key_masked || key.key}</code>
+                                <button class="copy-btn" onclick="copyApiKey('${key.key}')" style="margin-left: 10px;">📋 Copier</button>
+                            </td>
+                            <td style="color: ${statusColor};">${statusText}</td>
+                            <td style="color: #888; font-size: 12px;">${createdAt}</td>
+                            <td>
+                                <button class="button" style="font-size: 12px; padding: 5px 10px;" onclick="toggleApiKey('${key.key}', ${!key.enabled})">
+                                    ${key.enabled ? '⏸️ Désactiver' : '▶️ Activer'}
+                                </button>
+                                <button class="button danger" style="font-size: 12px; padding: 5px 10px;" onclick="deleteApiKey('${key.key}')">🗑️</button>
+                            </td>
+                        </tr>
+                    `;
+                });
+
+                html += '</tbody></table>';
+                list.innerHTML = html;
+            } catch (error) {
+                console.error("Erreur chargement API keys:", error);
+                document.getElementById('api-keys-list').innerHTML = '<p style="color: #ff4444;">Erreur lors du chargement des API keys</p>';
+            }
+        }
+
+        async function createApiKey() {
+            const name = document.getElementById('api-key-name').value.trim();
+
+            if (!name) {
+                alert("Veuillez donner un nom à l'API Key");
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/auth/api-keys', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name, enabled: true })
+                });
+
+                const data = await res.json();
+
+                if (data.key) {
+                    alert(`✅ API Key créée avec succès !\\n\\nClé: ${data.key}\\n\\nCopiez-la maintenant, elle ne sera plus affichée en entier.`);
+                    document.getElementById('api-key-name').value = '';
+                    await loadApiKeys();
+                } else {
+                    alert("❌ Erreur lors de la création de l'API Key");
+                }
+            } catch (error) {
+                alert("❌ Erreur lors de la création de l'API Key");
+                console.error(error);
+            }
+        }
+
+        function copyApiKey(key) {
+            navigator.clipboard.writeText(key).then(() => {
+                alert('✅ API Key copiée dans le presse-papiers!');
+            }).catch(() => {
+                alert('❌ Erreur lors de la copie');
+            });
+        }
+
+        async function deleteApiKey(key) {
+            if (!confirm('Êtes-vous sûr de vouloir supprimer cette API Key ?')) {
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/auth/api-keys/${encodeURIComponent(key)}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    alert('✅ API Key supprimée');
+                    await loadApiKeys();
+                } else {
+                    alert('❌ Erreur lors de la suppression');
+                }
+            } catch (error) {
+                alert('❌ Erreur lors de la suppression');
+                console.error(error);
+            }
+        }
+
+        async function toggleApiKey(key, enabled) {
+            try {
+                const res = await fetch(`/api/auth/api-keys/${encodeURIComponent(key)}?enabled=${enabled}`, {
+                    method: 'PATCH'
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    alert(`✅ API Key ${enabled ? 'activée' : 'désactivée'}`);
+                    await loadApiKeys();
+                } else {
+                    alert('❌ Erreur lors de la modification');
+                }
+            } catch (error) {
+                alert('❌ Erreur lors de la modification');
+                console.error(error);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            console.log("🚀 Initialisation Grab2RSS v2.6.8...");
+
+            try {
+                await checkAuthStatus();
+                await loadTrackers();
+                await refreshData();
+                await loadGrabs();
+
+                setInterval(refreshData, 30000);
+
+                console.log("✅ Application initialisée");
+            } catch (error) {
+                console.error("❌ Erreur initialisation:", error);
+                alert("Erreur lors du chargement de l'application. Vérifiez la console (F12).");
+            }
+        });
+    </script>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+<script src="/static/js/app.js"></script>
+<script>
+    // Initialize dashboard when DOM is loaded
+    document.addEventListener('DOMContentLoaded', async () => {
+        console.log("🚀 Initialisation Grab2RSS v2.6.8...");
+
+        try {
+            await checkAuthStatus();
+            await loadTrackers();
+            await refreshData();
+            await loadGrabs();
+
+            setInterval(refreshData, 30000);
+
+            console.log("✅ Application initialisée");
+        } catch (error) {
+            console.error("❌ Erreur initialisation:", error);
+            alert("Erreur lors du chargement de l'application. Vérifiez la console (F12).");
+        }
+    });
+</script>
+{% endblock %}
