@@ -50,8 +50,19 @@ class SetupConfigModel(BaseModel):
 @router.get("/setup", response_class=HTMLResponse)
 async def setup_page(request: Request):
     """Page de setup wizard"""
-    # Injecter l'état du setup dans le template
+    from fastapi.responses import RedirectResponse
+    from auth import is_auth_enabled, verify_session
+
+    # Si setup déjà complété ET auth activée, vérifier l'authentification
     first_run = setup.is_first_run()
+    if not first_run:
+        # Setup complété, vérifier l'auth
+        if is_auth_enabled():
+            session_token = request.cookies.get('session_token')
+            if not verify_session(session_token):
+                # Non authentifié : rediriger vers login AVANT le rendu
+                return RedirectResponse(url='/login', status_code=302)
+
     config_exists = setup.CONFIG_FILE.exists()
 
     return templates.TemplateResponse("pages/setup.html", {
