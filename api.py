@@ -2510,7 +2510,7 @@ async def web_ui():
             const name = document.getElementById('api-key-name').value.trim();
 
             if (!name) {
-                alert('Veuillez donner un nom à l\'API Key');
+                alert("Veuillez donner un nom à l'API Key");
                 return;
             }
 
@@ -2524,14 +2524,14 @@ async def web_ui():
                 const data = await res.json();
 
                 if (data.key) {
-                    alert(`✅ API Key créée avec succès !\n\nClé: ${data.key}\n\nCopiez-la maintenant, elle ne sera plus affichée en entier.`);
+                    alert(`✅ API Key créée avec succès !\\n\\nClé: ${data.key}\\n\\nCopiez-la maintenant, elle ne sera plus affichée en entier.`);
                     document.getElementById('api-key-name').value = '';
                     await loadApiKeys();
                 } else {
-                    alert('❌ Erreur lors de la création de l\'API Key');
+                    alert("❌ Erreur lors de la création de l'API Key");
                 }
             } catch (error) {
-                alert('❌ Erreur lors de la création de l\'API Key');
+                alert("❌ Erreur lors de la création de l'API Key");
                 console.error(error);
             }
         }
