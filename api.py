@@ -54,7 +54,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
             '/api/setup',
             '/api/auth/login',
             '/api/auth/status',
-            '/torrents'
+            '/torrents',
+            '/static'
         ]
 
         # Vérifier si la route est publique
@@ -115,6 +116,9 @@ class SetupRedirectMiddleware(BaseHTTPMiddleware):
 
         # Ne pas rediriger les assets statiques
         if request.url.path.startswith('/torrents'):
+            return await call_next(request)
+
+        if request.url.path.startswith('/static'):
             return await call_next(request)
 
         # Ne pas rediriger les routes utilitaires
