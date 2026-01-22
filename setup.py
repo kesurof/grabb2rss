@@ -44,6 +44,12 @@ DEFAULT_CONFIG = {
         "host": "0.0.0.0",
         "port": 8000
     },
+    "auth": {
+        "enabled": False,
+        "username": "",
+        "password_hash": "",
+        "api_keys": []
+    },
     "setup_completed": False
 }
 

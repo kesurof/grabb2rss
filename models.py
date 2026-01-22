@@ -34,3 +34,44 @@ class SyncLog(BaseModel):
     error: Optional[str]
     grabs_count: int
     deduplicated_count: int
+
+# ==================== AUTH MODELS ====================
+
+class LoginRequest(BaseModel):
+    """Requête de connexion"""
+    username: str
+    password: str
+
+class LoginResponse(BaseModel):
+    """Réponse de connexion"""
+    success: bool
+    message: str
+    session_token: Optional[str] = None
+
+class AuthStatus(BaseModel):
+    """Statut d'authentification"""
+    authenticated: bool
+    enabled: bool
+    username: Optional[str] = None
+
+class PasswordChangeRequest(BaseModel):
+    """Requête de changement de mot de passe"""
+    old_password: str
+    new_password: str
+
+class ApiKeyCreate(BaseModel):
+    """Requête de création d'API key"""
+    name: str
+    enabled: bool = True
+
+class ApiKeyResponse(BaseModel):
+    """Réponse avec une API key"""
+    key: str
+    name: str
+    enabled: bool
+    created_at: str
+
+class SetupAuthRequest(BaseModel):
+    """Requête de configuration initiale de l'authentification"""
+    username: str
+    password: str

@@ -35,6 +35,11 @@ class SetupConfigModel(BaseModel):
     rss_title: Optional[str] = "grabb2RSS"
     rss_description: Optional[str] = "Prowlarr to RSS Feed"
 
+    # Configuration d'authentification
+    auth_enabled: Optional[bool] = False
+    auth_username: Optional[str] = ""
+    auth_password: Optional[str] = ""
+
 
 @router.get("/setup", response_class=HTMLResponse)
 async def setup_page():
@@ -340,6 +345,39 @@ async def setup_page():
                 </div>
             </div>
 
+            <!-- Section: Authentification -->
+            <div class="section">
+                <div class="section-title">🔐 Authentification (Optionnel mais Recommandé)</div>
+                <div class="alert-info" style="background: #003366; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #1e90ff;">
+                    <strong>💡 Protection de votre interface</strong><br>
+                    <span style="font-size: 13px; color: #ddd;">
+                        Activez l'authentification pour protéger l'accès à votre interface web.
+                        Les flux RSS locaux resteront accessibles sans authentification,
+                        mais vous pourrez générer des API Keys pour l'accès externe.
+                    </span>
+                </div>
+                <div class="checkbox-group" style="margin-bottom: 20px;">
+                    <input type="checkbox" id="auth_enabled" name="auth_enabled" onchange="toggleAuthFields()">
+                    <label for="auth_enabled" style="margin: 0; font-weight: 600; color: #1e90ff;">
+                        ✅ Activer l'authentification
+                    </label>
+                </div>
+                <div id="auth_fields" style="display: none;">
+                    <div class="form-group">
+                        <label>Nom d'utilisateur <span class="required">*</span></label>
+                        <input type="text" id="auth_username" name="auth_username"
+                               placeholder="admin" autocomplete="username">
+                        <div class="help-text">Choisissez un nom d'utilisateur pour vous connecter</div>
+                    </div>
+                    <div class="form-group">
+                        <label>Mot de passe <span class="required">*</span></label>
+                        <input type="password" id="auth_password" name="auth_password"
+                               placeholder="Mot de passe sécurisé" autocomplete="new-password">
+                        <div class="help-text">Minimum 8 caractères recommandés</div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Boutons -->
             <div class="button-group">
                 <button type="button" class="btn-secondary" onclick="testConnection()">
@@ -353,6 +391,25 @@ async def setup_page():
     </div>
 
     <script>
+        // Toggle auth fields visibility
+        function toggleAuthFields() {
+            const authEnabled = document.getElementById('auth_enabled').checked;
+            const authFields = document.getElementById('auth_fields');
+            authFields.style.display = authEnabled ? 'block' : 'none';
+
+            // Rendre les champs required si l'auth est activée
+            const usernameField = document.getElementById('auth_username');
+            const passwordField = document.getElementById('auth_password');
+
+            if (authEnabled) {
+                usernameField.setAttribute('required', 'required');
+                passwordField.setAttribute('required', 'required');
+            } else {
+                usernameField.removeAttribute('required');
+                passwordField.removeAttribute('required');
+            }
+        }
+
         // Test connection
         async function testConnection() {
             const url = document.getElementById('prowlarr_url').value;
@@ -410,8 +467,25 @@ async def setup_page():
                 rss_domain: window.location.hostname,
                 rss_scheme: window.location.protocol.replace(':', ''),
                 rss_title: 'grabb2RSS',
-                rss_description: 'Prowlarr to RSS Feed'
+                rss_description: 'Prowlarr to RSS Feed',
+
+                // Authentification
+                auth_enabled: document.getElementById('auth_enabled').checked,
+                auth_username: formData.get('auth_username') || '',
+                auth_password: formData.get('auth_password') || ''
             };
+
+            // Validation de l'authentification si activée
+            if (config.auth_enabled) {
+                if (!config.auth_username || !config.auth_password) {
+                    showAlert('Veuillez remplir le nom d\'utilisateur et le mot de passe pour l\'authentification', 'error');
+                    return;
+                }
+                if (config.auth_password.length < 8) {
+                    showAlert('Le mot de passe doit contenir au moins 8 caractères', 'error');
+                    return;
+                }
+            }
 
             // Show loading
             document.getElementById('setupForm').style.display = 'none';
@@ -512,6 +586,25 @@ async def save_setup(config: SetupConfigModel):
             },
             "setup_completed": True
         }
+
+        # Ajouter la configuration d'authentification si activée
+        if config.auth_enabled and config.auth_username and config.auth_password:
+            from auth import hash_password
+            print(f"🔐 Configuration de l'authentification pour {config.auth_username}")
+            new_config["auth"] = {
+                "enabled": True,
+                "username": config.auth_username,
+                "password_hash": hash_password(config.auth_password),
+                "api_keys": []
+            }
+        else:
+            print("ℹ️  Authentification désactivée")
+            new_config["auth"] = {
+                "enabled": False,
+                "username": "",
+                "password_hash": "",
+                "api_keys": []
+            }
 
         # Sauvegarder
         success = setup.save_config(new_config)
