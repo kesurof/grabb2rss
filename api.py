@@ -71,17 +71,22 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 return await call_next(request)
             # Sinon, continuer la vérification auth normale
 
-        # Routes RSS : accès local ou API key
+        # Routes RSS : API key OBLIGATOIRE (même en local)
         if request.url.path.startswith('/rss') or request.url.path.startswith('/feed'):
-            client_host = request.client.host if request.client else None
-            if is_local_request(client_host):
+            # Si auth désactivée, accès libre aux RSS
+            if not is_auth_enabled():
                 return await call_next(request)
 
+            # Vérifier l'API key dans les query params
             api_key = request.query_params.get('api_key')
             if api_key and verify_api_key(api_key):
                 return await call_next(request)
 
-            raise HTTPException(status_code=401, detail="Non autorisé")
+            # Pas d'API key valide : erreur 401
+            raise HTTPException(
+                status_code=401,
+                detail="API key requise. Obtenez votre clé depuis le dashboard."
+            )
 
         # Toutes les autres routes : vérifier session
         session_token = request.cookies.get('session_token')
@@ -393,6 +398,133 @@ async def update_configuration(config_data: dict):
             raise HTTPException(status_code=500, detail="Erreur lors de la sauvegarde")
     except Exception as e:
         logger.error(f"Erreur update_config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== API KEYS & RSS ====================
+
+@app.get("/api/auth/keys")
+async def get_api_keys():
+    """Récupère les API keys actuelles"""
+    try:
+        from auth import get_api_keys
+        keys = get_api_keys()
+        return {
+            "keys": keys,
+            "count": len(keys)
+        }
+    except Exception as e:
+        logger.error(f"Erreur get_api_keys: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/auth/keys/generate")
+async def generate_api_key_endpoint():
+    """Génère une nouvelle API key"""
+    try:
+        from auth import create_api_key
+        from datetime import datetime
+
+        # Créer une nouvelle clé avec un nom automatique
+        name = f"API Key {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        key_data = create_api_key(name, enabled=True)
+
+        if key_data:
+            return {
+                "success": True,
+                "api_key": key_data["key"],
+                "name": key_data["name"],
+                "created_at": key_data["created_at"],
+                "message": "API key générée avec succès"
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Erreur sauvegarde API key")
+    except Exception as e:
+        logger.error(f"Erreur generate_api_key: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/auth/keys/{key}")
+async def delete_api_key(key: str):
+    """Supprime une API key"""
+    try:
+        from auth import delete_api_key as del_key
+        success = del_key(key)
+
+        if success:
+            return {
+                "success": True,
+                "message": "API key supprimée"
+            }
+        else:
+            raise HTTPException(status_code=404, detail="API key non trouvée")
+    except Exception as e:
+        logger.error(f"Erreur delete_api_key: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/rss/urls")
+async def get_rss_urls(request: Request):
+    """Génère les URLs RSS avec API key pour l'utilisateur"""
+    try:
+        from auth import get_api_keys
+        from config import RSS_DOMAIN, RSS_SCHEME
+
+        # Récupérer les API keys disponibles
+        keys = get_api_keys()
+        if not keys:
+            return {
+                "error": "Aucune API key disponible",
+                "message": "Générez une API key d'abord depuis le dashboard",
+                "urls": []
+            }
+
+        # Prendre la première clé active
+        api_key_data = next((k for k in keys if k.get("enabled", True)), None)
+        if not api_key_data:
+            return {
+                "error": "Aucune API key active",
+                "message": "Activez une API key depuis le dashboard",
+                "urls": []
+            }
+
+        api_key = api_key_data["key"]
+
+        # Construire l'URL de base
+        base_url = f"{RSS_SCHEME}://{RSS_DOMAIN}"
+
+        # Générer les URLs
+        urls = [
+            {
+                "name": "Flux RSS complet",
+                "url": f"{base_url}/rss?api_key={api_key}",
+                "description": "Tous les torrents récents",
+                "category": "principal"
+            },
+            {
+                "name": "Flux RSS (format JSON)",
+                "url": f"{base_url}/rss/torrent.json?api_key={api_key}",
+                "description": "Format JSON pour intégrations",
+                "category": "principal"
+            }
+        ]
+
+        # Ajouter les URLs par tracker
+        from db import get_trackers
+        trackers = get_trackers()
+        for tracker in trackers[:10]:  # Limiter à 10 trackers
+            urls.append({
+                "name": f"Flux {tracker}",
+                "url": f"{base_url}/rss/tracker/{tracker}?api_key={api_key}",
+                "description": f"Torrents de {tracker} uniquement",
+                "category": "tracker"
+            })
+
+        return {
+            "api_key": api_key,
+            "api_key_name": api_key_data.get("name", "Sans nom"),
+            "base_url": base_url,
+            "urls": urls,
+            "total_urls": len(urls)
+        }
+    except Exception as e:
+        logger.error(f"Erreur get_rss_urls: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ==================== ADMIN / MAINTENANCE v2.6.8 ====================
