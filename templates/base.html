@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="/static/css/style.css">
     {% block extra_css %}{% endblock %}
 </head>
-<body>
+<body {% block body_class %}{% endblock %}>
     {% block content %}{% endblock %}
 
     {% block scripts %}{% endblock %}
