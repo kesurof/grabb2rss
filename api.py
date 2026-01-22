@@ -5,6 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
+from pathlib import Path
 import logging
 import psutil
 import time
@@ -38,8 +39,12 @@ app = FastAPI(
 )
 
 # Configuration des templates et fichiers statiques
-templates = Jinja2Templates(directory="templates")
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# Utiliser un chemin absolu pour éviter les problèmes de résolution de chemin
+TEMPLATE_DIR = Path(__file__).parent / "templates"
+STATIC_DIR = Path(__file__).parent / "static"
+
+templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # Middleware d'authentification
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -135,9 +140,12 @@ class SetupRedirectMiddleware(BaseHTTPMiddleware):
 
         return await call_next(request)
 
-# Ajouter les middlewares (ordre important: AuthMiddleware AVANT SetupRedirectMiddleware)
-app.add_middleware(SetupRedirectMiddleware)
+# Ajouter les middlewares
+# IMPORTANT: Les middlewares s'exécutent dans l'ordre INVERSE de leur ajout
+# Pour avoir l'ordre d'exécution: SetupRedirectMiddleware -> AuthMiddleware
+# Il faut ajouter: AuthMiddleware puis SetupRedirectMiddleware
 app.add_middleware(AuthMiddleware)
+app.add_middleware(SetupRedirectMiddleware)
 
 # CORS
 app.add_middleware(
@@ -733,15 +741,21 @@ async def minimal_ui():
 </body>
 </html>"""
 
-# ==================== LOGIN PAGE ====================
+# ==================== HTML PAGES ====================
 
-@app.get("/login")
+@app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     """Page de connexion moderne et responsive"""
     return templates.TemplateResponse("pages/login.html", {"request": request})
 
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 async def web_ui(request: Request):
     """Interface web principale (dashboard)"""
+    return templates.TemplateResponse("pages/dashboard.html", {"request": request})
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard_page(request: Request):
+    """Page dashboard (alias de /)"""
     return templates.TemplateResponse("pages/dashboard.html", {"request": request})
