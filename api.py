@@ -170,8 +170,8 @@ app.add_middleware(
 # Ajouter Auth en deuxième (s'exécutera en deuxième)
 app.add_middleware(AuthMiddleware)
 
-# Ajouter SetupRedirect en dernier (s'exécutera en premier)
-app.add_middleware(SetupRedirectMiddleware)
+# SetupRedirect désactivé - le frontend gère le setup via /api/setup/status
+# app.add_middleware(SetupRedirectMiddleware)
 
 # ==================== LIFECYCLE ====================
 
