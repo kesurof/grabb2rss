@@ -120,6 +120,17 @@ def reload_config_from_env() -> int:
 
 def init_db():
     """Initialise la base de données avec toutes les tables"""
+    print(f"🔄 Initialisation de la base de données: {DB_PATH}")
+
+    # Vérifier que le répertoire parent existe
+    if not DB_PATH.parent.exists():
+        print(f"📁 Création du répertoire: {DB_PATH.parent}")
+        try:
+            DB_PATH.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
+        except Exception as e:
+            print(f"❌ Erreur création répertoire: {e}")
+            raise
+
     conn = get_db_connection()
     try:
         # Table grabs
@@ -137,7 +148,7 @@ def init_db():
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
         """)
-        
+
         # Table sync_log
         conn.execute("""
         CREATE TABLE IF NOT EXISTS sync_log (
@@ -149,7 +160,7 @@ def init_db():
             deduplicated_count INTEGER DEFAULT 0
         )
         """)
-        
+
         # Table config
         conn.execute("""
         CREATE TABLE IF NOT EXISTS config (
@@ -159,18 +170,30 @@ def init_db():
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
         """)
-        
+
         # Index pour performances
         conn.execute("CREATE INDEX IF NOT EXISTS idx_grabs_date ON grabs(grabbed_at DESC)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_grabs_title_hash ON grabs(title_hash)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_grabs_prowlarr ON grabs(prowlarr_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_grabs_tracker ON grabs(tracker)")
-        
+
         conn.commit()
-        
+
+        # Vérifier que la DB a bien été créée
+        if DB_PATH.exists():
+            size_mb = DB_PATH.stat().st_size / (1024 * 1024)
+            print(f"✅ Base de données initialisée: {DB_PATH} ({size_mb:.2f} MB)")
+        else:
+            print(f"⚠️  Fichier DB non trouvé après création: {DB_PATH}")
+
         # Migration des colonnes si nécessaire
         migrate_db()
-        
+
+    except Exception as e:
+        print(f"❌ Erreur initialisation DB: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
     finally:
         conn.close()
 

@@ -138,9 +138,12 @@ TORRENT_DIR = DATA_DIR / "torrents"
 
 # Créer les répertoires avec permissions appropriées
 try:
-    DATA_DIR.mkdir(mode=0o755, exist_ok=True)
-    DB_PATH.parent.mkdir(mode=0o755, exist_ok=True)
-    TORRENT_DIR.mkdir(mode=0o777, exist_ok=True)
+    DATA_DIR.mkdir(mode=0o755, exist_ok=True, parents=True)
+    DB_PATH.parent.mkdir(mode=0o755, exist_ok=True, parents=True)
+    TORRENT_DIR.mkdir(mode=0o777, exist_ok=True, parents=True)
+    print(f"✅ Répertoires créés/vérifiés:")
+    print(f"   - DATA_DIR: {DATA_DIR} (exists: {DATA_DIR.exists()})")
+    print(f"   - TORRENT_DIR: {TORRENT_DIR} (exists: {TORRENT_DIR.exists()})")
 except Exception as e:
     print(f"⚠️  Erreur lors de la création des répertoires: {e}")
     print(f"💡 Vérifiez les permissions sur {DATA_DIR.parent}")
@@ -222,10 +225,17 @@ def validate_config() -> bool:
 
     Si le setup n'est pas complété, retourne True (mode wizard).
     """
+    print(f"\n🔍 Validation de la configuration...")
+    print(f"   - Settings file: /config/settings.yml (exists: {Path('/config/settings.yml').exists()})")
+    print(f"   - DB Path: {DB_PATH} (exists: {DB_PATH.exists()})")
+
     # Si setup non complété, on skip la validation (mode wizard)
     if not is_setup_completed():
         print("⚙️  Mode Setup Wizard - Configuration à effectuer via l'interface web")
+        print("   Configuration sera validée après complétion du setup")
         return True
+
+    print("✅ Setup complété - Validation de la configuration...")
 
     errors = []
     warnings = []
