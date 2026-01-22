@@ -1,9 +1,8 @@
 # main.py
 import uvicorn
 import logging
-import sys
 
-from config import APP_HOST, APP_PORT, validate_config
+from config import APP_HOST, APP_PORT
 
 # Configuration logging
 logging.basicConfig(
@@ -12,13 +11,9 @@ logging.basicConfig(
 )
 
 if __name__ == "__main__":
-    # Valider la configuration avant de démarrer
-    if not validate_config():
-        print("\n❌ L'application ne peut pas démarrer avec une configuration invalide")
-        sys.exit(1)
-    
-    print()  # Ligne vide pour séparer
-    
+    print("🚀 Démarrage de Grabb2RSS v2.9.0")
+    print(f"   Écoute sur {APP_HOST}:{APP_PORT}")
+
     uvicorn.run(
         "api:app",
         host=APP_HOST,
