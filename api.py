@@ -1,6 +1,6 @@
 # api.py
 from fastapi import FastAPI, HTTPException, Query, Request, Cookie
-from fastapi.responses import Response, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import Response, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
@@ -50,6 +50,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Routes publiques (pas d'authentification requise)
         public_routes = [
+            '/',  # La page principale retourne toujours HTML, le frontend gère la navigation
+            '/dashboard',  # Alias de /
             '/login',
             '/health',
             '/debug',
@@ -95,50 +97,18 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Vérifier la session via le cookie
         session_token = request.cookies.get('session_token')
         if not verify_session(session_token):
-            # Non authentifié - rediriger vers /login pour les pages HTML
-            if not request.url.path.startswith('/api'):
-                return RedirectResponse(url='/login', status_code=302)
-            # Pour les API, retourner 401
-            raise HTTPException(status_code=401, detail="Non authentifié")
+            # Non authentifié - Pour les API, retourner 401
+            # Les pages HTML ne sont plus protégées ici, elles retournent toujours HTTP 200
+            # et le frontend décide de la navigation
+            if request.url.path.startswith('/api'):
+                raise HTTPException(status_code=401, detail="Non authentifié")
 
         return await call_next(request)
 
 
-# Middleware pour rediriger vers /setup si premier lancement
-class SetupRedirectMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        # Ne pas rediriger les routes API (pour éviter les erreurs JSON)
-        if request.url.path.startswith('/api'):
-            return await call_next(request)
-
-        # Ne pas rediriger si déjà sur /setup
-        if request.url.path.startswith('/setup'):
-            return await call_next(request)
-
-        # Ne pas rediriger /login (nécessaire pour l'authentification)
-        if request.url.path == '/login':
-            return await call_next(request)
-
-        # Ne pas rediriger les assets statiques
-        if request.url.path.startswith('/torrents'):
-            return await call_next(request)
-
-        if request.url.path.startswith('/static'):
-            return await call_next(request)
-
-        # Ne pas rediriger les routes utilitaires
-        if request.url.path in ['/health', '/debug', '/test', '/minimal']:
-            return await call_next(request)
-
-        # Ne pas rediriger les flux RSS
-        if request.url.path.startswith('/rss') or request.url.path.startswith('/feed'):
-            return await call_next(request)
-
-        # Vérifier si c'est le premier lancement
-        if setup.is_first_run():
-            return RedirectResponse(url='/setup', status_code=302)
-
-        return await call_next(request)
+# SetupRedirectMiddleware SUPPRIMÉ
+# La logique de redirection vers /setup est maintenant gérée côté frontend via window.INITIAL_STATE
+# pour être compatible avec oauth2-proxy (pas de redirections serveur HTTP 302)
 
 # Inclure les routes AVANT les middlewares pour qu'ils soient bien pris en compte
 app.include_router(setup_router)
@@ -760,12 +730,13 @@ async def login_page(request: Request):
 
 @app.get("/", response_class=HTMLResponse)
 async def web_ui(request: Request):
-    """Interface web principale (dashboard)"""
+    """Interface web principale (dashboard)
+
+    IMPORTANT: Cette route retourne TOUJOURS HTTP 200 avec du HTML pour être compatible avec oauth2-proxy.
+    Toute logique de navigation (setup, authentification) est gérée côté frontend via window.INITIAL_STATE.
+    """
     # Vérifier si c'est le premier lancement
     first_run = setup.is_first_run()
-    if first_run:
-        # Rediriger vers /setup si premier lancement
-        return RedirectResponse(url='/setup', status_code=302)
 
     # Vérifier l'état d'authentification
     auth_enabled = is_auth_enabled()
@@ -776,14 +747,12 @@ async def web_ui(request: Request):
         session_token = request.cookies.get('session_token')
         authenticated = verify_session(session_token)
 
-        if not authenticated:
-            # Rediriger vers /login si auth activée mais pas authentifié
-            return RedirectResponse(url='/login', status_code=302)
+        if authenticated:
+            # Récupérer le nom d'utilisateur
+            username = get_username_from_session(session_token) or ""
 
-        # Récupérer le nom d'utilisateur
-        username = get_username_from_session(session_token) or ""
-
-    # Injecter l'état initial dans le template
+    # Toujours retourner le HTML avec l'état injecté
+    # Le frontend décidera s'il faut rediriger vers /setup ou /login
     return templates.TemplateResponse("pages/dashboard.html", {
         "request": request,
         "first_run": first_run,
