@@ -55,7 +55,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Routes toujours publiques même si auth activée
         public_routes = [
             '/health',
-            '/debug',
             '/login',
             '/setup',
             '/api/auth/login',
@@ -85,10 +84,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Autres routes : vérifier session
         session_token = request.cookies.get('session_token')
         if not verify_session(session_token):
-            # Pages HTML : retourner la page (le frontend gérera)
-            # API : retourner 401
+            # Rediriger vers login pour les pages HTML
+            # Retourner 401 pour les API
             if request.url.path.startswith('/api'):
                 raise HTTPException(status_code=401, detail="Non authentifié")
+            else:
+                # Pages HTML non authentifiées : rediriger vers login
+                from fastapi.responses import RedirectResponse
+                return RedirectResponse(url='/login', status_code=302)
 
         return await call_next(request)
 

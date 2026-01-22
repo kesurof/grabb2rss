@@ -131,6 +131,53 @@ def _get_config(key: str, default: any, convert_type: type = str):
 
     return default
 
+def reload_config():
+    """Recharge la configuration depuis settings.yml et met à jour les variables globales"""
+    global _loaded_config
+    global PROWLARR_URL, PROWLARR_API_KEY, PROWLARR_HISTORY_PAGE_SIZE
+    global RADARR_URL, RADARR_API_KEY, RADARR_ENABLED
+    global SONARR_URL, SONARR_API_KEY, SONARR_ENABLED
+    global RETENTION_HOURS, AUTO_PURGE, DEDUP_HOURS, SYNC_INTERVAL
+    global RSS_DOMAIN, RSS_SCHEME, RSS_INTERNAL_URL
+    global RSS_TITLE, RSS_DESCRIPTION
+
+    print("🔄 Rechargement de la configuration depuis settings.yml...")
+
+    # Recharger le dict
+    _loaded_config = load_configuration()
+
+    # Mettre à jour toutes les variables globales
+    PROWLARR_URL = _get_config("PROWLARR_URL", "http://localhost:9696", str)
+    PROWLARR_API_KEY = _get_config("PROWLARR_API_KEY", "", str)
+    PROWLARR_HISTORY_PAGE_SIZE = _get_config("PROWLARR_HISTORY_PAGE_SIZE", 100, int)
+
+    RADARR_URL = _get_config("RADARR_URL", "", str)
+    RADARR_API_KEY = _get_config("RADARR_API_KEY", "", str)
+    RADARR_ENABLED = _get_config("RADARR_ENABLED", False, bool)
+
+    SONARR_URL = _get_config("SONARR_URL", "", str)
+    SONARR_API_KEY = _get_config("SONARR_API_KEY", "", str)
+    SONARR_ENABLED = _get_config("SONARR_ENABLED", False, bool)
+
+    RETENTION_HOURS = _get_config("RETENTION_HOURS", 168, int) or None
+    AUTO_PURGE = _get_config("AUTO_PURGE", True, bool)
+    DEDUP_HOURS = _get_config("DEDUP_HOURS", 168, int)
+    SYNC_INTERVAL = _get_config("SYNC_INTERVAL", 3600, int)
+
+    RSS_DOMAIN = _get_config("RSS_DOMAIN", "localhost:8000", str)
+    RSS_SCHEME = _get_config("RSS_SCHEME", "http", str)
+    RSS_INTERNAL_URL = _get_config("RSS_INTERNAL_URL", "http://grabb2rss:8000", str)
+
+    RSS_TITLE = _get_config("RSS_TITLE", "grabb2rss", str)
+    RSS_DESCRIPTION = _get_config("RSS_DESCRIPTION", "Derniers torrents grabbés via Prowlarr", str)
+
+    print(f"✅ Configuration rechargée:")
+    print(f"   - Prowlarr URL: {PROWLARR_URL}")
+    print(f"   - Sync interval: {SYNC_INTERVAL}s")
+    print(f"   - RSS domain: {RSS_DOMAIN}")
+
+    return True
+
 # Chemins
 DATA_DIR = Path(os.getenv("DATA_DIR", "/app/data"))
 DB_PATH = DATA_DIR / "grabs.db"

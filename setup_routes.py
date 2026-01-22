@@ -138,6 +138,15 @@ async def save_setup(config: SetupConfigModel):
 
         if success:
             print("✅ Configuration sauvegardée avec succès")
+
+            # CRITIQUE : Recharger la configuration dans le module config
+            try:
+                from config import reload_config
+                reload_config()
+                print("✅ Configuration rechargée dans l'application")
+            except Exception as reload_err:
+                print(f"⚠️  Erreur rechargement config: {reload_err}")
+
             # Redémarrer le scheduler avec la nouvelle config
             try:
                 from scheduler import restart_scheduler_after_setup
