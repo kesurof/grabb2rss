@@ -34,12 +34,4 @@
 
 {% block scripts %}
 <script src="/static/js/app.js"></script>
-<script>
-    // Initialize login page functionality when DOM is loaded
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initLoginPage);
-    } else {
-        initLoginPage();
-    }
-</script>
 {% endblock %}

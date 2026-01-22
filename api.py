@@ -731,14 +731,12 @@ async def minimal_ui():
 
 # ==================== LOGIN PAGE ====================
 
-@app.get("/login", response_class=HTMLResponse)
 @app.get("/login")
 async def login_page(request: Request):
     """Page de connexion moderne et responsive"""
     return templates.TemplateResponse("pages/login.html", {"request": request})
 
 
-@app.get("/", response_class=HTMLResponse)
 @app.get("/")
 async def web_ui(request: Request):
     """Interface web principale (dashboard)"""
