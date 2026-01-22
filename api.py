@@ -1171,7 +1171,7 @@ async def web_ui():
             <div class="actions">
                 <button class="button" onclick="refreshData()">🔄 Actualiser Dashboard</button>
                 <button class="button success" id="sync-btn" onclick="syncNow()">📡 Synchroniser Maintenant</button>
-                <button class="button" onclick="switchTab('torrents'); event.target=document.querySelector('.tab-button:nth-child(3)');">📦 Gérer les Torrents</button>
+                <button class="button" onclick="switchTab('torrents')">📦 Gérer les Torrents</button>
                 <button class="button danger" onclick="purgeAllGrabs()">🗑️ Vider Tous les Grabs</button>
             </div>
 
@@ -1189,7 +1189,7 @@ async def web_ui():
                     <strong style="display: block; margin-bottom: 5px;">💚 Health Check</strong>
                     <span style="color: #888; font-size: 12px;">État des services</span>
                 </a>
-                <a href="javascript:void(0)" onclick="switchTab('config'); event.target=document.querySelector('.tab-button:nth-child(7)');" style="background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 15px; text-decoration: none; color: #1e90ff; display: block; transition: 0.2s;">
+                <a href="javascript:void(0)" onclick="switchTab('config')" style="background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 15px; text-decoration: none; color: #1e90ff; display: block; transition: 0.2s;">
                     <strong style="display: block; margin-bottom: 5px;">⚙️ Configuration</strong>
                     <span style="color: #888; font-size: 12px;">Modifier les paramètres</span>
                 </a>
@@ -1541,11 +1541,26 @@ async def web_ui():
         }
 
         function switchTab(tab) {
+            // Remove active class from all tabs and buttons
             document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.tab-button').forEach(el => el.classList.remove('active'));
-            document.getElementById(tab).classList.add('active');
-            event.target.classList.add('active');
 
+            // Add active class to selected tab
+            const tabElement = document.getElementById(tab);
+            if (tabElement) {
+                tabElement.classList.add('active');
+            }
+
+            // Find and activate the corresponding button by searching for onclick with the tab name
+            const buttons = document.querySelectorAll('.tab-button');
+            buttons.forEach(btn => {
+                const onclick = btn.getAttribute('onclick');
+                if (onclick && onclick.includes(`'${tab}'`)) {
+                    btn.classList.add('active');
+                }
+            });
+
+            // Load tab content
             if (tab === 'config') loadConfig();
             if (tab === 'logs') loadLogs();
             if (tab === 'grabs') loadGrabs();
