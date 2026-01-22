@@ -220,65 +220,7 @@ def is_setup_completed() -> bool:
 
 def validate_config() -> bool:
     """
-    Valide la configuration au démarrage.
-    Retourne True si tout est OK, False si erreurs critiques.
-
-    Si le setup n'est pas complété, retourne True (mode wizard).
+    Validation simple - ne bloque jamais le démarrage.
+    L'application doit pouvoir démarrer même sans configuration.
     """
-    print(f"\n🔍 Validation de la configuration...")
-    print(f"   - Settings file: /config/settings.yml (exists: {Path('/config/settings.yml').exists()})")
-    print(f"   - DB Path: {DB_PATH} (exists: {DB_PATH.exists()})")
-
-    # Si setup non complété, on skip la validation (mode wizard)
-    if not is_setup_completed():
-        print("⚙️  Mode Setup Wizard - Configuration à effectuer via l'interface web")
-        print("   Configuration sera validée après complétion du setup")
-        return True
-
-    print("✅ Setup complété - Validation de la configuration...")
-
-    errors = []
-    warnings = []
-
-    # Vérifications critiques
-    if not PROWLARR_API_KEY:
-        errors.append("❌ PROWLARR_API_KEY manquante (requis)")
-
-    if not PROWLARR_URL:
-        errors.append("❌ PROWLARR_URL manquante (requis)")
-
-    # Vérifications avertissements
-    if SYNC_INTERVAL < 60:
-        warnings.append("⚠️  SYNC_INTERVAL < 60s (peut surcharger Prowlarr)")
-
-    if SYNC_INTERVAL > 86400:
-        warnings.append("⚠️  SYNC_INTERVAL > 24h (sync très espacées)")
-
-    if DEDUP_HOURS < 1:
-        warnings.append("⚠️  DEDUP_HOURS < 1h (risque élevé de doublons)")
-
-    if DEDUP_HOURS > 720:
-        warnings.append("⚠️  DEDUP_HOURS > 30j (fenêtre très large)")
-
-    if PROWLARR_HISTORY_PAGE_SIZE > 500:
-        warnings.append("⚠️  PROWLARR_HISTORY_PAGE_SIZE > 500 (peut être lent)")
-
-    if AUTO_PURGE and not RETENTION_HOURS:
-        warnings.append("⚠️  AUTO_PURGE activé mais RETENTION_HOURS = 0 (aucune purge)")
-
-    # Affichage
-    if errors:
-        print("\n🚨 Erreurs de configuration critiques:")
-        for error in errors:
-            print(f"  {error}")
-        print("\n💡 Corrigez la configuration via l'interface web ou /config/settings.yml\n")
-        return False
-
-    if warnings:
-        print("\n⚠️  Avertissements de configuration:")
-        for warning in warnings:
-            print(f"  {warning}")
-        print()
-
-    print("✅ Configuration valide")
     return True

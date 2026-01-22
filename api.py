@@ -45,61 +45,48 @@ STATIC_DIR = Path(__file__).parent.absolute() / "static"
 
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 
-# Middleware d'authentification
+# Middleware d'authentification simplifié
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        # Routes publiques (pas d'authentification requise)
+        # Si auth désactivée, tout est public
+        if not is_auth_enabled():
+            return await call_next(request)
+
+        # Routes toujours publiques même si auth activée
         public_routes = [
-            '/',  # La page principale retourne toujours HTML, le frontend gère la navigation
-            '/dashboard',  # Alias de /
-            '/login',
             '/health',
             '/debug',
-            '/test',
-            '/minimal',
+            '/login',
             '/setup',
-            '/api/setup',
             '/api/auth/login',
             '/api/auth/status',
-            '/torrents',
-            '/static'
+            '/api/setup',
+            '/static',
+            '/torrents'
         ]
 
-        # Vérifier si la route est publique
-        for public_route in public_routes:
-            if request.url.path.startswith(public_route):
+        # Vérifier si route publique
+        for route in public_routes:
+            if request.url.path.startswith(route):
                 return await call_next(request)
 
-        # Routes RSS - traitement spécial (API key ou accès local)
+        # Routes RSS : accès local ou API key
         if request.url.path.startswith('/rss') or request.url.path.startswith('/feed'):
-            # Si l'auth n'est pas activée, accès libre
-            if not is_auth_enabled():
-                return await call_next(request)
-
-            # Vérifier si c'est une requête locale (réseau Docker/local)
             client_host = request.client.host if request.client else None
             if is_local_request(client_host):
                 return await call_next(request)
 
-            # Sinon, vérifier l'API key dans les query params
             api_key = request.query_params.get('api_key')
             if api_key and verify_api_key(api_key):
                 return await call_next(request)
 
-            # Accès refusé
-            raise HTTPException(status_code=401, detail="API key requise pour accès externe aux flux RSS")
+            raise HTTPException(status_code=401, detail="Non autorisé")
 
-        # Pour toutes les autres routes, vérifier l'authentification
-        if not is_auth_enabled():
-            # Si l'auth n'est pas activée, accès libre
-            return await call_next(request)
-
-        # Vérifier la session via le cookie
+        # Autres routes : vérifier session
         session_token = request.cookies.get('session_token')
         if not verify_session(session_token):
-            # Non authentifié - Pour les API, retourner 401
-            # Les pages HTML ne sont plus protégées ici, elles retournent toujours HTTP 200
-            # et le frontend décide de la navigation
+            # Pages HTML : retourner la page (le frontend gérera)
+            # API : retourner 401
             if request.url.path.startswith('/api'):
                 raise HTTPException(status_code=401, detail="Non authentifié")
 
@@ -148,9 +135,23 @@ app.add_middleware(AuthMiddleware)
 @app.on_event("startup")
 async def startup():
     """Au démarrage de l'app"""
-    init_db()
-    start_scheduler()
-    print("✅ Application démarrée v2.6.8")
+    print("🔧 Initialisation de la base de données...")
+    try:
+        init_db()
+        print("✅ Base de données initialisée")
+    except Exception as e:
+        print(f"❌ Erreur initialisation DB: {e}")
+        import traceback
+        traceback.print_exc()
+
+    print("🔧 Démarrage du scheduler...")
+    try:
+        start_scheduler()
+        print("✅ Scheduler démarré")
+    except Exception as e:
+        print(f"⚠️  Erreur démarrage scheduler: {e}")
+
+    print("✅ Application démarrée v2.9.0")
 
 @app.on_event("shutdown")
 async def shutdown():
@@ -162,98 +163,12 @@ async def shutdown():
 
 @app.get("/health")
 async def health():
-    """Healthcheck complet avec vérification de tous les composants"""
-    import requests
-    from setup import is_first_run
-
-    # Vérifier si c'est le premier lancement (setup non complété)
-    setup_mode = is_first_run()
-
-    checks = {
+    """Healthcheck simple - retourne toujours 200 si l'API répond"""
+    return {
         "status": "ok",
         "timestamp": datetime.utcnow().isoformat(),
-        "version": "2.8.8",
-        "setup_mode": setup_mode,
-        "components": {
-            "database": "unknown",
-            "prowlarr": "unknown",
-            "scheduler": "unknown"
-        }
+        "version": "2.9.0"
     }
-
-    # 1. Vérifier la base de données
-    try:
-        if DB_PATH.exists():
-            with get_db() as conn:
-                conn.execute("SELECT 1").fetchone()
-            checks["components"]["database"] = "ok"
-        else:
-            checks["components"]["database"] = "missing"
-            # En mode setup, DB manquante n'est pas critique
-            if not setup_mode:
-                checks["status"] = "degraded"
-    except Exception as e:
-        checks["components"]["database"] = f"error: {str(e)}"
-        if not setup_mode:
-            checks["status"] = "degraded"
-
-    # 2. Vérifier Prowlarr (seulement si configuré)
-    if PROWLARR_URL and PROWLARR_API_KEY:
-        try:
-            response = requests.get(
-                f"{PROWLARR_URL}/api/v1/health",
-                headers={"X-Api-Key": PROWLARR_API_KEY},
-                timeout=3
-            )
-            if response.status_code == 200:
-                checks["components"]["prowlarr"] = "ok"
-            else:
-                checks["components"]["prowlarr"] = f"http_{response.status_code}"
-                checks["status"] = "degraded"
-        except requests.Timeout:
-            checks["components"]["prowlarr"] = "timeout"
-            checks["status"] = "degraded"
-        except requests.ConnectionError:
-            checks["components"]["prowlarr"] = "unreachable"
-            checks["status"] = "degraded"
-        except Exception as e:
-            checks["components"]["prowlarr"] = f"error: {str(e)}"
-            checks["status"] = "degraded"
-    else:
-        # En mode setup, Prowlarr non configuré est normal
-        checks["components"]["prowlarr"] = "not_configured" if setup_mode else "missing_config"
-        if not setup_mode:
-            checks["status"] = "degraded"
-
-    # 3. Vérifier le Scheduler
-    try:
-        from scheduler import scheduler
-        if scheduler.running:
-            job = scheduler.get_job("sync_prowlarr")
-            if job:
-                checks["components"]["scheduler"] = "ok"
-                checks["components"]["next_sync"] = job.next_run_time.isoformat() if job.next_run_time else None
-            else:
-                # En mode setup, pas de job schedulé est normal
-                checks["components"]["scheduler"] = "waiting" if setup_mode else "no_job"
-                if not setup_mode:
-                    checks["status"] = "degraded"
-        else:
-            checks["components"]["scheduler"] = "stopped"
-            checks["status"] = "degraded"
-    except Exception as e:
-        checks["components"]["scheduler"] = f"error: {str(e)}"
-        checks["status"] = "degraded"
-
-    # En mode setup, on retourne toujours 200 tant que l'API répond
-    # En mode production, on retourne 503 si problèmes
-    if setup_mode:
-        checks["message"] = "Application en mode configuration - Accédez à /setup pour configurer"
-        status_code = 200
-    else:
-        status_code = 200 if checks["status"] == "ok" else 503
-
-    return JSONResponse(checks, status_code=status_code)
 
 @app.get("/debug")
 async def debug_info():
@@ -752,15 +667,8 @@ async def login_page(request: Request):
 
 @app.get("/", response_class=HTMLResponse)
 async def web_ui(request: Request):
-    """Interface web principale (dashboard)
-
-    IMPORTANT: Cette route retourne TOUJOURS HTTP 200 avec du HTML pour être compatible avec oauth2-proxy.
-    Toute logique de navigation (setup, authentification) est gérée côté frontend via window.INITIAL_STATE.
-    """
-    # Vérifier si c'est le premier lancement
-    first_run = setup.is_first_run()
-
-    # Vérifier l'état d'authentification
+    """Interface web principale - Toujours retourne HTTP 200"""
+    # État d'authentification
     auth_enabled = is_auth_enabled()
     authenticated = False
     username = ""
@@ -768,13 +676,13 @@ async def web_ui(request: Request):
     if auth_enabled:
         session_token = request.cookies.get('session_token')
         authenticated = verify_session(session_token)
-
         if authenticated:
-            # Récupérer le nom d'utilisateur
             username = get_username_from_session(session_token) or ""
 
-    # Toujours retourner le HTML avec l'état injecté
-    # Le frontend décidera s'il faut rediriger vers /setup ou /login
+    # Premier lancement ?
+    first_run = setup.is_first_run()
+
+    # Retourner le HTML - le frontend gère la navigation
     return templates.TemplateResponse("pages/dashboard.html", {
         "request": request,
         "first_run": first_run,
