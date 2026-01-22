@@ -50,9 +50,15 @@ class SetupConfigModel(BaseModel):
 @router.get("/setup", response_class=HTMLResponse)
 async def setup_page(request: Request):
     """Page de setup wizard"""
-    # Toujours afficher la page de setup, même si déjà configuré
-    # Le frontend gère la logique de redirection si nécessaire
-    return templates.TemplateResponse("pages/setup.html", {"request": request})
+    # Injecter l'état du setup dans le template
+    first_run = setup.is_first_run()
+    config_exists = setup.CONFIG_FILE.exists()
+
+    return templates.TemplateResponse("pages/setup.html", {
+        "request": request,
+        "first_run": first_run,
+        "config_exists": config_exists
+    })
 
 
 @router.post("/api/setup/test-prowlarr")

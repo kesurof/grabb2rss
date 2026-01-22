@@ -299,14 +299,20 @@
 
 {% block scripts %}
 <script>
+        // État initial injecté par le serveur
+        window.INITIAL_STATE = {
+            first_run: {{ 'true' if first_run else 'false' }},
+            config_exists: {{ 'true' if config_exists else 'false' }}
+        };
+
         // Vérifier si le setup est déjà terminé au chargement de la page
         document.addEventListener('DOMContentLoaded', async () => {
             try {
-                const res = await fetch('/api/setup/status');
-                const data = await res.json();
+                // Lire l'état initial injecté par le serveur au lieu d'appeler l'API
+                const initialState = window.INITIAL_STATE || {};
 
                 // Si le setup est déjà terminé, rediriger vers le dashboard
-                if (!data.first_run && data.config_exists) {
+                if (!initialState.first_run && initialState.config_exists) {
                     console.log("✅ Setup déjà terminé - redirection vers /");
                     window.location.href = '/';
                     return;

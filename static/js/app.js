@@ -890,11 +890,8 @@ async function testHistoryLimits() {
 
 async function checkSetupStatus() {
     try {
-        const res = await fetch('/api/setup/status');
-        const data = await res.json();
-
-        // Si c'est le premier lancement, rediriger vers /setup
-        if (data.first_run) {
+        // Lire l'état initial injecté par le serveur au lieu d'appeler l'API
+        if (window.INITIAL_STATE && window.INITIAL_STATE.first_run) {
             console.log("🔧 Premier lancement détecté - redirection vers /setup");
             window.location.href = '/setup';
             return false; // Bloquer l'initialisation
@@ -909,12 +906,12 @@ async function checkSetupStatus() {
 
 async function checkAuthStatus() {
     try {
-        const res = await fetch('/api/auth/status');
-        const data = await res.json();
+        // Lire l'état initial injecté par le serveur au lieu d'appeler l'API
+        const initialState = window.INITIAL_STATE || {};
 
-        if (data.enabled) {
+        if (initialState.auth_enabled) {
             // Vérifier si l'utilisateur est authentifié
-            if (!data.authenticated) {
+            if (!initialState.authenticated) {
                 // Auth activée mais utilisateur non connecté - rediriger vers /login
                 console.log("🔐 Authentification requise - redirection vers /login");
                 window.location.href = '/login';
@@ -924,8 +921,8 @@ async function checkAuthStatus() {
             // Auth activée et utilisateur connecté - afficher les éléments d'auth
             document.getElementById('security-tab').style.display = 'block';
             document.getElementById('auth-info').style.display = 'block';
-            document.getElementById('username-display').textContent = data.username || 'Utilisateur';
-            document.getElementById('security-username').textContent = data.username || 'Utilisateur';
+            document.getElementById('username-display').textContent = initialState.username || 'Utilisateur';
+            document.getElementById('security-username').textContent = initialState.username || 'Utilisateur';
         }
 
         return true; // Continuer

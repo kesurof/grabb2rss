@@ -25,7 +25,7 @@ from scheduler import start_scheduler, stop_scheduler, get_sync_status, trigger_
 import setup
 from setup_routes import router as setup_router
 from auth_routes import router as auth_router
-from auth import is_auth_enabled, verify_session, verify_api_key, is_local_request
+from auth import is_auth_enabled, verify_session, verify_api_key, is_local_request, get_username_from_session
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +97,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if not verify_session(session_token):
             # Non authentifié - rediriger vers /login pour les pages HTML
             if not request.url.path.startswith('/api'):
-                return RedirectResponse(url='/login', status_code=307)
+                return RedirectResponse(url='/login', status_code=302)
             # Pour les API, retourner 401
             raise HTTPException(status_code=401, detail="Non authentifié")
 
@@ -136,7 +136,7 @@ class SetupRedirectMiddleware(BaseHTTPMiddleware):
 
         # Vérifier si c'est le premier lancement
         if setup.is_first_run():
-            return RedirectResponse(url='/setup', status_code=307)
+            return RedirectResponse(url='/setup', status_code=302)
 
         return await call_next(request)
 
@@ -761,10 +761,40 @@ async def login_page(request: Request):
 @app.get("/", response_class=HTMLResponse)
 async def web_ui(request: Request):
     """Interface web principale (dashboard)"""
-    return templates.TemplateResponse("pages/dashboard.html", {"request": request})
+    # Vérifier si c'est le premier lancement
+    first_run = setup.is_first_run()
+    if first_run:
+        # Rediriger vers /setup si premier lancement
+        return RedirectResponse(url='/setup', status_code=302)
+
+    # Vérifier l'état d'authentification
+    auth_enabled = is_auth_enabled()
+    authenticated = False
+    username = ""
+
+    if auth_enabled:
+        session_token = request.cookies.get('session_token')
+        authenticated = verify_session(session_token)
+
+        if not authenticated:
+            # Rediriger vers /login si auth activée mais pas authentifié
+            return RedirectResponse(url='/login', status_code=302)
+
+        # Récupérer le nom d'utilisateur
+        username = get_username_from_session(session_token) or ""
+
+    # Injecter l'état initial dans le template
+    return templates.TemplateResponse("pages/dashboard.html", {
+        "request": request,
+        "first_run": first_run,
+        "auth_enabled": auth_enabled,
+        "authenticated": authenticated,
+        "username": username
+    })
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard_page(request: Request):
     """Page dashboard (alias de /)"""
-    return templates.TemplateResponse("pages/dashboard.html", {"request": request})
+    # Utiliser la même logique que la route /
+    return await web_ui(request)
