@@ -54,20 +54,22 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         # Routes toujours publiques même si auth activée
         public_routes = [
-            '/health',
-            '/login',
-            '/setup',
-            '/api/auth/login',
-            '/api/auth/status',
-            '/api/setup',
-            '/static',
-            '/torrents'
+            '/health',              # Healthcheck pour Docker/K8s
+            '/login',               # Page de login
+            '/api/auth/login',      # API login
+            '/api/auth/status'      # Statut auth
         ]
 
         # Vérifier si route publique
         for route in public_routes:
             if request.url.path.startswith(route):
                 return await call_next(request)
+
+        # Routes de setup : publiques SEULEMENT si setup non complété
+        if request.url.path.startswith('/setup') or request.url.path.startswith('/api/setup'):
+            if setup.is_first_run():
+                return await call_next(request)
+            # Sinon, continuer la vérification auth normale
 
         # Routes RSS : accès local ou API key
         if request.url.path.startswith('/rss') or request.url.path.startswith('/feed'):
@@ -81,7 +83,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
             raise HTTPException(status_code=401, detail="Non autorisé")
 
-        # Autres routes : vérifier session
+        # Toutes les autres routes : vérifier session
         session_token = request.cookies.get('session_token')
         if not verify_session(session_token):
             # Rediriger vers login pour les pages HTML
@@ -174,8 +176,16 @@ async def health():
     }
 
 @app.get("/debug")
-async def debug_info():
-    """Informations de debug"""
+async def debug_info(request: Request):
+    """Informations de debug - Protégé"""
+    from fastapi.responses import RedirectResponse
+
+    # Vérifier auth si activée
+    if is_auth_enabled():
+        session_token = request.cookies.get('session_token')
+        if not verify_session(session_token):
+            raise HTTPException(status_code=401, detail="Non authentifié")
+
     return {
         "status": "running",
         "timestamp": datetime.utcnow().isoformat(),
@@ -624,8 +634,16 @@ async def purge_logs():
 # ==================== WEB UI ====================
 
 @app.get("/test", response_class=HTMLResponse)
-async def test_ui():
-    """Interface de test simple"""
+async def test_ui(request: Request):
+    """Interface de test simple - Protégée"""
+    from fastapi.responses import RedirectResponse
+
+    # Vérifier auth si activée
+    if is_auth_enabled():
+        session_token = request.cookies.get('session_token')
+        if not verify_session(session_token):
+            return RedirectResponse(url='/login', status_code=302)
+
     return """<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Test</title></head>
 <body style="font-family: Arial; max-width: 800px; margin: 50px auto; padding: 20px; background: #0f0f0f; color: #fff;">
@@ -640,8 +658,16 @@ async def test_ui():
 </body></html>"""
 
 @app.get("/minimal", response_class=HTMLResponse)
-async def minimal_ui():
-    """Interface ultra-minimaliste"""
+async def minimal_ui(request: Request):
+    """Interface ultra-minimaliste - Protégée"""
+    from fastapi.responses import RedirectResponse
+
+    # Vérifier auth si activée
+    if is_auth_enabled():
+        session_token = request.cookies.get('session_token')
+        if not verify_session(session_token):
+            return RedirectResponse(url='/login', status_code=302)
+
     return """<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -670,22 +696,30 @@ async def login_page(request: Request):
 
 @app.get("/", response_class=HTMLResponse)
 async def web_ui(request: Request):
-    """Interface web principale - Toujours retourne HTTP 200"""
-    # État d'authentification
-    auth_enabled = is_auth_enabled()
-    authenticated = False
-    username = ""
+    """Interface web principale - Redirection serveur si non authentifié"""
+    from fastapi.responses import RedirectResponse
 
+    # Premier lancement ? Rediriger vers setup
+    first_run = setup.is_first_run()
+    if first_run:
+        return RedirectResponse(url='/setup', status_code=302)
+
+    # Auth activée ?
+    auth_enabled = is_auth_enabled()
     if auth_enabled:
         session_token = request.cookies.get('session_token')
         authenticated = verify_session(session_token)
-        if authenticated:
-            username = get_username_from_session(session_token) or ""
 
-    # Premier lancement ?
-    first_run = setup.is_first_run()
+        # Non authentifié ? Rediriger AVANT le rendu
+        if not authenticated:
+            return RedirectResponse(url='/login', status_code=302)
 
-    # Retourner le HTML - le frontend gère la navigation
+        username = get_username_from_session(session_token) or ""
+    else:
+        authenticated = False
+        username = ""
+
+    # Authentifié ou auth désactivée : retourner le HTML
     return templates.TemplateResponse("pages/dashboard.html", {
         "request": request,
         "first_run": first_run,
