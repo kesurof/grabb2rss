@@ -1,5 +1,5 @@
 # api.py
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, Cookie
 from fastapi.responses import Response, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,6 +8,7 @@ import logging
 import psutil
 import time
 from datetime import datetime
+from typing import Optional
 
 from config import TORRENT_DIR, DB_PATH, DEDUP_HOURS, DESCRIPTIONS, PROWLARR_URL, PROWLARR_API_KEY
 from db import (
@@ -21,6 +22,8 @@ from models import GrabOut, GrabStats, SyncStatus
 from scheduler import start_scheduler, stop_scheduler, get_sync_status, trigger_sync
 import setup
 from setup_routes import router as setup_router
+from auth_routes import router as auth_router
+from auth import is_auth_enabled, verify_session, verify_api_key, is_local_request
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +37,63 @@ app = FastAPI(
 )
 
 
+# Middleware d'authentification
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # Routes publiques (pas d'authentification requise)
+        public_routes = [
+            '/health',
+            '/debug',
+            '/test',
+            '/minimal',
+            '/setup',
+            '/api/setup',
+            '/api/auth/login',
+            '/api/auth/status',
+            '/torrents'
+        ]
+
+        # Vérifier si la route est publique
+        for public_route in public_routes:
+            if request.url.path.startswith(public_route):
+                return await call_next(request)
+
+        # Routes RSS - traitement spécial (API key ou accès local)
+        if request.url.path.startswith('/rss') or request.url.path.startswith('/feed'):
+            # Si l'auth n'est pas activée, accès libre
+            if not is_auth_enabled():
+                return await call_next(request)
+
+            # Vérifier si c'est une requête locale (réseau Docker/local)
+            client_host = request.client.host if request.client else None
+            if is_local_request(client_host):
+                return await call_next(request)
+
+            # Sinon, vérifier l'API key dans les query params
+            api_key = request.query_params.get('api_key')
+            if api_key and verify_api_key(api_key):
+                return await call_next(request)
+
+            # Accès refusé
+            raise HTTPException(status_code=401, detail="API key requise pour accès externe aux flux RSS")
+
+        # Pour toutes les autres routes, vérifier l'authentification
+        if not is_auth_enabled():
+            # Si l'auth n'est pas activée, accès libre
+            return await call_next(request)
+
+        # Vérifier la session via le cookie
+        session_token = request.cookies.get('session_token')
+        if not verify_session(session_token):
+            # Non authentifié - rediriger vers /login pour les pages HTML
+            if not request.url.path.startswith('/api'):
+                return RedirectResponse(url='/login', status_code=307)
+            # Pour les API, retourner 401
+            raise HTTPException(status_code=401, detail="Non authentifié")
+
+        return await call_next(request)
+
+
 # Middleware pour rediriger vers /setup si premier lancement
 class SetupRedirectMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -43,6 +103,10 @@ class SetupRedirectMiddleware(BaseHTTPMiddleware):
 
         # Ne pas rediriger si déjà sur /setup
         if request.url.path.startswith('/setup'):
+            return await call_next(request)
+
+        # Ne pas rediriger si sur /login
+        if request.url.path == '/login':
             return await call_next(request)
 
         # Ne pas rediriger les assets statiques
@@ -63,8 +127,9 @@ class SetupRedirectMiddleware(BaseHTTPMiddleware):
 
         return await call_next(request)
 
-# Ajouter les middlewares
+# Ajouter les middlewares (ordre important: AuthMiddleware AVANT SetupRedirectMiddleware)
 app.add_middleware(SetupRedirectMiddleware)
+app.add_middleware(AuthMiddleware)
 
 # CORS
 app.add_middleware(
@@ -75,8 +140,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Inclure les routes du setup wizard
+# Inclure les routes
 app.include_router(setup_router)
+app.include_router(auth_router)
 
 # Monter le dossier torrents
 if TORRENT_DIR.exists():
@@ -659,6 +725,270 @@ async def minimal_ui():
 </body>
 </html>"""
 
+# ==================== LOGIN PAGE ====================
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page():
+    """Page de connexion moderne et responsive"""
+    html_content = """<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connexion - Grabb2RSS</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #0f0f0f 0%, #1a1a2e 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #e0e0e0;
+        }
+
+        .login-container {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 16px;
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo h1 {
+            color: #1e90ff;
+            font-size: 32px;
+            margin-bottom: 8px;
+        }
+
+        .logo p {
+            color: #888;
+            font-size: 14px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #1e90ff;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px 16px;
+            background: #0f0f0f;
+            border: 1px solid #333;
+            color: #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #1e90ff;
+            box-shadow: 0 0 0 3px rgba(30,144,255,0.1);
+        }
+
+        .login-button {
+            width: 100%;
+            padding: 14px;
+            background: #1e90ff;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 10px;
+        }
+
+        .login-button:hover {
+            background: #0066cc;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(30,144,255,0.3);
+        }
+
+        .login-button:active {
+            transform: translateY(0);
+        }
+
+        .login-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .error-message {
+            background: #ff4444;
+            color: white;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+            animation: shake 0.5s;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-10px); }
+            75% { transform: translateX(10px); }
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #888;
+            font-size: 12px;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin-top: 10px;
+            color: #1e90ff;
+        }
+
+        .loading::after {
+            content: '...';
+            animation: dots 1.5s steps(4, end) infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+
+        @media (max-width: 480px) {
+            .login-container {
+                padding: 30px 20px;
+                margin: 20px;
+            }
+
+            .logo h1 {
+                font-size: 28px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="logo">
+            <h1>🔐 Grabb2RSS</h1>
+            <p>Connexion Sécurisée</p>
+        </div>
+
+        <div id="error-message" class="error-message"></div>
+
+        <form id="login-form">
+            <div class="form-group">
+                <label for="username">Nom d'utilisateur</label>
+                <input type="text" id="username" name="username" required autocomplete="username" autofocus>
+            </div>
+
+            <div class="form-group">
+                <label for="password">Mot de passe</label>
+                <input type="password" id="password" name="password" required autocomplete="current-password">
+            </div>
+
+            <button type="submit" class="login-button" id="login-btn">
+                Se connecter
+            </button>
+
+            <div class="loading" id="loading">Connexion en cours</div>
+        </form>
+
+        <div class="footer">
+            <p>Grabb2RSS v2.6.8 - Convertisseur Prowlarr → RSS</p>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('login-form');
+        const errorMessage = document.getElementById('error-message');
+        const loginBtn = document.getElementById('login-btn');
+        const loading = document.getElementById('loading');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            // Récupérer les valeurs
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            // Désactiver le formulaire
+            loginBtn.disabled = true;
+            loginBtn.textContent = 'Connexion...';
+            loading.style.display = 'block';
+            errorMessage.style.display = 'none';
+
+            try {
+                // Envoyer la requête de connexion
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, password }),
+                    credentials: 'include'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Connexion réussie - rediriger vers la page d'accueil
+                    window.location.href = '/';
+                } else {
+                    // Afficher l'erreur
+                    errorMessage.textContent = data.message || 'Identifiants incorrects';
+                    errorMessage.style.display = 'block';
+                    loginBtn.disabled = false;
+                    loginBtn.textContent = 'Se connecter';
+                    loading.style.display = 'none';
+
+                    // Réinitialiser le mot de passe
+                    document.getElementById('password').value = '';
+                    document.getElementById('password').focus();
+                }
+            } catch (error) {
+                errorMessage.textContent = 'Erreur de connexion au serveur';
+                errorMessage.style.display = 'block';
+                loginBtn.disabled = false;
+                loginBtn.textContent = 'Se connecter';
+                loading.style.display = 'none';
+                console.error('Erreur:', error);
+            }
+        });
+
+        // Focus sur le champ username au chargement
+        document.getElementById('username').focus();
+    </script>
+</body>
+</html>"""
+    return HTMLResponse(content=html_content)
+
 @app.get("/", response_class=HTMLResponse)
 async def web_ui():
     """Interface Web complète v2.6.8 - CORRIGÉE"""
@@ -755,8 +1085,20 @@ async def web_ui():
 <body>
     <div class="container">
         <header>
-            <h1>📡 Grabb2RSS v2.6.8</h1>
-            <p class="subtitle">Convertisseur Prowlarr → RSS avec Flux Personnalisés + Admin</p>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h1>📡 Grabb2RSS v2.6.8</h1>
+                    <p class="subtitle">Convertisseur Prowlarr → RSS avec Flux Personnalisés + Admin</p>
+                </div>
+                <div id="auth-info" style="display: none; text-align: right;">
+                    <p style="color: #888; font-size: 13px; margin-bottom: 5px;">
+                        Connecté en tant que: <span id="username-display" style="color: #1e90ff; font-weight: 600;"></span>
+                    </p>
+                    <button class="button" onclick="logout()" style="font-size: 13px; padding: 8px 15px;">
+                        🚪 Déconnexion
+                    </button>
+                </div>
+            </div>
         </header>
 
         <div class="tabs">
@@ -767,6 +1109,7 @@ async def web_ui():
             <button class="tab-button" onclick="switchTab('rss')">📡 Flux RSS</button>
             <button class="tab-button" onclick="switchTab('logs')">📝 Logs</button>
             <button class="tab-button" onclick="switchTab('config')">⚙️ Configuration</button>
+            <button class="tab-button" onclick="switchTab('security')" id="security-tab" style="display: none;">🔐 Sécurité</button>
             <button class="tab-button" onclick="switchTab('admin')">🔧 Admin</button>
         </div>
 
@@ -1123,6 +1466,65 @@ async def web_ui():
                 </div>
             </div>
         </div>
+
+        <!-- TAB: SÉCURITÉ -->
+        <div id="security" class="tab-content">
+            <h2>🔐 Sécurité & Authentification</h2>
+            <p style="color: #888; margin-bottom: 20px;">Gérez votre compte, votre mot de passe et vos API keys pour l'accès aux flux RSS</p>
+
+            <!-- Section: Compte -->
+            <div class="card" style="margin-bottom: 30px;">
+                <h3>👤 Mon Compte</h3>
+                <div style="margin-top: 15px;">
+                    <p style="color: #888; margin-bottom: 10px;">
+                        Utilisateur: <strong id="security-username" style="color: #1e90ff;">-</strong>
+                    </p>
+                    <div class="actions">
+                        <button class="button" onclick="showChangePasswordForm()">🔑 Changer le mot de passe</button>
+                    </div>
+                </div>
+
+                <!-- Formulaire de changement de mot de passe -->
+                <div id="change-password-form" style="display: none; margin-top: 20px; padding-top: 20px; border-top: 1px solid #333;">
+                    <h4 style="color: #1e90ff; margin-bottom: 15px;">Changer le mot de passe</h4>
+                    <div class="form-group">
+                        <label>Ancien mot de passe</label>
+                        <input type="password" id="old-password" placeholder="Ancien mot de passe">
+                    </div>
+                    <div class="form-group">
+                        <label>Nouveau mot de passe</label>
+                        <input type="password" id="new-password" placeholder="Minimum 8 caractères">
+                    </div>
+                    <div class="actions">
+                        <button class="button success" onclick="changePassword()">✅ Confirmer</button>
+                        <button class="button" onclick="hideChangePasswordForm()">❌ Annuler</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section: API Keys -->
+            <div class="card">
+                <h3>🔑 API Keys</h3>
+                <p style="color: #888; font-size: 13px; margin-bottom: 15px;">
+                    Les API Keys permettent l'accès aux flux RSS depuis l'extérieur du réseau local.
+                    Ajoutez <code style="background: #0f0f0f; padding: 2px 6px; border-radius: 3px;">?api_key=VOTRE_CLE</code> à l'URL du flux RSS.
+                </p>
+
+                <!-- Création d'API Key -->
+                <div style="background: #0f0f0f; border: 1px solid #333; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+                    <h4 style="color: #1e90ff; margin-bottom: 10px;">Créer une nouvelle API Key</h4>
+                    <div class="form-group" style="margin-bottom: 10px;">
+                        <input type="text" id="api-key-name" placeholder="Nom de l'API Key (ex: qBittorrent)" style="width: 100%;">
+                    </div>
+                    <button class="button success" onclick="createApiKey()">➕ Créer</button>
+                </div>
+
+                <!-- Liste des API Keys -->
+                <div id="api-keys-list">
+                    <p style="color: #888; text-align: center;">Chargement...</p>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -1151,6 +1553,7 @@ async def web_ui():
             if (tab === 'stats') loadStats();
             if (tab === 'rss') loadRssUrls();
             if (tab === 'admin') loadAdminTab();
+            if (tab === 'security') loadApiKeys();
         }
 
         function loadRssUrls() {
@@ -1977,16 +2380,225 @@ async def web_ui():
             }
         }
 
+        // ==================== AUTH & SECURITY ====================
+
+        async function checkAuthStatus() {
+            try {
+                const res = await fetch('/api/auth/status');
+                const data = await res.json();
+
+                if (data.enabled) {
+                    // Auth activée - afficher les éléments d'auth
+                    document.getElementById('security-tab').style.display = 'block';
+                    document.getElementById('auth-info').style.display = 'block';
+                    document.getElementById('username-display').textContent = data.username || 'Utilisateur';
+                    document.getElementById('security-username').textContent = data.username || 'Utilisateur';
+                }
+            } catch (error) {
+                console.error("Erreur vérification auth:", error);
+            }
+        }
+
+        async function logout() {
+            if (!confirm('Êtes-vous sûr de vouloir vous déconnecter ?')) {
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/auth/logout', { method: 'POST' });
+                if (res.ok) {
+                    window.location.href = '/login';
+                }
+            } catch (error) {
+                alert('Erreur lors de la déconnexion');
+                console.error(error);
+            }
+        }
+
+        function showChangePasswordForm() {
+            document.getElementById('change-password-form').style.display = 'block';
+        }
+
+        function hideChangePasswordForm() {
+            document.getElementById('change-password-form').style.display = 'none';
+            document.getElementById('old-password').value = '';
+            document.getElementById('new-password').value = '';
+        }
+
+        async function changePassword() {
+            const oldPassword = document.getElementById('old-password').value;
+            const newPassword = document.getElementById('new-password').value;
+
+            if (!oldPassword || !newPassword) {
+                alert('Veuillez remplir tous les champs');
+                return;
+            }
+
+            if (newPassword.length < 8) {
+                alert('Le nouveau mot de passe doit contenir au moins 8 caractères');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/auth/change-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ old_password: oldPassword, new_password: newPassword })
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    alert('✅ Mot de passe changé avec succès');
+                    hideChangePasswordForm();
+                } else {
+                    alert('❌ Erreur: ' + (data.detail || 'Ancien mot de passe incorrect'));
+                }
+            } catch (error) {
+                alert('❌ Erreur lors du changement de mot de passe');
+                console.error(error);
+            }
+        }
+
+        async function loadApiKeys() {
+            try {
+                const res = await fetch('/api/auth/api-keys');
+                const data = await res.json();
+
+                const list = document.getElementById('api-keys-list');
+
+                if (!data.api_keys || data.api_keys.length === 0) {
+                    list.innerHTML = '<p style="color: #888; text-align: center;">Aucune API Key configurée</p>';
+                    return;
+                }
+
+                let html = '<table style="margin-top: 10px;"><thead><tr><th>Nom</th><th>Clé</th><th>Statut</th><th>Créée le</th><th>Actions</th></tr></thead><tbody>';
+
+                data.api_keys.forEach(key => {
+                    const statusColor = key.enabled ? '#00aa00' : '#888';
+                    const statusText = key.enabled ? '✅ Activée' : '❌ Désactivée';
+                    const createdAt = new Date(key.created_at).toLocaleString('fr-FR');
+
+                    html += `
+                        <tr>
+                            <td><strong>${key.name}</strong></td>
+                            <td>
+                                <code style="background: #0f0f0f; padding: 4px 8px; border-radius: 4px; font-size: 11px;">${key.key_masked || key.key}</code>
+                                <button class="copy-btn" onclick="copyApiKey('${key.key}')" style="margin-left: 10px;">📋 Copier</button>
+                            </td>
+                            <td style="color: ${statusColor};">${statusText}</td>
+                            <td style="color: #888; font-size: 12px;">${createdAt}</td>
+                            <td>
+                                <button class="button" style="font-size: 12px; padding: 5px 10px;" onclick="toggleApiKey('${key.key}', ${!key.enabled})">
+                                    ${key.enabled ? '⏸️ Désactiver' : '▶️ Activer'}
+                                </button>
+                                <button class="button danger" style="font-size: 12px; padding: 5px 10px;" onclick="deleteApiKey('${key.key}')">🗑️</button>
+                            </td>
+                        </tr>
+                    `;
+                });
+
+                html += '</tbody></table>';
+                list.innerHTML = html;
+            } catch (error) {
+                console.error("Erreur chargement API keys:", error);
+                document.getElementById('api-keys-list').innerHTML = '<p style="color: #ff4444;">Erreur lors du chargement des API keys</p>';
+            }
+        }
+
+        async function createApiKey() {
+            const name = document.getElementById('api-key-name').value.trim();
+
+            if (!name) {
+                alert('Veuillez donner un nom à l\'API Key');
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/auth/api-keys', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name, enabled: true })
+                });
+
+                const data = await res.json();
+
+                if (data.key) {
+                    alert(`✅ API Key créée avec succès !\n\nClé: ${data.key}\n\nCopiez-la maintenant, elle ne sera plus affichée en entier.`);
+                    document.getElementById('api-key-name').value = '';
+                    await loadApiKeys();
+                } else {
+                    alert('❌ Erreur lors de la création de l\'API Key');
+                }
+            } catch (error) {
+                alert('❌ Erreur lors de la création de l\'API Key');
+                console.error(error);
+            }
+        }
+
+        function copyApiKey(key) {
+            navigator.clipboard.writeText(key).then(() => {
+                alert('✅ API Key copiée dans le presse-papiers!');
+            }).catch(() => {
+                alert('❌ Erreur lors de la copie');
+            });
+        }
+
+        async function deleteApiKey(key) {
+            if (!confirm('Êtes-vous sûr de vouloir supprimer cette API Key ?')) {
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/auth/api-keys/${encodeURIComponent(key)}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    alert('✅ API Key supprimée');
+                    await loadApiKeys();
+                } else {
+                    alert('❌ Erreur lors de la suppression');
+                }
+            } catch (error) {
+                alert('❌ Erreur lors de la suppression');
+                console.error(error);
+            }
+        }
+
+        async function toggleApiKey(key, enabled) {
+            try {
+                const res = await fetch(`/api/auth/api-keys/${encodeURIComponent(key)}?enabled=${enabled}`, {
+                    method: 'PATCH'
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    alert(`✅ API Key ${enabled ? 'activée' : 'désactivée'}`);
+                    await loadApiKeys();
+                } else {
+                    alert('❌ Erreur lors de la modification');
+                }
+            } catch (error) {
+                alert('❌ Erreur lors de la modification');
+                console.error(error);
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', async () => {
             console.log("🚀 Initialisation Grab2RSS v2.6.8...");
-            
+
             try {
+                await checkAuthStatus();
                 await loadTrackers();
                 await refreshData();
                 await loadGrabs();
-                
+
                 setInterval(refreshData, 30000);
-                
+
                 console.log("✅ Application initialisée");
             } catch (error) {
                 console.error("❌ Erreur initialisation:", error);
