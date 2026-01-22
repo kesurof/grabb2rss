@@ -32,7 +32,7 @@ def get_db_connection():
     return conn
 
 def init_config_from_env():
-    """Initialise la config DB depuis les variables d'environnement si vide"""
+    """Initialise la config DB depuis settings.yml si vide"""
     try:
         from config import (
             PROWLARR_URL, PROWLARR_API_KEY, PROWLARR_HISTORY_PAGE_SIZE,
@@ -40,12 +40,12 @@ def init_config_from_env():
             RSS_DOMAIN, RSS_SCHEME, RADARR_URL, RADARR_API_KEY,
             SONARR_URL, SONARR_API_KEY, DESCRIPTIONS
         )
-        
+
         # Vérifier si la config existe déjà
         existing = get_all_config()
-        
+
         if not existing:
-            print("📝 Initialisation de la configuration depuis .env...")
+            print("📝 Initialisation de la configuration depuis settings.yml...")
             
             # Définir toutes les valeurs
             configs = {
@@ -76,8 +76,8 @@ def init_config_from_env():
 
 def reload_config_from_env() -> int:
     """
-    Force le rechargement de la configuration depuis .env vers la DB
-    ATTENTION : Écrase les valeurs existantes en DB avec celles de .env
+    Force le rechargement de la configuration depuis settings.yml vers la DB
+    ATTENTION : Écrase les valeurs existantes en DB avec celles de settings.yml
     Retourne le nombre de paramètres rechargés
     """
     try:
@@ -87,8 +87,8 @@ def reload_config_from_env() -> int:
             RSS_DOMAIN, RSS_SCHEME, RADARR_URL, RADARR_API_KEY,
             SONARR_URL, SONARR_API_KEY, DESCRIPTIONS
         )
-        
-        print("🔄 Rechargement de la configuration depuis .env...")
+
+        print("🔄 Rechargement de la configuration depuis settings.yml...")
         
         # Définir toutes les valeurs (écrase les existantes)
         configs = {
@@ -111,7 +111,7 @@ def reload_config_from_env() -> int:
         for key, (value, description) in configs.items():
             set_config(key, value, description)
         
-        print(f"✅ {len(configs)} paramètres rechargés depuis .env")
+        print(f"✅ {len(configs)} paramètres rechargés depuis settings.yml")
         return len(configs)
         
     except Exception as e:
@@ -207,8 +207,8 @@ def migrate_db():
         
         conn.commit()
         print("✅ Migration complète")
-        
-        # Initialiser la config DB depuis .env si nécessaire
+
+        # Initialiser la config DB depuis settings.yml si nécessaire
         init_config_from_env()
             
     except Exception as e:

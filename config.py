@@ -1,69 +1,119 @@
 # config.py
 import os
 from pathlib import Path
-from dotenv import load_dotenv
+import yaml
+
+# Fonction pour créer le fichier settings.yml par défaut
+def create_default_settings():
+    """Crée un fichier settings.yml par défaut si il n'existe pas"""
+    settings_file = Path("/config/settings.yml")
+    config_dir = Path("/config")
+
+    # Créer le répertoire /config si nécessaire
+    try:
+        config_dir.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        print(f"⚠️  Erreur création répertoire /config: {e}")
+        return False
+
+    # Créer le fichier settings.yml par défaut
+    default_config = {
+        "prowlarr": {
+            "url": "",
+            "api_key": "",
+            "history_page_size": 500
+        },
+        "radarr": {
+            "url": "",
+            "api_key": "",
+            "enabled": True
+        },
+        "sonarr": {
+            "url": "",
+            "api_key": "",
+            "enabled": True
+        },
+        "sync": {
+            "interval": 3600,
+            "retention_hours": 168,
+            "dedup_hours": 168,
+            "auto_purge": True
+        },
+        "rss": {
+            "domain": "localhost:8000",
+            "scheme": "http",
+            "title": "Grabb2RSS",
+            "description": "Prowlarr to RSS Feed"
+        },
+        "setup_completed": False
+    }
+
+    try:
+        with open(settings_file, 'w', encoding='utf-8') as f:
+            yaml.dump(default_config, f, default_flow_style=False, allow_unicode=True)
+        print(f"✅ Configuration par défaut créée: {settings_file}")
+        return True
+    except Exception as e:
+        print(f"❌ Erreur création settings.yml: {e}")
+        return False
 
 # Fonction pour charger la configuration
 def load_configuration():
     """
-    Charge la configuration avec priorité:
-    1. /config/settings.yml (si setup complété)
-    2. .env (fallback)
-    3. Variables d'environnement
-    4. Valeurs par défaut
+    Charge la configuration depuis /config/settings.yml
+    Crée le fichier par défaut s'il n'existe pas
     """
     config = {}
-
-    # Essayer de charger depuis /config/settings.yml (priorité 1)
     settings_file = Path("/config/settings.yml")
-    if settings_file.exists():
-        try:
-            import yaml
-            with open(settings_file, 'r', encoding='utf-8') as f:
-                yaml_config = yaml.safe_load(f)
-                if yaml_config and yaml_config.get("setup_completed"):
+
+    # Créer le fichier par défaut si il n'existe pas
+    if not settings_file.exists():
+        print(f"⚠️  Fichier settings.yml manquant")
+        print(f"💡 Création de la configuration par défaut...")
+        create_default_settings()
+
+    # Charger la configuration depuis settings.yml
+    try:
+        with open(settings_file, 'r', encoding='utf-8') as f:
+            yaml_config = yaml.safe_load(f)
+            if yaml_config:
+                setup_completed = yaml_config.get("setup_completed", False)
+
+                if setup_completed:
                     print(f"✅ Configuration chargée depuis {settings_file}")
+                else:
+                    print(f"⚙️  Mode Setup Wizard - Configuration à effectuer via l'interface web")
 
-                    # Mapper la config YAML vers les variables
-                    prowlarr = yaml_config.get("prowlarr", {})
-                    config["PROWLARR_URL"] = prowlarr.get("url", "")
-                    config["PROWLARR_API_KEY"] = prowlarr.get("api_key", "")
-                    config["PROWLARR_HISTORY_PAGE_SIZE"] = prowlarr.get("history_page_size", 100)
+                # Mapper la config YAML vers les variables
+                prowlarr = yaml_config.get("prowlarr", {})
+                config["PROWLARR_URL"] = prowlarr.get("url", "")
+                config["PROWLARR_API_KEY"] = prowlarr.get("api_key", "")
+                config["PROWLARR_HISTORY_PAGE_SIZE"] = prowlarr.get("history_page_size", 500)
 
-                    radarr = yaml_config.get("radarr", {})
-                    config["RADARR_URL"] = radarr.get("url", "")
-                    config["RADARR_API_KEY"] = radarr.get("api_key", "")
-                    config["RADARR_ENABLED"] = radarr.get("enabled", False)
+                radarr = yaml_config.get("radarr", {})
+                config["RADARR_URL"] = radarr.get("url", "")
+                config["RADARR_API_KEY"] = radarr.get("api_key", "")
+                config["RADARR_ENABLED"] = radarr.get("enabled", True)
 
-                    sonarr = yaml_config.get("sonarr", {})
-                    config["SONARR_URL"] = sonarr.get("url", "")
-                    config["SONARR_API_KEY"] = sonarr.get("api_key", "")
-                    config["SONARR_ENABLED"] = sonarr.get("enabled", False)
+                sonarr = yaml_config.get("sonarr", {})
+                config["SONARR_URL"] = sonarr.get("url", "")
+                config["SONARR_API_KEY"] = sonarr.get("api_key", "")
+                config["SONARR_ENABLED"] = sonarr.get("enabled", True)
 
-                    sync = yaml_config.get("sync", {})
-                    config["SYNC_INTERVAL"] = sync.get("interval", 3600)
-                    config["RETENTION_HOURS"] = sync.get("retention_hours", 168)
-                    config["AUTO_PURGE"] = sync.get("auto_purge", True)
-                    config["DEDUP_HOURS"] = sync.get("dedup_hours", 168)
+                sync = yaml_config.get("sync", {})
+                config["SYNC_INTERVAL"] = sync.get("interval", 3600)
+                config["RETENTION_HOURS"] = sync.get("retention_hours", 168)
+                config["AUTO_PURGE"] = sync.get("auto_purge", True)
+                config["DEDUP_HOURS"] = sync.get("dedup_hours", 168)
 
-                    rss = yaml_config.get("rss", {})
-                    config["RSS_DOMAIN"] = rss.get("domain", "localhost:8000")
-                    config["RSS_SCHEME"] = rss.get("scheme", "http")
-                    config["RSS_TITLE"] = rss.get("title", "grabb2rss")
-                    config["RSS_DESCRIPTION"] = rss.get("description", "Prowlarr to RSS Feed")
-
-                    return config
-        except Exception as e:
-            print(f"⚠️  Erreur lecture {settings_file}: {e}")
-
-    # Fallback sur .env (priorité 2)
-    env_path = Path(__file__).parent / '.env'
-    if env_path.exists():
-        load_dotenv(env_path)
-        print(f"✅ Configuration chargée depuis {env_path}")
-    else:
-        print(f"⚠️  Aucun fichier de configuration trouvé")
-        print(f"💡 Démarrage en mode Setup Wizard")
+                rss = yaml_config.get("rss", {})
+                config["RSS_DOMAIN"] = rss.get("domain", "localhost:8000")
+                config["RSS_SCHEME"] = rss.get("scheme", "http")
+                config["RSS_TITLE"] = rss.get("title", "Grabb2RSS")
+                config["RSS_DESCRIPTION"] = rss.get("description", "Prowlarr to RSS Feed")
+    except Exception as e:
+        print(f"⚠️  Erreur lecture {settings_file}: {e}")
+        print(f"💡 Utilisation de la configuration par défaut")
 
     return config
 
@@ -72,18 +122,12 @@ _loaded_config = load_configuration()
 
 # Helper pour récupérer une valeur avec fallback
 def _get_config(key: str, default: any, convert_type: type = str):
-    """Récupère une config depuis YAML ou env avec fallback"""
+    """Récupère une config depuis YAML avec fallback"""
     if key in _loaded_config:
         value = _loaded_config[key]
         if convert_type == bool and isinstance(value, str):
             return value.lower() == "true"
         return convert_type(value) if value else default
-
-    env_value = os.getenv(key)
-    if env_value:
-        if convert_type == bool:
-            return env_value.lower() == "true"
-        return convert_type(env_value)
 
     return default
 
