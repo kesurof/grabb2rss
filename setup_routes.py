@@ -3,7 +3,7 @@
 Routes pour le setup wizard (première installation)
 """
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from pathlib import Path
@@ -12,8 +12,8 @@ import setup
 
 router = APIRouter()
 
-# Utiliser un chemin absolu pour éviter les problèmes de résolution
-TEMPLATE_DIR = Path(__file__).parent / "templates"
+# Utiliser un chemin absolu identique à api.py pour éviter les conflits
+TEMPLATE_DIR = Path(__file__).parent.absolute() / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 
 
