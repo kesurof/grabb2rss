@@ -6,11 +6,15 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+from pathlib import Path
 from typing import Optional
 import setup
 
 router = APIRouter()
-templates = Jinja2Templates(directory="templates")
+
+# Utiliser un chemin absolu pour éviter les problèmes de résolution
+TEMPLATE_DIR = Path(__file__).parent / "templates"
+templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 
 
 class SetupConfigModel(BaseModel):
@@ -43,7 +47,7 @@ class SetupConfigModel(BaseModel):
     auth_password: Optional[str] = ""
 
 
-@router.get("/setup")
+@router.get("/setup", response_class=HTMLResponse)
 async def setup_page(request: Request):
     """Page de setup wizard"""
     if not setup.is_first_run():
