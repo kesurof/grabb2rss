@@ -54,19 +54,17 @@ Le flux généré respecte la spécification RSS 2.0 avec les éléments suivant
 
 ### 1. Configuration de Grabb2RSS
 
-#### Fichier `.env` ou `/config/settings.yml`
+#### Fichier `/config/settings.yml`
 
-```env
-# URL interne Docker (pour qBittorrent dans le réseau Docker)
-RSS_INTERNAL_URL=http://grabb2rss:8000
+```yaml
+rss:
+  # Domaine public (pour accès externe)
+  domain: rss.votredomaine.com
+  scheme: https
 
-# Domaine public (pour accès externe)
-RSS_DOMAIN=rss.votredomaine.com
-RSS_SCHEME=https
-
-# Métadonnées du flux
-RSS_TITLE=Mes Torrents
-RSS_DESCRIPTION=Flux RSS Prowlarr
+  # Métadonnées du flux
+  title: Mes Torrents
+  description: Flux RSS Prowlarr
 ```
 
 #### Comment ça fonctionne ?

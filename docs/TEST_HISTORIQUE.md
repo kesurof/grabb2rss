@@ -12,8 +12,6 @@ Avant de tester, récupérez vos informations de configuration :
 ```bash
 # Voir votre configuration actuelle
 cat /config/settings.yml
-# OU
-cat .env
 ```
 
 Vous aurez besoin de :
