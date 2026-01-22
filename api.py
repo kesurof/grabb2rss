@@ -40,11 +40,10 @@ app = FastAPI(
 
 # Configuration des templates et fichiers statiques
 # Utiliser un chemin absolu pour éviter les problèmes de résolution de chemin
-TEMPLATE_DIR = Path(__file__).parent / "templates"
-STATIC_DIR = Path(__file__).parent / "static"
+TEMPLATE_DIR = Path(__file__).parent.absolute() / "templates"
+STATIC_DIR = Path(__file__).parent.absolute() / "static"
 
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # Middleware d'authentification
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -116,8 +115,8 @@ class SetupRedirectMiddleware(BaseHTTPMiddleware):
         if request.url.path.startswith('/setup'):
             return await call_next(request)
 
-        # Ne pas rediriger si sur /login ou /
-        if request.url.path in ['/login', '/']:
+        # Ne pas rediriger /login (nécessaire pour l'authentification)
+        if request.url.path == '/login':
             return await call_next(request)
 
         # Ne pas rediriger les assets statiques
@@ -141,14 +140,25 @@ class SetupRedirectMiddleware(BaseHTTPMiddleware):
 
         return await call_next(request)
 
+# Inclure les routes AVANT les middlewares pour qu'ils soient bien pris en compte
+app.include_router(setup_router)
+app.include_router(auth_router)
+
+# Monter les fichiers statiques
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+if TORRENT_DIR.exists():
+    app.mount("/torrents", StaticFiles(directory=str(TORRENT_DIR)), name="torrents")
+
 # Ajouter les middlewares
 # IMPORTANT: Les middlewares s'exécutent dans l'ordre INVERSE de leur ajout
-# Pour avoir l'ordre d'exécution: SetupRedirectMiddleware -> AuthMiddleware
-# Il faut ajouter: AuthMiddleware puis SetupRedirectMiddleware
-app.add_middleware(AuthMiddleware)
-app.add_middleware(SetupRedirectMiddleware)
+# Ordre d'ajout : CORS → Auth → SetupRedirect
+# Ordre d'exécution : SetupRedirect → Auth → CORS
+#
+# SetupRedirect s'exécute en premier : redirige vers /setup si premier lancement
+# Auth s'exécute ensuite : vérifie l'authentification
+# CORS s'exécute en dernier : ajoute les headers CORS
 
-# CORS
+# Ajouter CORS en premier (s'exécutera en dernier)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -157,13 +167,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Inclure les routes
-app.include_router(setup_router)
-app.include_router(auth_router)
+# Ajouter Auth en deuxième (s'exécutera en deuxième)
+app.add_middleware(AuthMiddleware)
 
-# Monter le dossier torrents
-if TORRENT_DIR.exists():
-    app.mount("/torrents", StaticFiles(directory=str(TORRENT_DIR)), name="torrents")
+# Ajouter SetupRedirect en dernier (s'exécutera en premier)
+app.add_middleware(SetupRedirectMiddleware)
 
 # ==================== LIFECYCLE ====================
 
