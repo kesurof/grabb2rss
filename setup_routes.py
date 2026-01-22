@@ -50,11 +50,8 @@ class SetupConfigModel(BaseModel):
 @router.get("/setup", response_class=HTMLResponse)
 async def setup_page(request: Request):
     """Page de setup wizard"""
-    if not setup.is_first_run():
-        # Si déjà configuré, rediriger vers l'accueil
-        from fastapi.responses import RedirectResponse
-        return RedirectResponse(url="/", status_code=307)
-
+    # Toujours afficher la page de setup, même si déjà configuré
+    # Le frontend gère la logique de redirection si nécessaire
     return templates.TemplateResponse("pages/setup.html", {"request": request})
 
 

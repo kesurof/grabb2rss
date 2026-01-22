@@ -888,20 +888,50 @@ async function testHistoryLimits() {
 
 // ==================== AUTHENTICATION & SECURITY ====================
 
+async function checkSetupStatus() {
+    try {
+        const res = await fetch('/api/setup/status');
+        const data = await res.json();
+
+        // Si c'est le premier lancement, rediriger vers /setup
+        if (data.first_run) {
+            console.log("🔧 Premier lancement détecté - redirection vers /setup");
+            window.location.href = '/setup';
+            return false; // Bloquer l'initialisation
+        }
+
+        return true; // Setup terminé, continuer
+    } catch (error) {
+        console.error("Erreur vérification setup:", error);
+        return true; // En cas d'erreur, continuer (éviter de bloquer)
+    }
+}
+
 async function checkAuthStatus() {
     try {
         const res = await fetch('/api/auth/status');
         const data = await res.json();
 
         if (data.enabled) {
-            // Auth activée - afficher les éléments d'auth
+            // Vérifier si l'utilisateur est authentifié
+            if (!data.authenticated) {
+                // Auth activée mais utilisateur non connecté - rediriger vers /login
+                console.log("🔐 Authentification requise - redirection vers /login");
+                window.location.href = '/login';
+                return false; // Bloquer l'initialisation
+            }
+
+            // Auth activée et utilisateur connecté - afficher les éléments d'auth
             document.getElementById('security-tab').style.display = 'block';
             document.getElementById('auth-info').style.display = 'block';
             document.getElementById('username-display').textContent = data.username || 'Utilisateur';
             document.getElementById('security-username').textContent = data.username || 'Utilisateur';
         }
+
+        return true; // Continuer
     } catch (error) {
         console.error("Erreur vérification auth:", error);
+        return true; // En cas d'erreur, continuer (éviter de bloquer)
     }
 }
 
@@ -1175,7 +1205,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Dashboard initialization
     try {
-        await checkAuthStatus();
+        // 1. Vérifier si c'est le premier lancement (setup requis)
+        const setupCompleted = await checkSetupStatus();
+        if (!setupCompleted) {
+            return; // Redirection vers /setup en cours
+        }
+
+        // 2. Vérifier l'authentification (si activée)
+        const authOk = await checkAuthStatus();
+        if (!authOk) {
+            return; // Redirection vers /login en cours
+        }
+
+        // 3. Initialiser le dashboard
         await loadTrackers();
         await refreshData();
         await loadGrabs();

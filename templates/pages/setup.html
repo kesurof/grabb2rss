@@ -299,6 +299,24 @@
 
 {% block scripts %}
 <script>
+        // Vérifier si le setup est déjà terminé au chargement de la page
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                const res = await fetch('/api/setup/status');
+                const data = await res.json();
+
+                // Si le setup est déjà terminé, rediriger vers le dashboard
+                if (!data.first_run && data.config_exists) {
+                    console.log("✅ Setup déjà terminé - redirection vers /");
+                    window.location.href = '/';
+                    return;
+                }
+            } catch (error) {
+                console.error("Erreur vérification setup status:", error);
+                // Continuer l'affichage de la page même en cas d'erreur
+            }
+        });
+
         // Toggle auth fields visibility
         function toggleAuthFields() {
             const authEnabled = document.getElementById('auth_enabled').checked;
