@@ -51,6 +51,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Routes publiques (pas d'authentification requise)
         public_routes = [
+            '/login',
             '/health',
             '/debug',
             '/test',
@@ -115,8 +116,8 @@ class SetupRedirectMiddleware(BaseHTTPMiddleware):
         if request.url.path.startswith('/setup'):
             return await call_next(request)
 
-        # Ne pas rediriger si sur /login
-        if request.url.path == '/login':
+        # Ne pas rediriger si sur /login ou /
+        if request.url.path in ['/login', '/']:
             return await call_next(request)
 
         # Ne pas rediriger les assets statiques
