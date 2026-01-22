@@ -230,43 +230,31 @@
         <!-- TAB: RSS FEEDS -->
         <div id="rss" class="tab-content">
             <h2>📡 Flux RSS Personnalisés</h2>
-            <p style="color: #888; margin-bottom: 20px;">Copiez l'URL appropriée pour votre client torrent</p>
-            
-            <div class="rss-section">
-                <h3>🎯 Flux Global (Tous les Trackers)</h3>
-                <p style="color: #888; font-size: 12px; margin-bottom: 10px;">Compatible rutorrent, qBittorrent, Transmission</p>
-                
-                <p style="margin-bottom: 10px; color: #ddd;"><strong>Format XML:</strong></p>
-                <div class="rss-url" id="rss-global-xml">https://example.com/rss</div>
-                <button class="copy-btn" onclick="copyToClipboard('rss-global-xml')">📋 Copier</button>
-                
-                <p style="margin-top: 15px; margin-bottom: 10px; color: #ddd;"><strong>Format JSON:</strong></p>
-                <div class="rss-url" id="rss-global-json">https://example.com/rss/torrent.json</div>
-                <button class="copy-btn" onclick="copyToClipboard('rss-global-json')">📋 Copier</button>
-            </div>
-            
-            <div class="rss-section">
-                <h3>🔍 Flux par Tracker</h3>
-                <p style="color: #888; font-size: 12px; margin-bottom: 15px;">Sélectionnez un tracker pour générer son flux personnalisé</p>
-                
-                <div class="filter-bar">
-                    <label for="tracker-filter-rss" style="margin: 0;">Tracker:</label>
-                    <select id="tracker-filter-rss" onchange="updateTrackerRssUrls()" style="flex: 0 0 auto; min-width: 250px;">
-                        <option value="all">Tous</option>
-                    </select>
+            <p style="color: #888; margin-bottom: 20px;">Gérez vos clés API et URLs RSS pour accéder aux flux</p>
+
+            <!-- API Keys Section -->
+            <div id="api-keys-container">
+                <div class="info-box">
+                    <p>Chargement des clés API...</p>
                 </div>
-                
-                <p style="margin-bottom: 10px; color: #ddd;"><strong>Format XML:</strong></p>
-                <div class="rss-url" id="rss-tracker-xml">-</div>
-                <button class="copy-btn" onclick="copyToClipboard('rss-tracker-xml')">📋 Copier</button>
-                
-                <p style="margin-top: 15px; margin-bottom: 10px; color: #ddd;"><strong>Format JSON:</strong></p>
-                <div class="rss-url" id="rss-tracker-json">-</div>
-                <button class="copy-btn" onclick="copyToClipboard('rss-tracker-json')">📋 Copier</button>
             </div>
-            
-            <div class="alert alert-info">
-                <strong>💡 Utilisation:</strong> Copiez l'URL dans votre client torrent (rutorrent, qBittorrent, Transmission, etc). Les flux se mettent à jour automatiquement.
+
+            <!-- RSS URLs Section -->
+            <h2 style="margin-top: 40px; margin-bottom: 15px;">📋 URLs RSS Disponibles</h2>
+            <p style="color: #888; margin-bottom: 20px;">Copiez l'URL pour votre client torrent (qBittorrent, Transmission, etc.)</p>
+
+            <div id="rss-urls-container">
+                <div class="info-box">
+                    <p>Chargement des URLs RSS...</p>
+                </div>
+            </div>
+
+            <div class="alert alert-info" style="margin-top: 30px;">
+                <strong>💡 Utilisation:</strong><br>
+                1. Générez une clé API si vous n'en avez pas<br>
+                2. Copiez l'URL RSS souhaitée<br>
+                3. Ajoutez-la dans votre client torrent<br>
+                4. Les flux se mettent à jour automatiquement
             </div>
         </div>
 
@@ -461,4 +449,5 @@
 </script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
 <script src="/static/js/app.js"></script>
+<script src="/static/js/rss-manager.js"></script>
 {% endblock %}
