@@ -450,6 +450,15 @@
 {% endblock %}
 
 {% block scripts %}
+<script>
+    // État initial injecté par le serveur
+    window.INITIAL_STATE = {
+        first_run: {{ 'true' if first_run else 'false' }},
+        auth_enabled: {{ 'true' if auth_enabled else 'false' }},
+        authenticated: {{ 'true' if authenticated else 'false' }},
+        username: "{{ username }}"
+    };
+</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
 <script src="/static/js/app.js"></script>
 {% endblock %}

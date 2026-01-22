@@ -199,6 +199,27 @@ def verify_session(session_token: Optional[str]) -> bool:
     return True
 
 
+def get_username_from_session(session_token: Optional[str]) -> Optional[str]:
+    """
+    Récupère le nom d'utilisateur depuis une session valide
+    Comme le système est mono-utilisateur, on retourne le username de la config
+
+    Args:
+        session_token: Token de session
+
+    Returns:
+        Nom d'utilisateur si la session est valide, None sinon
+    """
+    if not verify_session(session_token):
+        return None
+
+    auth_config = get_auth_config()
+    if not auth_config:
+        return None
+
+    return auth_config.get("username")
+
+
 def delete_session(session_token: str) -> bool:
     """
     Supprime une session (logout)
