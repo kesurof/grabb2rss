@@ -43,7 +43,6 @@ class SetupConfigModel(BaseModel):
     auth_password: Optional[str] = ""
 
 
-@router.get("/setup", response_class=HTMLResponse)
 @router.get("/setup")
 async def setup_page(request: Request):
     """Page de setup wizard"""
@@ -51,7 +50,7 @@ async def setup_page(request: Request):
         # Si déjà configuré, rediriger vers l'accueil
         from fastapi.responses import RedirectResponse
         return RedirectResponse(url="/", status_code=307)
-    
+
     return templates.TemplateResponse("pages/setup.html", {"request": request})
 
 
