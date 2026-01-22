@@ -164,18 +164,23 @@ async def shutdown():
 async def health():
     """Healthcheck complet avec vérification de tous les composants"""
     import requests
-    
+    from setup import is_first_run
+
+    # Vérifier si c'est le premier lancement (setup non complété)
+    setup_mode = is_first_run()
+
     checks = {
         "status": "ok",
         "timestamp": datetime.utcnow().isoformat(),
         "version": "2.8.8",
+        "setup_mode": setup_mode,
         "components": {
             "database": "unknown",
             "prowlarr": "unknown",
             "scheduler": "unknown"
         }
     }
-    
+
     # 1. Vérifier la base de données
     try:
         if DB_PATH.exists():
@@ -184,33 +189,42 @@ async def health():
             checks["components"]["database"] = "ok"
         else:
             checks["components"]["database"] = "missing"
-            checks["status"] = "degraded"
+            # En mode setup, DB manquante n'est pas critique
+            if not setup_mode:
+                checks["status"] = "degraded"
     except Exception as e:
         checks["components"]["database"] = f"error: {str(e)}"
-        checks["status"] = "degraded"
-    
-    # 2. Vérifier Prowlarr
-    try:
-        response = requests.get(
-            f"{PROWLARR_URL}/api/v1/health",
-            headers={"X-Api-Key": PROWLARR_API_KEY},
-            timeout=3
-        )
-        if response.status_code == 200:
-            checks["components"]["prowlarr"] = "ok"
-        else:
-            checks["components"]["prowlarr"] = f"http_{response.status_code}"
+        if not setup_mode:
             checks["status"] = "degraded"
-    except requests.Timeout:
-        checks["components"]["prowlarr"] = "timeout"
-        checks["status"] = "degraded"
-    except requests.ConnectionError:
-        checks["components"]["prowlarr"] = "unreachable"
-        checks["status"] = "degraded"
-    except Exception as e:
-        checks["components"]["prowlarr"] = f"error: {str(e)}"
-        checks["status"] = "degraded"
-    
+
+    # 2. Vérifier Prowlarr (seulement si configuré)
+    if PROWLARR_URL and PROWLARR_API_KEY:
+        try:
+            response = requests.get(
+                f"{PROWLARR_URL}/api/v1/health",
+                headers={"X-Api-Key": PROWLARR_API_KEY},
+                timeout=3
+            )
+            if response.status_code == 200:
+                checks["components"]["prowlarr"] = "ok"
+            else:
+                checks["components"]["prowlarr"] = f"http_{response.status_code}"
+                checks["status"] = "degraded"
+        except requests.Timeout:
+            checks["components"]["prowlarr"] = "timeout"
+            checks["status"] = "degraded"
+        except requests.ConnectionError:
+            checks["components"]["prowlarr"] = "unreachable"
+            checks["status"] = "degraded"
+        except Exception as e:
+            checks["components"]["prowlarr"] = f"error: {str(e)}"
+            checks["status"] = "degraded"
+    else:
+        # En mode setup, Prowlarr non configuré est normal
+        checks["components"]["prowlarr"] = "not_configured" if setup_mode else "missing_config"
+        if not setup_mode:
+            checks["status"] = "degraded"
+
     # 3. Vérifier le Scheduler
     try:
         from scheduler import scheduler
@@ -220,17 +234,25 @@ async def health():
                 checks["components"]["scheduler"] = "ok"
                 checks["components"]["next_sync"] = job.next_run_time.isoformat() if job.next_run_time else None
             else:
-                checks["components"]["scheduler"] = "no_job"
-                checks["status"] = "degraded"
+                # En mode setup, pas de job schedulé est normal
+                checks["components"]["scheduler"] = "waiting" if setup_mode else "no_job"
+                if not setup_mode:
+                    checks["status"] = "degraded"
         else:
             checks["components"]["scheduler"] = "stopped"
             checks["status"] = "degraded"
     except Exception as e:
         checks["components"]["scheduler"] = f"error: {str(e)}"
         checks["status"] = "degraded"
-    
-    status_code = 200 if checks["status"] == "ok" else 503
-    
+
+    # En mode setup, on retourne toujours 200 tant que l'API répond
+    # En mode production, on retourne 503 si problèmes
+    if setup_mode:
+        checks["message"] = "Application en mode configuration - Accédez à /setup pour configurer"
+        status_code = 200
+    else:
+        status_code = 200 if checks["status"] == "ok" else 503
+
     return JSONResponse(checks, status_code=status_code)
 
 @app.get("/debug")
