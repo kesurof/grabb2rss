@@ -359,14 +359,68 @@ async function loadConfig() {
         const response = await fetch(API_BASE + '/config');
         configData = await response.json();
 
+        // Grouper les configurations par catégorie
+        const categories = {
+            prowlarr: { title: '🔍 Prowlarr', icon: '🔍', fields: {} },
+            radarr: { title: '🎬 Radarr', icon: '🎬', fields: {} },
+            sonarr: { title: '📺 Sonarr', icon: '📺', fields: {} },
+            rss: { title: '📡 RSS & Domaine', icon: '📡', fields: {} },
+            sync: { title: '🔄 Synchronisation', icon: '🔄', fields: {} },
+            other: { title: '⚙️ Autres Paramètres', icon: '⚙️', fields: {} }
+        };
+
+        // Classer les champs par catégorie
+        Object.entries(configData).forEach(([key, data]) => {
+            if (key.startsWith('PROWLARR_')) {
+                categories.prowlarr.fields[key] = data;
+            } else if (key.startsWith('RADARR_')) {
+                categories.radarr.fields[key] = data;
+            } else if (key.startsWith('SONARR_')) {
+                categories.sonarr.fields[key] = data;
+            } else if (key.startsWith('RSS_')) {
+                categories.rss.fields[key] = data;
+            } else if (key.includes('SYNC') || key.includes('RETENTION') || key.includes('PURGE') || key.includes('DEDUP')) {
+                categories.sync.fields[key] = data;
+            } else {
+                categories.other.fields[key] = data;
+            }
+        });
+
+        // Générer le HTML avec layout en grille
         const form = document.getElementById("config-form");
-        form.innerHTML = Object.entries(configData).map(([key, data]) =>
-            '<div class="form-group">' +
-            '<label for="' + key + '">' + key + '</label>' +
-            '<input type="text" id="' + key + '" name="' + key + '" value="' + (data.value || '') + '" placeholder="' + data.description + '">' +
-            '<small>' + data.description + '</small>' +
-            '</div>'
-        ).join("");
+        let html = '<div class="apps-grid">';
+
+        Object.entries(categories).forEach(([catKey, category]) => {
+            // Ignorer les catégories vides
+            if (Object.keys(category.fields).length === 0) return;
+
+            html += `
+                <div class="section">
+                    <div class="section-title">${category.title}</div>`;
+
+            Object.entries(category.fields).forEach(([key, data]) => {
+                const displayName = key.replace(/_/g, ' ').toLowerCase()
+                    .split(' ')
+                    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                    .join(' ');
+
+                html += `
+                    <div class="form-group">
+                        <label for="${key}">${displayName}</label>
+                        <input type="text"
+                               id="${key}"
+                               name="${key}"
+                               value="${data.value || ''}"
+                               placeholder="${data.description}">
+                        <div class="help-text">${data.description}</div>
+                    </div>`;
+            });
+
+            html += `</div>`;
+        });
+
+        html += '</div>';
+        form.innerHTML = html;
     } catch (e) {
         alert("Erreur lors du chargement de la config: " + e);
     }

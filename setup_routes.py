@@ -9,12 +9,27 @@ from pydantic import BaseModel
 from pathlib import Path
 from typing import Optional
 import setup
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 # Utiliser un chemin absolu identique à api.py pour éviter les conflits
 TEMPLATE_DIR = Path(__file__).parent.absolute() / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
+
+# Lire la version depuis le fichier VERSION
+def get_version() -> str:
+    """Lit et retourne la version depuis le fichier VERSION"""
+    try:
+        version_file = Path(__file__).parent / "VERSION"
+        if version_file.exists():
+            return version_file.read_text().strip()
+        return "unknown"
+    except Exception as e:
+        logger.warning(f"Impossible de lire VERSION: {e}")
+        return "unknown"
 
 
 class SetupConfigModel(BaseModel):
@@ -68,7 +83,8 @@ async def setup_page(request: Request):
     return templates.TemplateResponse("pages/setup.html", {
         "request": request,
         "first_run": first_run,
-        "config_exists": config_exists
+        "config_exists": config_exists,
+        "version": get_version()
     })
 
 
