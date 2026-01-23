@@ -7,7 +7,7 @@
         <header>
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
-                    <h1>📡 Grabb2RSS v2.6.8</h1>
+                    <h1>📡 Grabb2RSS v{{ version }}</h1>
                     <p class="subtitle">Convertisseur Prowlarr → RSS avec Flux Personnalisés + Admin</p>
                 </div>
                 <div id="auth-info" style="display: none; text-align: right;">
@@ -93,26 +93,6 @@
                 <button class="button success" id="sync-btn" onclick="syncNow()">📡 Synchroniser Maintenant</button>
                 <button class="button" onclick="switchTab('torrents')">📦 Gérer les Torrents</button>
                 <button class="button danger" onclick="purgeAllGrabs()">🗑️ Vider Tous les Grabs</button>
-            </div>
-
-            <h2 style="margin-top: 30px;">🔗 Accès Rapides</h2>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
-                <a href="/rss" target="_blank" style="background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 15px; text-decoration: none; color: #1e90ff; display: block; transition: 0.2s;">
-                    <strong style="display: block; margin-bottom: 5px;">📡 Flux RSS Global</strong>
-                    <span style="color: #888; font-size: 12px;">Tous les trackers</span>
-                </a>
-                <a href="/api/stats" target="_blank" style="background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 15px; text-decoration: none; color: #1e90ff; display: block; transition: 0.2s;">
-                    <strong style="display: block; margin-bottom: 5px;">📊 Statistiques API</strong>
-                    <span style="color: #888; font-size: 12px;">Format JSON</span>
-                </a>
-                <a href="/health" target="_blank" style="background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 15px; text-decoration: none; color: #1e90ff; display: block; transition: 0.2s;">
-                    <strong style="display: block; margin-bottom: 5px;">💚 Health Check</strong>
-                    <span style="color: #888; font-size: 12px;">État des services</span>
-                </a>
-                <a href="javascript:void(0)" onclick="switchTab('config')" style="background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 15px; text-decoration: none; color: #1e90ff; display: block; transition: 0.2s;">
-                    <strong style="display: block; margin-bottom: 5px;">⚙️ Configuration</strong>
-                    <span style="color: #888; font-size: 12px;">Modifier les paramètres</span>
-                </a>
             </div>
         </div>
 
@@ -281,9 +261,9 @@
         <div id="config" class="tab-content">
             <h2>⚙️ Configuration</h2>
             <div id="config-form"></div>
-            <div style="margin-top: 20px;">
-                <button class="button success" onclick="saveConfig()">💾 Sauvegarder</button>
-                <button class="button" onclick="loadConfig()">🔄 Recharger</button>
+            <div class="button-group" style="margin-top: 30px;">
+                <button class="btn btn-primary" onclick="saveConfig()">💾 Sauvegarder</button>
+                <button class="btn btn-secondary" onclick="loadConfig()">🔄 Recharger</button>
             </div>
         </div>
 

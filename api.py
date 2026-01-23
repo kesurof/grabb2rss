@@ -32,10 +32,24 @@ logger = logging.getLogger(__name__)
 # Variable pour tracker le temps de démarrage
 start_time = time.time()
 
+# Lire la version depuis le fichier VERSION
+def get_version() -> str:
+    """Lit et retourne la version depuis le fichier VERSION"""
+    try:
+        version_file = Path(__file__).parent / "VERSION"
+        if version_file.exists():
+            return version_file.read_text().strip()
+        return "unknown"
+    except Exception as e:
+        logger.warning(f"Impossible de lire VERSION: {e}")
+        return "unknown"
+
+APP_VERSION = get_version()
+
 app = FastAPI(
     title="Grab2RSS API",
     description="API pour Grab2RSS - Convert Prowlarr grabs en RSS",
-    version="2.6.1"
+    version=APP_VERSION
 )
 
 # Configuration des templates et fichiers statiques
@@ -177,7 +191,7 @@ async def health():
     return {
         "status": "ok",
         "timestamp": datetime.utcnow().isoformat(),
-        "version": "2.9.0"
+        "version": APP_VERSION
     }
 
 @app.get("/debug")
@@ -857,7 +871,8 @@ async def web_ui(request: Request):
         "first_run": first_run,
         "auth_enabled": auth_enabled,
         "authenticated": authenticated,
-        "username": username
+        "username": username,
+        "version": APP_VERSION
     })
 
 
