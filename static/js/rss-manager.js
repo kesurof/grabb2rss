@@ -130,14 +130,14 @@ class RSSManager {
                 <div class="section-header">
                     <h3>🔑 Clés API</h3>
                     <button class="btn btn-primary" onclick="rssManager.handleGenerateKey()">
-                        Générer une clé
+                        ➕ Générer une clé
                     </button>
                 </div>`;
 
         if (this.apiKeys.length === 0) {
             html += `
                 <div class="info-box">
-                    <p>Aucune clé API générée.</p>
+                    <p><strong>Aucune clé API générée.</strong></p>
                     <p>Générez une clé pour accéder aux flux RSS.</p>
                 </div>`;
         } else {
@@ -149,16 +149,18 @@ class RSSManager {
                 html += `
                     <div class="api-key-item ${statusClass}">
                         <div class="key-info">
-                            <strong>${key.name || 'Sans nom'}</strong>
+                            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                                <strong style="font-size: 16px;">${key.name || 'API Key'}</strong>
+                                <span class="key-status ${statusClass}">${statusText}</span>
+                            </div>
                             <code class="api-key-value">${key.key}</code>
-                            <span class="key-status ${statusClass}">${statusText}</span>
-                            <small>Créée le ${new Date(key.created_at).toLocaleDateString()}</small>
+                            <small style="color: #888;">Créée le ${new Date(key.created_at).toLocaleDateString()}</small>
                         </div>
                         <div class="key-actions">
-                            <button class="btn btn-sm btn-secondary" onclick="rssManager.copyKey('${key.key}', this)">
+                            <button class="btn btn-sm btn-secondary" onclick="rssManager.copyKey('${key.key}', this)" title="Copier la clé">
                                 📋 Copier
                             </button>
-                            <button class="btn btn-sm btn-danger" onclick="rssManager.handleDeleteKey('${key.key}')">
+                            <button class="btn btn-sm btn-danger" onclick="rssManager.handleDeleteKey('${key.key}')" title="Supprimer la clé">
                                 🗑️ Supprimer
                             </button>
                         </div>
@@ -225,11 +227,11 @@ class RSSManager {
         return `
             <div class="url-card">
                 <div class="url-info">
-                    <strong>${url.name}</strong>
+                    <strong style="font-size: 16px; color: #fff;">${url.name}</strong>
                     <p class="url-description">${url.description}</p>
-                    <input type="text" class="url-value" value="${url.url}" readonly onclick="this.select()">
+                    <input type="text" class="url-value" value="${url.url}" readonly onclick="this.select()" title="Cliquez pour sélectionner">
                 </div>
-                <button class="btn btn-primary btn-copy" onclick="rssManager.copyUrl('${url.url.replace(/'/g, "\\'")}', this)">
+                <button class="btn btn-primary btn-copy" onclick="rssManager.copyUrl('${url.url.replace(/'/g, "\\'")}', this)" title="Copier l'URL dans le presse-papiers">
                     📋 Copier l'URL
                 </button>
             </div>`;

@@ -16,76 +16,79 @@
         </div>
 
         <form id="setupForm">
-            <!-- Prowlarr (Obligatoire) -->
-            <div class="section">
-                <div class="section-title">🔍 Prowlarr (Obligatoire)</div>
-                <div class="form-group">
-                    <label>
-                        URL de Prowlarr <span class="required">*</span>
-                    </label>
-                    <input type="url" id="prowlarr_url" name="prowlarr_url"
-                           value="http://prowlarr:9696" placeholder="http://prowlarr:9696" required>
-                    <div class="help-text">
-                        URL complète de votre instance Prowlarr (avec le port)
+            <!-- Applications Grid Layout -->
+            <div class="apps-grid">
+                <!-- Prowlarr (Obligatoire) -->
+                <div class="section">
+                    <div class="section-title">🔍 Prowlarr (Obligatoire)</div>
+                    <div class="form-group">
+                        <label>
+                            URL de Prowlarr <span class="required">*</span>
+                        </label>
+                        <input type="url" id="prowlarr_url" name="prowlarr_url"
+                               value="http://prowlarr:9696" placeholder="http://prowlarr:9696" required>
+                        <div class="help-text">
+                            URL complète de votre instance Prowlarr (avec le port)
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            Clé API Prowlarr <span class="required">*</span>
+                        </label>
+                        <input type="text" id="prowlarr_api_key" name="prowlarr_api_key"
+                               placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" required>
+                        <div class="help-text">
+                            Prowlarr &gt; Paramètres &gt; Général &gt; Sécurité
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Taille de l'historique</label>
+                        <input type="number" id="prowlarr_history_page_size"
+                               name="prowlarr_history_page_size" value="500" min="100" max="1000">
+                        <div class="help-text">Nombre de grabs à récupérer par sync (défaut: 500)</div>
                     </div>
                 </div>
-                <div class="form-group">
-                    <label>
-                        Clé API Prowlarr <span class="required">*</span>
-                    </label>
-                    <input type="text" id="prowlarr_api_key" name="prowlarr_api_key"
-                           placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" required>
-                    <div class="help-text">
-                        Prowlarr &gt; Paramètres &gt; Général &gt; Sécurité
+
+                <!-- Radarr (Obligatoire) -->
+                <div class="section">
+                    <div class="section-title">🎬 Radarr (Obligatoire)</div>
+                    <div class="form-group">
+                        <label>
+                            URL de Radarr <span class="required">*</span>
+                        </label>
+                        <input type="url" id="radarr_url" name="radarr_url"
+                               value="http://radarr:7878" placeholder="http://radarr:7878" required>
+                        <div class="help-text">URL complète de votre instance Radarr</div>
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            Clé API Radarr <span class="required">*</span>
+                        </label>
+                        <input type="text" id="radarr_api_key" name="radarr_api_key"
+                               placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" required>
+                        <div class="help-text">Radarr &gt; Paramètres &gt; Général &gt; Sécurité</div>
                     </div>
                 </div>
-                <div class="form-group">
-                    <label>Taille de l'historique</label>
-                    <input type="number" id="prowlarr_history_page_size"
-                           name="prowlarr_history_page_size" value="500" min="100" max="1000">
-                    <div class="help-text">Nombre de grabs à récupérer par sync (défaut: 500)</div>
-                </div>
-            </div>
 
-            <!-- Radarr (Obligatoire) -->
-            <div class="section">
-                <div class="section-title">🎬 Radarr (Obligatoire)</div>
-                <div class="form-group">
-                    <label>
-                        URL de Radarr <span class="required">*</span>
-                    </label>
-                    <input type="url" id="radarr_url" name="radarr_url"
-                           value="http://radarr:7878" placeholder="http://radarr:7878" required>
-                    <div class="help-text">URL complète de votre instance Radarr</div>
-                </div>
-                <div class="form-group">
-                    <label>
-                        Clé API Radarr <span class="required">*</span>
-                    </label>
-                    <input type="text" id="radarr_api_key" name="radarr_api_key"
-                           placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" required>
-                    <div class="help-text">Radarr &gt; Paramètres &gt; Général &gt; Sécurité</div>
-                </div>
-            </div>
-
-            <!-- Sonarr (Obligatoire) -->
-            <div class="section">
-                <div class="section-title">📺 Sonarr (Obligatoire)</div>
-                <div class="form-group">
-                    <label>
-                        URL de Sonarr <span class="required">*</span>
-                    </label>
-                    <input type="url" id="sonarr_url" name="sonarr_url"
-                           value="http://sonarr:8989" placeholder="http://sonarr:8989" required>
-                    <div class="help-text">URL complète de votre instance Sonarr</div>
-                </div>
-                <div class="form-group">
-                    <label>
-                        Clé API Sonarr <span class="required">*</span>
-                    </label>
-                    <input type="text" id="sonarr_api_key" name="sonarr_api_key"
-                           placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" required>
-                    <div class="help-text">Sonarr &gt; Paramètres &gt; Général &gt; Sécurité</div>
+                <!-- Sonarr (Obligatoire) -->
+                <div class="section">
+                    <div class="section-title">📺 Sonarr (Obligatoire)</div>
+                    <div class="form-group">
+                        <label>
+                            URL de Sonarr <span class="required">*</span>
+                        </label>
+                        <input type="url" id="sonarr_url" name="sonarr_url"
+                               value="http://sonarr:8989" placeholder="http://sonarr:8989" required>
+                        <div class="help-text">URL complète de votre instance Sonarr</div>
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            Clé API Sonarr <span class="required">*</span>
+                        </label>
+                        <input type="text" id="sonarr_api_key" name="sonarr_api_key"
+                               placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" required>
+                        <div class="help-text">Sonarr &gt; Paramètres &gt; Général &gt; Sécurité</div>
+                    </div>
                 </div>
             </div>
 
@@ -145,10 +148,10 @@
 
             <!-- Boutons -->
             <div class="button-group">
-                <button type="button" class="btn-secondary" onclick="testConnection()">
+                <button type="button" class="btn btn-secondary" onclick="testConnection()">
                     🔌 Tester la connexion
                 </button>
-                <button type="submit" class="btn-primary">
+                <button type="submit" class="btn btn-primary">
                     ✅ Enregistrer et démarrer
                 </button>
             </div>

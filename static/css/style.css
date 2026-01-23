@@ -640,45 +640,7 @@ tr:hover {
     color: #1e90ff;
 }
 
-/* API Keys List */
-.api-keys-list {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-}
-
-.api-key-item {
-    background: #1a1a1a;
-    border: 1px solid #333;
-    border-radius: 8px;
-    padding: 15px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    transition: all 0.3s;
-}
-
-.api-key-item:hover {
-    border-color: #1e90ff;
-    box-shadow: 0 0 10px rgba(30, 144, 255, 0.2);
-}
-
-.api-key-item.inactive {
-    opacity: 0.6;
-}
-
-.key-info {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-}
-
-.key-info strong {
-    color: #fff;
-    font-size: 16px;
-}
-
+/* API Key Value Display */
 .api-key-value {
     background: #0f0f0f;
     padding: 8px 12px;
@@ -688,13 +650,14 @@ tr:hover {
     color: #4CAF50;
     border: 1px solid #333;
     word-break: break-all;
+    display: block;
 }
 
 .key-status {
     display: inline-block;
     padding: 4px 12px;
     border-radius: 12px;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
 }
 
@@ -708,12 +671,7 @@ tr:hover {
     color: #9e9e9e;
 }
 
-.key-actions {
-    display: flex;
-    gap: 10px;
-}
-
-/* URL Cards */
+/* URL Cards Category */
 .url-category {
     margin-bottom: 30px;
 }
@@ -722,41 +680,6 @@ tr:hover {
     color: #1e90ff;
     margin-bottom: 15px;
     font-size: 18px;
-}
-
-.urls-list {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-}
-
-.url-card {
-    background: #1a1a1a;
-    border: 1px solid #333;
-    border-radius: 8px;
-    padding: 15px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 15px;
-    transition: all 0.3s;
-}
-
-.url-card:hover {
-    border-color: #1e90ff;
-    box-shadow: 0 0 10px rgba(30, 144, 255, 0.2);
-}
-
-.url-info {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.url-info strong {
-    color: #fff;
-    font-size: 16px;
 }
 
 .url-description {
@@ -832,6 +755,245 @@ tr:hover {
     }
 }
 
+/* ========================================
+   SETUP PAGE STYLES
+   ======================================== */
+
+/* Setup Sections */
+.section {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 25px;
+    margin-bottom: 20px;
+}
+
+.section-title {
+    color: #1e90ff;
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #333;
+}
+
+/* Grid Layout for Apps */
+.apps-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+/* Help Text */
+.help-text {
+    font-size: 12px;
+    color: #888;
+    margin-top: 5px;
+}
+
+/* Required Field Indicator */
+.required {
+    color: #ff4444;
+    font-weight: bold;
+}
+
+/* Checkbox Group */
+.checkbox-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 15px 0;
+}
+
+.checkbox-group input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+
+.checkbox-group label {
+    cursor: pointer;
+    user-select: none;
+}
+
+/* Button Group */
+.button-group {
+    display: flex;
+    gap: 15px;
+    margin-top: 30px;
+    flex-wrap: wrap;
+}
+
+/* ========================================
+   BUTTON STYLES (MODERN)
+   ======================================== */
+
+.btn {
+    display: inline-block;
+    padding: 12px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    text-align: center;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-decoration: none;
+    line-height: 1.5;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
+
+.btn:active {
+    transform: translateY(0);
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Primary Button */
+.btn-primary {
+    background: #1e90ff;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #0066cc;
+    box-shadow: 0 5px 15px rgba(30, 144, 255, 0.4);
+}
+
+/* Secondary Button */
+.btn-secondary {
+    background: #333;
+    color: #1e90ff;
+    border: 1px solid #1e90ff;
+}
+
+.btn-secondary:hover {
+    background: #1e90ff;
+    color: white;
+    box-shadow: 0 5px 15px rgba(30, 144, 255, 0.3);
+}
+
+/* Danger Button */
+.btn-danger {
+    background: #ff4444;
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #cc0000;
+    box-shadow: 0 5px 15px rgba(255, 68, 68, 0.4);
+}
+
+/* Success Button */
+.btn-success {
+    background: #4CAF50;
+    color: white;
+}
+
+.btn-success:hover {
+    background: #388E3C;
+    box-shadow: 0 5px 15px rgba(76, 175, 80, 0.4);
+}
+
+/* Small Button */
+.btn-sm {
+    padding: 8px 16px;
+    font-size: 13px;
+}
+
+/* Full Width Button */
+.btn-block {
+    width: 100%;
+    display: block;
+}
+
+/* ========================================
+   IMPROVED LAYOUTS
+   ======================================== */
+
+/* API Keys Layout - Horizontal on large screens */
+.api-keys-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
+    gap: 15px;
+}
+
+.api-key-item {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    transition: all 0.3s;
+}
+
+.api-key-item:hover {
+    border-color: #1e90ff;
+    box-shadow: 0 0 15px rgba(30, 144, 255, 0.2);
+}
+
+.api-key-item.inactive {
+    opacity: 0.6;
+}
+
+.key-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.key-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+/* URL Cards Layout - Better use of width */
+.urls-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(450px, 1fr));
+    gap: 20px;
+}
+
+.url-card {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    transition: all 0.3s;
+}
+
+.url-card:hover {
+    border-color: #1e90ff;
+    box-shadow: 0 0 15px rgba(30, 144, 255, 0.2);
+}
+
+.url-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.url-card .btn {
+    align-self: flex-start;
+}
+
 /* Tablet and Mobile - Dashboard adjustments can be added here */
 @media (max-width: 768px) {
     .container {
@@ -853,5 +1015,25 @@ tr:hover {
 
     .stats-grid {
         grid-template-columns: 1fr;
+    }
+
+    .apps-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .api-keys-list {
+        grid-template-columns: 1fr;
+    }
+
+    .urls-list {
+        grid-template-columns: 1fr;
+    }
+
+    .button-group {
+        flex-direction: column;
+    }
+
+    .button-group .btn {
+        width: 100%;
     }
 }
