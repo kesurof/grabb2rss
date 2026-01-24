@@ -32,7 +32,7 @@ def get_db_connection():
     return conn
 
 def init_config_from_env():
-    """Initialise la config DB depuis les variables d'environnement si vide"""
+    """Initialise la config DB depuis settings.yml si vide"""
     try:
         from config import (
             PROWLARR_URL, PROWLARR_API_KEY, PROWLARR_HISTORY_PAGE_SIZE,
@@ -40,12 +40,12 @@ def init_config_from_env():
             RSS_DOMAIN, RSS_SCHEME, RADARR_URL, RADARR_API_KEY,
             SONARR_URL, SONARR_API_KEY, DESCRIPTIONS
         )
-        
+
         # Vérifier si la config existe déjà
         existing = get_all_config()
-        
+
         if not existing:
-            print("📝 Initialisation de la configuration depuis .env...")
+            print("📝 Initialisation de la configuration depuis settings.yml...")
             
             # Définir toutes les valeurs
             configs = {
@@ -76,8 +76,8 @@ def init_config_from_env():
 
 def reload_config_from_env() -> int:
     """
-    Force le rechargement de la configuration depuis .env vers la DB
-    ATTENTION : Écrase les valeurs existantes en DB avec celles de .env
+    Force le rechargement de la configuration depuis settings.yml vers la DB
+    ATTENTION : Écrase les valeurs existantes en DB avec celles de settings.yml
     Retourne le nombre de paramètres rechargés
     """
     try:
@@ -87,8 +87,8 @@ def reload_config_from_env() -> int:
             RSS_DOMAIN, RSS_SCHEME, RADARR_URL, RADARR_API_KEY,
             SONARR_URL, SONARR_API_KEY, DESCRIPTIONS
         )
-        
-        print("🔄 Rechargement de la configuration depuis .env...")
+
+        print("🔄 Rechargement de la configuration depuis settings.yml...")
         
         # Définir toutes les valeurs (écrase les existantes)
         configs = {
@@ -111,7 +111,7 @@ def reload_config_from_env() -> int:
         for key, (value, description) in configs.items():
             set_config(key, value, description)
         
-        print(f"✅ {len(configs)} paramètres rechargés depuis .env")
+        print(f"✅ {len(configs)} paramètres rechargés depuis settings.yml")
         return len(configs)
         
     except Exception as e:
@@ -120,6 +120,17 @@ def reload_config_from_env() -> int:
 
 def init_db():
     """Initialise la base de données avec toutes les tables"""
+    print(f"🔄 Initialisation de la base de données: {DB_PATH}")
+
+    # Vérifier que le répertoire parent existe
+    if not DB_PATH.parent.exists():
+        print(f"📁 Création du répertoire: {DB_PATH.parent}")
+        try:
+            DB_PATH.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
+        except Exception as e:
+            print(f"❌ Erreur création répertoire: {e}")
+            raise
+
     conn = get_db_connection()
     try:
         # Table grabs
@@ -137,7 +148,7 @@ def init_db():
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
         """)
-        
+
         # Table sync_log
         conn.execute("""
         CREATE TABLE IF NOT EXISTS sync_log (
@@ -149,7 +160,7 @@ def init_db():
             deduplicated_count INTEGER DEFAULT 0
         )
         """)
-        
+
         # Table config
         conn.execute("""
         CREATE TABLE IF NOT EXISTS config (
@@ -159,18 +170,30 @@ def init_db():
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
         """)
-        
+
         # Index pour performances
         conn.execute("CREATE INDEX IF NOT EXISTS idx_grabs_date ON grabs(grabbed_at DESC)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_grabs_title_hash ON grabs(title_hash)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_grabs_prowlarr ON grabs(prowlarr_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_grabs_tracker ON grabs(tracker)")
-        
+
         conn.commit()
-        
+
+        # Vérifier que la DB a bien été créée
+        if DB_PATH.exists():
+            size_mb = DB_PATH.stat().st_size / (1024 * 1024)
+            print(f"✅ Base de données initialisée: {DB_PATH} ({size_mb:.2f} MB)")
+        else:
+            print(f"⚠️  Fichier DB non trouvé après création: {DB_PATH}")
+
         # Migration des colonnes si nécessaire
         migrate_db()
-        
+
+    except Exception as e:
+        print(f"❌ Erreur initialisation DB: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
     finally:
         conn.close()
 
@@ -207,8 +230,8 @@ def migrate_db():
         
         conn.commit()
         print("✅ Migration complète")
-        
-        # Initialiser la config DB depuis .env si nécessaire
+
+        # Initialiser la config DB depuis settings.yml si nécessaire
         init_config_from_env()
             
     except Exception as e:

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Connexion - Grabb2RSS{% endblock %}
+
+{% block body_class %}class="login-page"{% endblock %}
+
+{% block content %}
+<div class="login-container">
+    <div class="logo">
+        <h1>🔐 Grabb2RSS</h1>
+        <p>Connectez-vous pour accéder à votre interface</p>
+    </div>
+
+    <div id="error-message" class="error-message"></div>
+
+    <form id="login-form">
+        <div class="form-group">
+            <label for="username">Nom d'utilisateur</label>
+            <input type="text" id="username" name="username" required autocomplete="username" autofocus>
+        </div>
+
+        <div class="form-group">
+            <label for="password">Mot de passe</label>
+            <input type="password" id="password" name="password" required autocomplete="current-password">
+        </div>
+
+        <button type="submit" id="login-btn" class="login-button">Se connecter</button>
+        <div id="loading" class="loading"></div>
+    </form>
+
+    <div class="footer">
+        <p>Grabb2RSS v2.6.8 - Prowlarr to RSS Feed</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/app.js"></script>
+{% endblock %}

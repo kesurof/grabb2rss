@@ -1,13 +1,16 @@
 # api.py
-from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import Response, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi import FastAPI, HTTPException, Query, Request, Cookie
+from fastapi.responses import Response, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
+from pathlib import Path
 import logging
 import psutil
 import time
 from datetime import datetime
+from typing import Optional
 
 from config import TORRENT_DIR, DB_PATH, DEDUP_HOURS, DESCRIPTIONS, PROWLARR_URL, PROWLARR_API_KEY
 from db import (
@@ -21,52 +24,122 @@ from models import GrabOut, GrabStats, SyncStatus
 from scheduler import start_scheduler, stop_scheduler, get_sync_status, trigger_sync
 import setup
 from setup_routes import router as setup_router
+from auth_routes import router as auth_router
+from auth import is_auth_enabled, verify_session, verify_api_key, is_local_request, get_username_from_session
 
 logger = logging.getLogger(__name__)
 
 # Variable pour tracker le temps de démarrage
 start_time = time.time()
 
+# Lire la version depuis le fichier VERSION
+def get_version() -> str:
+    """Lit et retourne la version depuis le fichier VERSION"""
+    try:
+        version_file = Path(__file__).parent / "VERSION"
+        if version_file.exists():
+            return version_file.read_text().strip()
+        return "unknown"
+    except Exception as e:
+        logger.warning(f"Impossible de lire VERSION: {e}")
+        return "unknown"
+
+APP_VERSION = get_version()
+
 app = FastAPI(
     title="Grab2RSS API",
     description="API pour Grab2RSS - Convert Prowlarr grabs en RSS",
-    version="2.6.1"
+    version=APP_VERSION
 )
 
+# Configuration des templates et fichiers statiques
+# Utiliser un chemin absolu pour éviter les problèmes de résolution de chemin
+TEMPLATE_DIR = Path(__file__).parent.absolute() / "templates"
+STATIC_DIR = Path(__file__).parent.absolute() / "static"
 
-# Middleware pour rediriger vers /setup si premier lancement
-class SetupRedirectMiddleware(BaseHTTPMiddleware):
+templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
+
+# Middleware d'authentification simplifié
+class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        # Ne pas rediriger les routes API (pour éviter les erreurs JSON)
-        if request.url.path.startswith('/api'):
+        # Si auth désactivée, tout est public
+        if not is_auth_enabled():
             return await call_next(request)
 
-        # Ne pas rediriger si déjà sur /setup
-        if request.url.path.startswith('/setup'):
-            return await call_next(request)
+        # Routes toujours publiques même si auth activée
+        public_routes = [
+            '/health',              # Healthcheck pour Docker/K8s
+            '/login',               # Page de login
+            '/api/auth/login',      # API login
+            '/api/auth/status'      # Statut auth
+        ]
 
-        # Ne pas rediriger les assets statiques
-        if request.url.path.startswith('/torrents'):
-            return await call_next(request)
+        # Vérifier si route publique
+        for route in public_routes:
+            if request.url.path.startswith(route):
+                return await call_next(request)
 
-        # Ne pas rediriger les routes utilitaires
-        if request.url.path in ['/health', '/debug', '/test', '/minimal']:
-            return await call_next(request)
+        # Routes de setup : publiques SEULEMENT si setup non complété
+        if request.url.path.startswith('/setup') or request.url.path.startswith('/api/setup'):
+            if setup.is_first_run():
+                return await call_next(request)
+            # Sinon, continuer la vérification auth normale
 
-        # Ne pas rediriger les flux RSS
+        # Routes RSS : API key OBLIGATOIRE (même en local)
         if request.url.path.startswith('/rss') or request.url.path.startswith('/feed'):
-            return await call_next(request)
+            # Si auth désactivée, accès libre aux RSS
+            if not is_auth_enabled():
+                return await call_next(request)
 
-        # Vérifier si c'est le premier lancement
-        if setup.is_first_run():
-            return RedirectResponse(url='/setup', status_code=307)
+            # Vérifier l'API key dans les query params
+            api_key = request.query_params.get('api_key')
+            if api_key and verify_api_key(api_key):
+                return await call_next(request)
+
+            # Pas d'API key valide : erreur 401
+            raise HTTPException(
+                status_code=401,
+                detail="API key requise. Obtenez votre clé depuis le dashboard."
+            )
+
+        # Toutes les autres routes : vérifier session
+        session_token = request.cookies.get('session_token')
+        if not verify_session(session_token):
+            # Rediriger vers login pour les pages HTML
+            # Retourner 401 pour les API
+            if request.url.path.startswith('/api'):
+                raise HTTPException(status_code=401, detail="Non authentifié")
+            else:
+                # Pages HTML non authentifiées : rediriger vers login
+                from fastapi.responses import RedirectResponse
+                return RedirectResponse(url='/login', status_code=302)
 
         return await call_next(request)
 
-# Ajouter les middlewares
-app.add_middleware(SetupRedirectMiddleware)
 
-# CORS
+# SetupRedirectMiddleware SUPPRIMÉ
+# La logique de redirection vers /setup est maintenant gérée côté frontend via window.INITIAL_STATE
+# pour être compatible avec oauth2-proxy (pas de redirections serveur HTTP 302)
+
+# Inclure les routes AVANT les middlewares pour qu'ils soient bien pris en compte
+app.include_router(setup_router)
+app.include_router(auth_router)
+
+# Monter les fichiers statiques
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+if TORRENT_DIR.exists():
+    app.mount("/torrents", StaticFiles(directory=str(TORRENT_DIR)), name="torrents")
+
+# Ajouter les middlewares
+# IMPORTANT: Les middlewares s'exécutent dans l'ordre INVERSE de leur ajout
+# Ordre d'ajout : CORS → Auth → SetupRedirect
+# Ordre d'exécution : SetupRedirect → Auth → CORS
+#
+# SetupRedirect s'exécute en premier : redirige vers /setup si premier lancement
+# Auth s'exécute ensuite : vérifie l'authentification
+# CORS s'exécute en dernier : ajoute les headers CORS
+
+# Ajouter CORS en premier (s'exécutera en dernier)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -75,21 +148,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Inclure les routes du setup wizard
-app.include_router(setup_router)
+# Ajouter Auth en deuxième (s'exécutera en deuxième)
+app.add_middleware(AuthMiddleware)
 
-# Monter le dossier torrents
-if TORRENT_DIR.exists():
-    app.mount("/torrents", StaticFiles(directory=str(TORRENT_DIR)), name="torrents")
+# SetupRedirect désactivé - le frontend gère le setup via /api/setup/status
+# app.add_middleware(SetupRedirectMiddleware)
 
 # ==================== LIFECYCLE ====================
 
 @app.on_event("startup")
 async def startup():
     """Au démarrage de l'app"""
-    init_db()
-    start_scheduler()
-    print("✅ Application démarrée v2.6.8")
+    print("🔧 Initialisation de la base de données...")
+    try:
+        init_db()
+        print("✅ Base de données initialisée")
+    except Exception as e:
+        print(f"❌ Erreur initialisation DB: {e}")
+        import traceback
+        traceback.print_exc()
+
+    print("🔧 Démarrage du scheduler...")
+    try:
+        start_scheduler()
+        print("✅ Scheduler démarré")
+    except Exception as e:
+        print(f"⚠️  Erreur démarrage scheduler: {e}")
+
+    print("✅ Application démarrée v2.9.0")
 
 @app.on_event("shutdown")
 async def shutdown():
@@ -101,80 +187,24 @@ async def shutdown():
 
 @app.get("/health")
 async def health():
-    """Healthcheck complet avec vérification de tous les composants"""
-    import requests
-    
-    checks = {
+    """Healthcheck simple - retourne toujours 200 si l'API répond"""
+    return {
         "status": "ok",
         "timestamp": datetime.utcnow().isoformat(),
-        "version": "2.8.8",
-        "components": {
-            "database": "unknown",
-            "prowlarr": "unknown",
-            "scheduler": "unknown"
-        }
+        "version": APP_VERSION
     }
-    
-    # 1. Vérifier la base de données
-    try:
-        if DB_PATH.exists():
-            with get_db() as conn:
-                conn.execute("SELECT 1").fetchone()
-            checks["components"]["database"] = "ok"
-        else:
-            checks["components"]["database"] = "missing"
-            checks["status"] = "degraded"
-    except Exception as e:
-        checks["components"]["database"] = f"error: {str(e)}"
-        checks["status"] = "degraded"
-    
-    # 2. Vérifier Prowlarr
-    try:
-        response = requests.get(
-            f"{PROWLARR_URL}/api/v1/health",
-            headers={"X-Api-Key": PROWLARR_API_KEY},
-            timeout=3
-        )
-        if response.status_code == 200:
-            checks["components"]["prowlarr"] = "ok"
-        else:
-            checks["components"]["prowlarr"] = f"http_{response.status_code}"
-            checks["status"] = "degraded"
-    except requests.Timeout:
-        checks["components"]["prowlarr"] = "timeout"
-        checks["status"] = "degraded"
-    except requests.ConnectionError:
-        checks["components"]["prowlarr"] = "unreachable"
-        checks["status"] = "degraded"
-    except Exception as e:
-        checks["components"]["prowlarr"] = f"error: {str(e)}"
-        checks["status"] = "degraded"
-    
-    # 3. Vérifier le Scheduler
-    try:
-        from scheduler import scheduler
-        if scheduler.running:
-            job = scheduler.get_job("sync_prowlarr")
-            if job:
-                checks["components"]["scheduler"] = "ok"
-                checks["components"]["next_sync"] = job.next_run_time.isoformat() if job.next_run_time else None
-            else:
-                checks["components"]["scheduler"] = "no_job"
-                checks["status"] = "degraded"
-        else:
-            checks["components"]["scheduler"] = "stopped"
-            checks["status"] = "degraded"
-    except Exception as e:
-        checks["components"]["scheduler"] = f"error: {str(e)}"
-        checks["status"] = "degraded"
-    
-    status_code = 200 if checks["status"] == "ok" else 503
-    
-    return JSONResponse(checks, status_code=status_code)
 
 @app.get("/debug")
-async def debug_info():
-    """Informations de debug"""
+async def debug_info(request: Request):
+    """Informations de debug - Protégé"""
+    from fastapi.responses import RedirectResponse
+
+    # Vérifier auth si activée
+    if is_auth_enabled():
+        session_token = request.cookies.get('session_token')
+        if not verify_session(session_token):
+            raise HTTPException(status_code=401, detail="Non authentifié")
+
     return {
         "status": "running",
         "timestamp": datetime.utcnow().isoformat(),
@@ -382,6 +412,133 @@ async def update_configuration(config_data: dict):
             raise HTTPException(status_code=500, detail="Erreur lors de la sauvegarde")
     except Exception as e:
         logger.error(f"Erreur update_config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== API KEYS & RSS ====================
+
+@app.get("/api/auth/keys")
+async def get_api_keys():
+    """Récupère les API keys actuelles"""
+    try:
+        from auth import get_api_keys
+        keys = get_api_keys()
+        return {
+            "keys": keys,
+            "count": len(keys)
+        }
+    except Exception as e:
+        logger.error(f"Erreur get_api_keys: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/auth/keys/generate")
+async def generate_api_key_endpoint():
+    """Génère une nouvelle API key"""
+    try:
+        from auth import create_api_key
+        from datetime import datetime
+
+        # Créer une nouvelle clé avec un nom automatique
+        name = f"API Key {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        key_data = create_api_key(name, enabled=True)
+
+        if key_data:
+            return {
+                "success": True,
+                "api_key": key_data["key"],
+                "name": key_data["name"],
+                "created_at": key_data["created_at"],
+                "message": "API key générée avec succès"
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Erreur sauvegarde API key")
+    except Exception as e:
+        logger.error(f"Erreur generate_api_key: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/auth/keys/{key}")
+async def delete_api_key(key: str):
+    """Supprime une API key"""
+    try:
+        from auth import delete_api_key as del_key
+        success = del_key(key)
+
+        if success:
+            return {
+                "success": True,
+                "message": "API key supprimée"
+            }
+        else:
+            raise HTTPException(status_code=404, detail="API key non trouvée")
+    except Exception as e:
+        logger.error(f"Erreur delete_api_key: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/rss/urls")
+async def get_rss_urls(request: Request):
+    """Génère les URLs RSS avec API key pour l'utilisateur"""
+    try:
+        from auth import get_api_keys
+        from config import RSS_DOMAIN, RSS_SCHEME
+
+        # Récupérer les API keys disponibles
+        keys = get_api_keys()
+        if not keys:
+            return {
+                "error": "Aucune API key disponible",
+                "message": "Générez une API key d'abord depuis le dashboard",
+                "urls": []
+            }
+
+        # Prendre la première clé active
+        api_key_data = next((k for k in keys if k.get("enabled", True)), None)
+        if not api_key_data:
+            return {
+                "error": "Aucune API key active",
+                "message": "Activez une API key depuis le dashboard",
+                "urls": []
+            }
+
+        api_key = api_key_data["key"]
+
+        # Construire l'URL de base
+        base_url = f"{RSS_SCHEME}://{RSS_DOMAIN}"
+
+        # Générer les URLs
+        urls = [
+            {
+                "name": "Flux RSS complet",
+                "url": f"{base_url}/rss?api_key={api_key}",
+                "description": "Tous les torrents récents",
+                "category": "principal"
+            },
+            {
+                "name": "Flux RSS (format JSON)",
+                "url": f"{base_url}/rss/torrent.json?api_key={api_key}",
+                "description": "Format JSON pour intégrations",
+                "category": "principal"
+            }
+        ]
+
+        # Ajouter les URLs par tracker
+        from db import get_trackers
+        trackers = get_trackers()
+        for tracker in trackers[:10]:  # Limiter à 10 trackers
+            urls.append({
+                "name": f"Flux {tracker}",
+                "url": f"{base_url}/rss/tracker/{tracker}?api_key={api_key}",
+                "description": f"Torrents de {tracker} uniquement",
+                "category": "tracker"
+            })
+
+        return {
+            "api_key": api_key,
+            "api_key_name": api_key_data.get("name", "Sans nom"),
+            "base_url": base_url,
+            "urls": urls,
+            "total_urls": len(urls)
+        }
+    except Exception as e:
+        logger.error(f"Erreur get_rss_urls: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ==================== ADMIN / MAINTENANCE v2.6.8 ====================
@@ -623,8 +780,16 @@ async def purge_logs():
 # ==================== WEB UI ====================
 
 @app.get("/test", response_class=HTMLResponse)
-async def test_ui():
-    """Interface de test simple"""
+async def test_ui(request: Request):
+    """Interface de test simple - Protégée"""
+    from fastapi.responses import RedirectResponse
+
+    # Vérifier auth si activée
+    if is_auth_enabled():
+        session_token = request.cookies.get('session_token')
+        if not verify_session(session_token):
+            return RedirectResponse(url='/login', status_code=302)
+
     return """<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Test</title></head>
 <body style="font-family: Arial; max-width: 800px; margin: 50px auto; padding: 20px; background: #0f0f0f; color: #fff;">
@@ -639,8 +804,16 @@ async def test_ui():
 </body></html>"""
 
 @app.get("/minimal", response_class=HTMLResponse)
-async def minimal_ui():
-    """Interface ultra-minimaliste"""
+async def minimal_ui(request: Request):
+    """Interface ultra-minimaliste - Protégée"""
+    from fastapi.responses import RedirectResponse
+
+    # Vérifier auth si activée
+    if is_auth_enabled():
+        session_token = request.cookies.get('session_token')
+        if not verify_session(session_token):
+            return RedirectResponse(url='/login', status_code=302)
+
     return """<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -659,1341 +832,52 @@ async def minimal_ui():
 </body>
 </html>"""
 
+# ==================== HTML PAGES ====================
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    """Page de connexion moderne et responsive"""
+    return templates.TemplateResponse("pages/login.html", {"request": request})
+
+
 @app.get("/", response_class=HTMLResponse)
-async def web_ui():
-    """Interface Web complète v2.6.8 - CORRIGÉE"""
-    html_content = """<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grab2RSS v2.6.8 - Dashboard</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: #e0e0e0; }
-        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
-        header { border-bottom: 2px solid #1e90ff; padding-bottom: 20px; margin-bottom: 30px; }
-        h1 { font-size: 32px; color: #1e90ff; margin-bottom: 5px; }
-        .subtitle { color: #888; font-size: 14px; }
-        
-        .tabs { display: flex; gap: 0; margin-bottom: 30px; border-bottom: 2px solid #333; overflow-x: auto; }
-        .tab-button { background: #1a1a1a; border: none; color: #888; padding: 15px 20px; cursor: pointer; font-weight: 600; border-bottom: 3px solid transparent; transition: 0.3s; white-space: nowrap; }
-        .tab-button:hover { color: #1e90ff; }
-        .tab-button.active { color: #1e90ff; border-bottom-color: #1e90ff; }
-        
-        .tab-content { display: none; }
-        .tab-content.active { display: block; animation: fadeIn 0.3s; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        
-        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 30px; }
-        .card { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 20px; }
-        .card h3 { color: #1e90ff; margin-bottom: 10px; font-size: 14px; text-transform: uppercase; }
-        .card .value { font-size: 28px; font-weight: bold; color: #fff; }
-        .card .unit { font-size: 12px; color: #888; margin-left: 5px; }
-        
-        .chart-container { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 20px; margin-bottom: 20px; position: relative; height: 400px; }
-        .chart-small { height: 300px; }
-        
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th { background: #1e90ff; color: #000; padding: 12px; text-align: left; font-weight: 600; }
-        td { padding: 12px; border-bottom: 1px solid #333; }
-        tr:hover { background: #1e1e1e; }
-        
-        .button { background: #1e90ff; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: 600; transition: 0.2s; }
-        .button:hover { background: #0066cc; }
-        .button.danger { background: #ff4444; }
-        .button.danger:hover { background: #cc0000; }
-        .button.success { background: #00aa00; }
-        .button.success:hover { background: #008800; }
-        .button:disabled { opacity: 0.5; cursor: not-allowed; }
-        
-        .actions { margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap; }
-        .status { display: flex; align-items: center; gap: 8px; }
-        .status.online::before { content: "●"; color: #00dd00; font-size: 12px; }
-        .status.offline::before { content: "●"; color: #ff4444; font-size: 12px; }
-        .date { color: #888; font-size: 12px; }
-        
-        .form-group { margin-bottom: 20px; }
-        .form-group label { display: block; margin-bottom: 8px; color: #1e90ff; font-weight: 600; }
-        .form-group input, .form-group select { width: 100%; padding: 10px; background: #1a1a1a; border: 1px solid #333; color: #e0e0e0; border-radius: 4px; font-size: 14px; }
-        .form-group input:focus, .form-group select:focus { outline: none; border-color: #1e90ff; box-shadow: 0 0 5px rgba(30,144,255,0.3); }
-        .form-group small { display: block; margin-top: 5px; color: #888; font-size: 12px; }
-        
-        .filter-bar { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 15px; margin-bottom: 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-        .filter-bar select { padding: 8px; background: #0f0f0f; border: 1px solid #333; color: #e0e0e0; border-radius: 4px; cursor: pointer; }
-        
-        .rss-section { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
-        .rss-section h3 { color: #1e90ff; margin-bottom: 15px; }
-        .rss-url { background: #0f0f0f; padding: 10px; border-radius: 4px; margin-bottom: 10px; word-break: break-all; font-family: monospace; font-size: 11px; border: 1px solid #333; }
-        .copy-btn { background: #333; color: #1e90ff; border: 1px solid #1e90ff; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; transition: 0.2s; }
-        .copy-btn:hover { background: #1e90ff; color: #000; }
-        
-        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 20px; }
-        
-        .alert { padding: 15px; border-radius: 4px; margin-bottom: 15px; }
-        .alert.info { background: #003366; color: #1e90ff; border-left: 4px solid #1e90ff; }
-        
-        .log-item { background: #1a1a1a; border-left: 4px solid #333; padding: 12px; margin-bottom: 10px; border-radius: 4px; }
-        .log-item.success { border-left-color: #00aa00; }
-        .log-item.error { border-left-color: #ff4444; }
-        .log-item.warning { border-left-color: #ffaa00; }
-        .log-item.info { border-left-color: #1e90ff; }
-        .log-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-        .log-level { font-weight: bold; font-size: 14px; }
-        .log-level.success { color: #00aa00; }
-        .log-level.error { color: #ff4444; }
-        .log-level.warning { color: #ffaa00; }
-        .log-level.info { color: #1e90ff; }
-        .log-time { color: #888; font-size: 12px; }
-        .log-message { margin-bottom: 5px; }
-        .log-details { color: #888; font-size: 12px; font-family: monospace; }
-        
-        h2 { color: #1e90ff; margin: 30px 0 15px 0; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>📡 Grabb2RSS v2.6.8</h1>
-            <p class="subtitle">Convertisseur Prowlarr → RSS avec Flux Personnalisés + Admin</p>
-        </header>
-
-        <div class="tabs">
-            <button class="tab-button active" onclick="switchTab('dashboard')">📊 Dashboard</button>
-            <button class="tab-button" onclick="switchTab('grabs')">📋 Grabs</button>
-            <button class="tab-button" onclick="switchTab('torrents')">📦 Torrents</button>
-            <button class="tab-button" onclick="switchTab('stats')">📈 Statistiques</button>
-            <button class="tab-button" onclick="switchTab('rss')">📡 Flux RSS</button>
-            <button class="tab-button" onclick="switchTab('logs')">📝 Logs</button>
-            <button class="tab-button" onclick="switchTab('config')">⚙️ Configuration</button>
-            <button class="tab-button" onclick="switchTab('admin')">🔧 Admin</button>
-        </div>
-
-        <!-- TAB: DASHBOARD -->
-        <div id="dashboard" class="tab-content active">
-            <div class="alert info" style="margin-bottom: 20px;">
-                <strong>👋 Bienvenue sur Grab2RSS v2.6.8</strong><br>
-                <span style="color: #ddd;">Votre convertisseur Prowlarr → RSS est opérationnel. Surveillez vos grabs, gérez vos torrents et configurez vos flux RSS personnalisés.</span>
-            </div>
-
-            <div class="grid">
-                <div class="card">
-                    <h3>📋 Total Grabs</h3>
-                    <div class="value" id="total-grabs">-</div>
-                    <p style="color: #888; font-size: 12px; margin-top: 10px;">Grabs enregistrés en base</p>
-                </div>
-                <div class="card">
-                    <h3>📦 Fichiers Torrents</h3>
-                    <div class="value" id="dashboard-torrent-count">-</div>
-                    <p style="color: #888; font-size: 12px; margin-top: 10px;">
-                        Taille: <span id="dashboard-torrent-size">-</span> MB
-                    </p>
-                </div>
-                <div class="card">
-                    <h3>💾 Stockage Total</h3>
-                    <div class="value"><span id="storage-size">-</span><span class="unit">MB</span></div>
-                    <p style="color: #888; font-size: 12px; margin-top: 10px;">Base + Torrents</p>
-                </div>
-                <div class="card">
-                    <h3>📡 Statut Sync</h3>
-                    <div class="status" id="sync-status"></div>
-                    <div class="date" id="next-sync" style="margin-top: 10px;">-</div>
-                </div>
-            </div>
-
-            <div class="grid" style="margin-top: 20px;">
-                <div class="card">
-                    <h3>🕒 Dernier Grab</h3>
-                    <div class="value" id="latest-grab" style="font-size: 14px; margin-top: 10px;">-</div>
-                </div>
-                <div class="card">
-                    <h3>🎯 Trackers Actifs</h3>
-                    <div class="value" id="dashboard-trackers-count">-</div>
-                    <p style="color: #888; font-size: 12px; margin-top: 10px;">Trackers différents</p>
-                </div>
-                <div class="card">
-                    <h3>📊 Grabs Aujourd'hui</h3>
-                    <div class="value" id="dashboard-grabs-today">-</div>
-                    <p style="color: #888; font-size: 12px; margin-top: 10px;">Dernières 24h</p>
-                </div>
-                <div class="card">
-                    <h3>⏱️ Uptime</h3>
-                    <div class="value" id="dashboard-uptime" style="font-size: 20px;">-</div>
-                    <p style="color: #888; font-size: 12px; margin-top: 10px;">Temps d'activité</p>
-                </div>
-            </div>
-
-            <h2>🎯 Actions Rapides</h2>
-            <div class="actions">
-                <button class="button" onclick="refreshData()">🔄 Actualiser Dashboard</button>
-                <button class="button success" id="sync-btn" onclick="syncNow()">📡 Synchroniser Maintenant</button>
-                <button class="button" onclick="switchTab('torrents'); event.target=document.querySelector('.tab-button:nth-child(3)');">📦 Gérer les Torrents</button>
-                <button class="button danger" onclick="purgeAllGrabs()">🗑️ Vider Tous les Grabs</button>
-            </div>
-
-            <h2 style="margin-top: 30px;">🔗 Accès Rapides</h2>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
-                <a href="/rss" target="_blank" style="background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 15px; text-decoration: none; color: #1e90ff; display: block; transition: 0.2s;">
-                    <strong style="display: block; margin-bottom: 5px;">📡 Flux RSS Global</strong>
-                    <span style="color: #888; font-size: 12px;">Tous les trackers</span>
-                </a>
-                <a href="/api/stats" target="_blank" style="background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 15px; text-decoration: none; color: #1e90ff; display: block; transition: 0.2s;">
-                    <strong style="display: block; margin-bottom: 5px;">📊 Statistiques API</strong>
-                    <span style="color: #888; font-size: 12px;">Format JSON</span>
-                </a>
-                <a href="/health" target="_blank" style="background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 15px; text-decoration: none; color: #1e90ff; display: block; transition: 0.2s;">
-                    <strong style="display: block; margin-bottom: 5px;">💚 Health Check</strong>
-                    <span style="color: #888; font-size: 12px;">État des services</span>
-                </a>
-                <a href="javascript:void(0)" onclick="switchTab('config'); event.target=document.querySelector('.tab-button:nth-child(7)');" style="background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 15px; text-decoration: none; color: #1e90ff; display: block; transition: 0.2s;">
-                    <strong style="display: block; margin-bottom: 5px;">⚙️ Configuration</strong>
-                    <span style="color: #888; font-size: 12px;">Modifier les paramètres</span>
-                </a>
-            </div>
-        </div>
-
-        <!-- TAB: GRABS -->
-        <div id="grabs" class="tab-content">
-            <h2>📋 Derniers Grabs</h2>
-
-            <div class="filter-bar">
-                <label for="tracker-filter-grabs" style="margin: 0; color: #1e90ff; font-weight: 600;">Filtrer par Tracker:</label>
-                <select id="tracker-filter-grabs" onchange="filterGrabs()" style="flex: 0 0 auto; min-width: 200px;">
-                    <option value="all">Tous les trackers</option>
-                </select>
-            </div>
-
-            <table>
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Titre</th>
-                        <th>Tracker</th>
-                        <th>Fichier</th>
-                    </tr>
-                </thead>
-                <tbody id="grabs-table">
-                    <tr><td colspan="4" style="text-align: center; color: #888;">Chargement...</td></tr>
-                </tbody>
-            </table>
-        </div>
-
-        <!-- TAB: TORRENTS -->
-        <div id="torrents" class="tab-content">
-            <h2>📦 Gestion des Fichiers Torrents</h2>
-            <p style="color: #888; margin-bottom: 20px;">Gérez vos fichiers torrents : téléchargement, suppression, nettoyage des orphelins</p>
-
-            <div class="grid" style="margin-bottom: 20px;">
-                <div class="card">
-                    <h3>Total Fichiers</h3>
-                    <div class="value" id="torrents-total">-</div>
-                </div>
-                <div class="card">
-                    <h3>Taille Totale</h3>
-                    <div class="value"><span id="torrents-size">-</span><span class="unit">MB</span></div>
-                </div>
-                <div class="card">
-                    <h3>Avec Grab</h3>
-                    <div class="value" id="torrents-with-grab">-</div>
-                </div>
-                <div class="card">
-                    <h3>Orphelins</h3>
-                    <div class="value" id="torrents-orphans" style="color: #ff6b6b;">-</div>
-                </div>
-            </div>
-
-            <div class="actions" style="margin-bottom: 20px;">
-                <button class="button" onclick="loadTorrents()">🔄 Actualiser</button>
-                <button class="button" onclick="cleanupOrphanTorrents()">🗑️ Nettoyer Orphelins</button>
-                <button class="button danger" onclick="purgeAllTorrents()">🗑️ Vider Tous les Torrents</button>
-            </div>
-
-            <table>
-                <thead>
-                    <tr>
-                        <th style="width: 40px;"><input type="checkbox" id="select-all-torrents" onchange="toggleAllTorrents()"></th>
-                        <th>Fichier</th>
-                        <th>Titre</th>
-                        <th>Tracker</th>
-                        <th>Date Grab</th>
-                        <th>Taille</th>
-                        <th>Statut</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="torrents-table">
-                    <tr><td colspan="8" style="text-align: center; color: #888;">Chargement...</td></tr>
-                </tbody>
-            </table>
-
-            <div class="actions" style="margin-top: 20px;" id="bulk-actions" style="display: none;">
-                <button class="button danger" onclick="deleteBulkTorrents()">🗑️ Supprimer la sélection</button>
-            </div>
-        </div>
-
-        <!-- TAB: STATISTIQUES -->
-        <div id="stats" class="tab-content">
-            <h2>📈 Statistiques Détaillées</h2>
-            
-            <div class="stats-grid">
-                <div class="chart-container chart-small">
-                    <canvas id="trackerChart"></canvas>
-                </div>
-                <div class="chart-container chart-small">
-                    <canvas id="grabsByDayChart"></canvas>
-                </div>
-            </div>
-            
-            <div class="chart-container">
-                <canvas id="topTorrentsChart"></canvas>
-            </div>
-            
-            <h3 style="margin-top: 40px; margin-bottom: 15px;">📊 Grabs par Tracker</h3>
-            <table id="tracker-stats-table">
-                <thead>
-                    <tr>
-                        <th>Tracker</th>
-                        <th>Nombre de grabs</th>
-                        <th>Pourcentage</th>
-                    </tr>
-                </thead>
-                <tbody id="tracker-stats-body">
-                    <tr><td colspan="3" style="text-align: center; color: #888;">Chargement...</td></tr>
-                </tbody>
-            </table>
-        </div>
-
-        <!-- TAB: RSS FEEDS -->
-        <div id="rss" class="tab-content">
-            <h2>📡 Flux RSS Personnalisés</h2>
-            <p style="color: #888; margin-bottom: 20px;">Copiez l'URL appropriée pour votre client torrent</p>
-            
-            <div class="rss-section">
-                <h3>🎯 Flux Global (Tous les Trackers)</h3>
-                <p style="color: #888; font-size: 12px; margin-bottom: 10px;">Compatible rutorrent, qBittorrent, Transmission</p>
-                
-                <p style="margin-bottom: 10px; color: #ddd;"><strong>Format XML:</strong></p>
-                <div class="rss-url" id="rss-global-xml">https://example.com/rss</div>
-                <button class="copy-btn" onclick="copyToClipboard('rss-global-xml')">📋 Copier</button>
-                
-                <p style="margin-top: 15px; margin-bottom: 10px; color: #ddd;"><strong>Format JSON:</strong></p>
-                <div class="rss-url" id="rss-global-json">https://example.com/rss/torrent.json</div>
-                <button class="copy-btn" onclick="copyToClipboard('rss-global-json')">📋 Copier</button>
-            </div>
-            
-            <div class="rss-section">
-                <h3>🔍 Flux par Tracker</h3>
-                <p style="color: #888; font-size: 12px; margin-bottom: 15px;">Sélectionnez un tracker pour générer son flux personnalisé</p>
-                
-                <div class="filter-bar">
-                    <label for="tracker-filter-rss" style="margin: 0;">Tracker:</label>
-                    <select id="tracker-filter-rss" onchange="updateTrackerRssUrls()" style="flex: 0 0 auto; min-width: 250px;">
-                        <option value="all">Tous</option>
-                    </select>
-                </div>
-                
-                <p style="margin-bottom: 10px; color: #ddd;"><strong>Format XML:</strong></p>
-                <div class="rss-url" id="rss-tracker-xml">-</div>
-                <button class="copy-btn" onclick="copyToClipboard('rss-tracker-xml')">📋 Copier</button>
-                
-                <p style="margin-top: 15px; margin-bottom: 10px; color: #ddd;"><strong>Format JSON:</strong></p>
-                <div class="rss-url" id="rss-tracker-json">-</div>
-                <button class="copy-btn" onclick="copyToClipboard('rss-tracker-json')">📋 Copier</button>
-            </div>
-            
-            <div class="alert alert-info">
-                <strong>💡 Utilisation:</strong> Copiez l'URL dans votre client torrent (rutorrent, qBittorrent, Transmission, etc). Les flux se mettent à jour automatiquement.
-            </div>
-        </div>
-
-        <!-- TAB: LOGS -->
-        <div id="logs" class="tab-content">
-            <h2>📝 Historique Synchronisations</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Statut</th>
-                        <th>Grabs</th>
-                        <th>Doublons</th>
-                        <th>Erreur</th>
-                    </tr>
-                </thead>
-                <tbody id="logs-table">
-                    <tr><td colspan="5" style="text-align: center; color: #888;">Chargement...</td></tr>
-                </tbody>
-            </table>
-        </div>
-
-        <!-- TAB: CONFIG -->
-        <div id="config" class="tab-content">
-            <h2>⚙️ Configuration</h2>
-            <div id="config-form"></div>
-            <div style="margin-top: 20px;">
-                <button class="button success" onclick="saveConfig()">💾 Sauvegarder</button>
-                <button class="button" onclick="loadConfig()">🔄 Recharger</button>
-            </div>
-        </div>
-
-        <!-- TAB: ADMIN (NOUVEAU v2.6.8) -->
-        <div id="admin" class="tab-content">
-            <h2>🔧 Administration & Maintenance</h2>
-            
-            <h3 style="margin-top: 20px; margin-bottom: 15px;">📊 Statistiques Système</h3>
-            <div class="grid">
-                <div class="card">
-                    <h3>Base de Données</h3>
-                    <div class="value"><span id="admin-db-size">-</span><span class="unit">MB</span></div>
-                    <p style="color: #888; font-size: 12px; margin-top: 10px;">
-                        Grabs: <span id="admin-db-grabs">-</span> |
-                        Logs: <span id="admin-db-logs">-</span>
-                    </p>
-                </div>
-                <div class="card">
-                    <h3>Fichiers Torrents</h3>
-                    <div class="value"><span id="admin-torrent-count">-</span></div>
-                    <p style="color: #888; font-size: 12px; margin-top: 10px;">
-                        Taille: <span id="admin-torrent-size">-</span> MB<br>
-                        Orphelins: <span id="admin-torrent-orphans" style="color: #ff6b6b;">-</span>
-                    </p>
-                </div>
-                <div class="card">
-                    <h3>Mémoire</h3>
-                    <div class="value"><span id="admin-memory">-</span><span class="unit">MB</span></div>
-                    <p style="color: #888; font-size: 12px; margin-top: 10px;">
-                        CPU: <span id="admin-cpu">-</span>%
-                    </p>
-                </div>
-                <div class="card">
-                    <h3>Uptime</h3>
-                    <div class="value" id="admin-uptime" style="font-size: 20px;">-</div>
-                </div>
-            </div>
-            
-            <h3 style="margin-top: 30px; margin-bottom: 15px;">🛠️ Actions de Maintenance</h3>
-            <div class="actions">
-                <button class="button" onclick="loadAdminStats()">🔄 Rafraîchir Stats</button>
-                <button class="button" onclick="clearCache()">🗑️ Vider Cache</button>
-                <button class="button" onclick="vacuumDatabase()">🔧 Optimiser BD</button>
-                <button class="button success" onclick="syncNow()">📡 Forcer Sync</button>
-                <button class="button danger" onclick="purgeOldGrabs()">🗑️ Purger Anciens</button>
-                <button class="button" onclick="testHistoryLimits()">📊 Tester Limites Historique</button>
-            </div>
-
-            <div class="alert info" style="margin-top: 15px;">
-                <strong>💡 Configuration :</strong>
-                Vous pouvez modifier la configuration via l'onglet <strong>Configuration</strong>.
-                Les paramètres sont sauvegardés dans <strong>/config/settings.yml</strong>.
-                Un redémarrage peut être nécessaire pour certains paramètres (SYNC_INTERVAL, etc.).
-            </div>
-            
-            <h3 style="margin-top: 30px; margin-bottom: 15px;">📋 Logs de Synchronisation</h3>
-            <div class="filter-bar">
-                <label for="log-level-filter" style="margin: 0; color: #1e90ff; font-weight: 600;">Niveau:</label>
-                <select id="log-level-filter" onchange="loadSystemLogs()" style="flex: 0 0 auto; min-width: 150px;">
-                    <option value="all">Tous</option>
-                    <option value="success">Succès</option>
-                    <option value="error">Erreurs</option>
-                    <option value="warning">Avertissements</option>
-                    <option value="info">Informations</option>
-                </select>
-                <button class="button danger" onclick="purgeAllLogs()" style="margin-left: auto;">🗑️ Vider Tous les Logs</button>
-            </div>
-            <div id="system-logs-container" style="max-height: 500px; overflow-y: auto; margin-top: 15px;">
-                <p style="text-align: center; color: #888; padding: 20px;">Chargement des logs...</p>
-            </div>
-
-            <div class="alert info" style="margin-top: 15px;">
-                <strong>💡 À propos des logs :</strong>
-                Les logs affichent l'historique des synchronisations avec Prowlarr. Chaque log contient le nombre de grabs récupérés, les doublons détectés et les éventuelles erreurs. Vous pouvez supprimer individuellement les logs ou vider tous les logs pour libérer de l'espace.
-            </div>
-
-            <h3 style="margin-top: 30px; margin-bottom: 15px;">📊 Test des Limites d'Historique</h3>
-            <div id="history-test-results" style="display: none;">
-                <div class="alert info" style="margin-bottom: 15px;">
-                    <strong>📝 Résultats du test</strong><br>
-                    <span id="history-test-timestamp" style="color: #888; font-size: 12px;"></span>
-                </div>
-                <div style="background: #1a1a1a; padding: 15px; border-radius: 8px; border: 1px solid #333;">
-                    <pre id="history-test-content" style="margin: 0; white-space: pre-wrap; font-size: 12px; color: #ddd; max-height: 400px; overflow-y: auto;"></pre>
-                </div>
-                <div style="margin-top: 10px; text-align: right;">
-                    <a id="history-test-download" href="#" download="history_limits_test.json" class="button" style="text-decoration: none;">💾 Télécharger JSON</a>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        const API_BASE = "/api";
-        let configData = {};
-        let statsData = {};
-        let allTrackers = [];
-        let trackerChartInstance = null;
-        let grabsByDayChartInstance = null;
-        let topTorrentsChartInstance = null;
-
-        function getRssBaseUrl() {
-            return window.location.origin;
-        }
-
-        function switchTab(tab) {
-            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-            document.querySelectorAll('.tab-button').forEach(el => el.classList.remove('active'));
-            document.getElementById(tab).classList.add('active');
-            event.target.classList.add('active');
-
-            if (tab === 'config') loadConfig();
-            if (tab === 'logs') loadLogs();
-            if (tab === 'grabs') loadGrabs();
-            if (tab === 'torrents') loadTorrents();
-            if (tab === 'stats') loadStats();
-            if (tab === 'rss') loadRssUrls();
-            if (tab === 'admin') loadAdminTab();
-        }
-
-        function loadRssUrls() {
-            const baseUrl = getRssBaseUrl();
-            document.getElementById('rss-global-xml').textContent = baseUrl + '/rss';
-            document.getElementById('rss-global-json').textContent = baseUrl + '/rss/torrent.json';
-            updateTrackerRssUrls();
-        }
-
-        function updateTrackerRssUrls() {
-            const tracker = document.getElementById('tracker-filter-rss').value;
-            const baseUrl = getRssBaseUrl();
-            
-            if (tracker === 'all') {
-                document.getElementById('rss-tracker-xml').textContent = baseUrl + '/rss';
-                document.getElementById('rss-tracker-json').textContent = baseUrl + '/rss/torrent.json';
-            } else {
-                document.getElementById('rss-tracker-xml').textContent = baseUrl + '/rss/tracker/' + encodeURIComponent(tracker);
-                document.getElementById('rss-tracker-json').textContent = baseUrl + '/rss/tracker/' + encodeURIComponent(tracker) + '/json';
-            }
-        }
-
-        function copyToClipboard(elementId) {
-            const text = document.getElementById(elementId).textContent;
-            navigator.clipboard.writeText(text).then(() => {
-                alert('✅ Copié dans le presse-papiers!');
-            }).catch(() => {
-                alert('❌ Erreur lors de la copie');
-            });
-        }
-
-        async function loadTrackers() {
-            try {
-                const res = await fetch(API_BASE + '/trackers');
-                if (!res.ok) throw new Error('Trackers API error: ' + res.status);
-                
-                const data = await res.json();
-                allTrackers = data.trackers;
-                
-                [document.getElementById('tracker-filter-grabs'), document.getElementById('tracker-filter-rss')].forEach(select => {
-                    if (!select) return;
-                    select.innerHTML = '<option value="all">Tous les trackers</option>';
-                    allTrackers.forEach(tracker => {
-                        const option = document.createElement('option');
-                        option.value = tracker;
-                        option.textContent = tracker;
-                        select.appendChild(option);
-                    });
-                });
-            } catch (e) {
-                console.error("❌ Erreur loadTrackers:", e);
-            }
-        }
-
-        async function filterGrabs() {
-            const tracker = document.getElementById('tracker-filter-grabs').value;
-            const url = API_BASE + '/grabs?limit=100&tracker=' + encodeURIComponent(tracker);
-            
-            try {
-                const grabs = await fetch(url).then(r => r.json());
-                const tbody = document.getElementById("grabs-table");
-                tbody.innerHTML = grabs.length ? grabs.map(g => 
-                    '<tr>' +
-                    '<td class="date">' + new Date(g.grabbed_at).toLocaleString('fr-FR') + '</td>' +
-                    '<td>' + g.title + '</td>' +
-                    '<td><strong style="color: #1e90ff;">' + (g.tracker || 'N/A') + '</strong></td>' +
-                    '<td><a href="/torrents/' + encodeURIComponent(g.torrent_file) + '" target="_blank" style="color: #1e90ff; text-decoration: none;">📥 Download</a></td>' +
-                    '</tr>'
-                ).join("") : '<tr><td colspan="4" style="text-align: center; color: #888;">Aucun grab</td></tr>';
-            } catch (e) {
-                console.error("Erreur filterGrabs:", e);
-            }
-        }
-
-        async function loadStats() {
-            try {
-                const res = await fetch(API_BASE + '/stats');
-                statsData = await res.json();
-                
-                const trackerLabels = statsData.tracker_stats.map(t => t.tracker);
-                const trackerData = statsData.tracker_stats.map(t => t.count);
-                
-                const trackerCtx = document.getElementById('trackerChart').getContext('2d');
-                if (trackerChartInstance) trackerChartInstance.destroy();
-                trackerChartInstance = new Chart(trackerCtx, {
-                    type: 'doughnut',
-                    data: {
-                        labels: trackerLabels,
-                        datasets: [{
-                            data: trackerData,
-                            backgroundColor: [
-                                '#1e90ff', '#ff6b6b', '#4ecdc4', '#45b7d1', '#f7b731',
-                                '#5f27cd', '#00d2d3', '#ff9ff3', '#54a0ff', '#48dbfb'
-                            ]
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { labels: { color: '#e0e0e0' } },
-                            title: { display: true, text: 'Grabs par Tracker', color: '#1e90ff' }
-                        }
-                    }
-                });
-                
-                const dayLabels = statsData.grabs_by_day.map(d => d.day).reverse();
-                const dayData = statsData.grabs_by_day.map(d => d.count).reverse();
-                
-                const dayCtx = document.getElementById('grabsByDayChart').getContext('2d');
-                if (grabsByDayChartInstance) grabsByDayChartInstance.destroy();
-                grabsByDayChartInstance = new Chart(dayCtx, {
-                    type: 'line',
-                    data: {
-                        labels: dayLabels,
-                        datasets: [{
-                            label: 'Grabs',
-                            data: dayData,
-                            borderColor: '#1e90ff',
-                            backgroundColor: 'rgba(30, 144, 255, 0.1)',
-                            tension: 0.4,
-                            fill: true
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { labels: { color: '#e0e0e0' } },
-                            title: { display: true, text: 'Grabs par Jour (30 derniers jours)', color: '#1e90ff' }
-                        },
-                        scales: {
-                            y: { ticks: { color: '#e0e0e0' }, grid: { color: '#333' } },
-                            x: { ticks: { color: '#e0e0e0' }, grid: { color: '#333' } }
-                        }
-                    }
-                });
-                
-                const topLabels = statsData.top_torrents.map(t => t.title.substring(0, 30) + '...');
-                const topData = Array(statsData.top_torrents.length).fill(1);
-                
-                const topCtx = document.getElementById('topTorrentsChart').getContext('2d');
-                if (topTorrentsChartInstance) topTorrentsChartInstance.destroy();
-                topTorrentsChartInstance = new Chart(topCtx, {
-                    type: 'bar',
-                    data: {
-                        labels: topLabels,
-                        datasets: [{
-                            label: 'Top Torrents',
-                            data: topData,
-                            backgroundColor: '#1e90ff'
-                        }]
-                    },
-                    options: {
-                        indexAxis: 'y',
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { labels: { color: '#e0e0e0' } },
-                            title: { display: true, text: 'Top 10 des Torrents Récents', color: '#1e90ff' }
-                        },
-                        scales: {
-                            y: { ticks: { color: '#e0e0e0' }, grid: { color: '#333' } },
-                            x: { ticks: { color: '#e0e0e0' }, grid: { color: '#333' } }
-                        }
-                    }
-                });
-                
-                const total = statsData.tracker_stats.reduce((a, b) => a + b.count, 0);
-                let tbody = document.getElementById('tracker-stats-body');
-                tbody.innerHTML = statsData.tracker_stats.map(t => 
-                    '<tr>' +
-                    '<td><strong>' + t.tracker + '</strong></td>' +
-                    '<td>' + t.count + '</td>' +
-                    '<td>' + ((t.count / total) * 100).toFixed(1) + '%</td>' +
-                    '</tr>'
-                ).join("");
-                
-            } catch (e) {
-                console.error("Erreur loadStats:", e);
-            }
-        }
-
-        async function refreshData() {
-            try {
-                const [stats, sync, detailedStats, torrentsData] = await Promise.all([
-                    fetch(API_BASE + '/stats').then(r => r.json()),
-                    fetch(API_BASE + '/sync/status').then(r => r.json()),
-                    fetch(API_BASE + '/stats/detailed').then(r => r.json()),
-                    fetch(API_BASE + '/torrents').then(r => r.json())
-                ]);
-
-                // Statistiques principales
-                document.getElementById("total-grabs").textContent = stats.total_grabs;
-                document.getElementById("storage-size").textContent = stats.storage_size_mb;
-                document.getElementById("latest-grab").textContent = stats.latest_grab ? new Date(stats.latest_grab).toLocaleString('fr-FR') : "-";
-
-                // Nouvelles statistiques dashboard
-                document.getElementById("dashboard-torrent-count").textContent = torrentsData.total;
-                const totalSize = torrentsData.torrents.reduce((acc, t) => acc + t.size_mb, 0);
-                document.getElementById("dashboard-torrent-size").textContent = totalSize.toFixed(2);
-
-                // Nombre de trackers différents
-                const uniqueTrackers = new Set(stats.tracker_stats.map(t => t.tracker)).size;
-                document.getElementById("dashboard-trackers-count").textContent = uniqueTrackers;
-
-                // Grabs aujourd'hui (dernières 24h)
-                const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-                const grabsToday = stats.grabs_by_day[0]?.count || 0;
-                document.getElementById("dashboard-grabs-today").textContent = grabsToday;
-
-                // Uptime
-                const uptime = detailedStats.system.uptime_seconds;
-                const hours = Math.floor(uptime / 3600);
-                const minutes = Math.floor((uptime % 3600) / 60);
-                document.getElementById("dashboard-uptime").textContent = hours + 'h ' + minutes + 'm';
-
-                // Statut sync
-                const statusEl = document.getElementById("sync-status");
-
-                let statusClass = "status offline";
-                let statusText = "Inactif";
-
-                if (sync.is_running) {
-                    statusClass = "status online";
-                    statusText = "Sync en cours...";
-                } else if (sync.next_sync) {
-                    statusClass = "status online";
-                    statusText = "Actif";
-                } else if (sync.last_sync) {
-                    statusClass = "status offline";
-                    statusText = "Arrêté";
-                } else {
-                    statusClass = "status offline";
-                    statusText = "En attente";
-                }
-
-                statusEl.className = statusClass;
-                statusEl.textContent = statusText;
-
-                document.getElementById("next-sync").textContent = sync.next_sync ? 'Prochain: ' + new Date(sync.next_sync).toLocaleString('fr-FR') : "-";
-            } catch (e) {
-                console.error("❌ Erreur refreshData:", e);
-            }
-        }
-
-        async function loadGrabs() {
-            await filterGrabs();
-        }
-
-        async function loadLogs() {
-            try {
-                const logs = await fetch(API_BASE + '/sync/logs?limit=50').then(r => r.json());
-                const tbody = document.getElementById("logs-table");
-                tbody.innerHTML = logs.length ? logs.map(l => 
-                    '<tr>' +
-                    '<td class="date">' + new Date(l.sync_at).toLocaleString('fr-FR') + '</td>' +
-                    '<td><span class="status ' + (l.status === 'success' ? 'online' : 'offline') + '">' + l.status + '</span></td>' +
-                    '<td>' + l.grabs_count + '</td>' +
-                    '<td>' + (l.deduplicated_count || 0) + '</td>' +
-                    '<td style="color: #ff4444; font-size: 12px;">' + (l.error ? l.error.substring(0, 50) : '-') + '</td>' +
-                    '</tr>'
-                ).join("") : '<tr><td colspan="5" style="text-align: center; color: #888;">Aucun log</td></tr>';
-            } catch (e) {
-                console.error("Erreur loadLogs:", e);
-            }
-        }
-
-        async function loadConfig() {
-            try {
-                const response = await fetch(API_BASE + '/config');
-                configData = await response.json();
-                
-                const form = document.getElementById("config-form");
-                form.innerHTML = Object.entries(configData).map(([key, data]) => 
-                    '<div class="form-group">' +
-                    '<label for="' + key + '">' + key + '</label>' +
-                    '<input type="text" id="' + key + '" name="' + key + '" value="' + (data.value || '') + '" placeholder="' + data.description + '">' +
-                    '<small>' + data.description + '</small>' +
-                    '</div>'
-                ).join("");
-            } catch (e) {
-                alert("Erreur lors du chargement de la config: " + e);
-            }
-        }
-
-        async function saveConfig() {
-            try {
-                const updates = {};
-                Object.keys(configData).forEach(key => {
-                    const input = document.getElementById(key);
-                    if (input) {
-                        updates[key] = {
-                            value: input.value,
-                            description: configData[key]?.description || ""
-                        };
-                    }
-                });
-                
-                const res = await fetch(API_BASE + '/config', {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(updates)
-                });
-                
-                if (res.ok) {
-                    alert("✅ Configuration sauvegardée!");
-                    loadConfig();
-                } else {
-                    alert("❌ Erreur lors de la sauvegarde");
-                }
-            } catch (e) {
-                alert("❌ Erreur: " + e);
-            }
-        }
-
-        async function syncNow() {
-            const btn = document.getElementById("sync-btn");
-            btn.disabled = true;
-            btn.textContent = "⏳ Sync en cours...";
-            
-            try {
-                const triggerRes = await fetch(API_BASE + '/sync/trigger', { method: "POST" });
-                const triggerData = await triggerRes.json();
-                
-                if (triggerData.status === "already_running") {
-                    alert("⏳ Une synchronisation est déjà en cours");
-                    btn.disabled = false;
-                    btn.textContent = "📡 Sync Maintenant";
-                    return;
-                }
-                
-                let syncCompleted = false;
-                const maxAttempts = 30;
-                
-                for (let i = 0; i < maxAttempts; i++) {
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    
-                    const statusRes = await fetch(API_BASE + '/sync/status');
-                    const status = await statusRes.json();
-                    
-                    if (!status.is_running) {
-                        syncCompleted = true;
-                        
-                        if (status.last_error) {
-                            alert("❌ Erreur sync: " + status.last_error);
-                        } else {
-                            alert("✅ Synchronisation terminée !");
-                        }
-                        break;
-                    }
-                }
-                
-                if (!syncCompleted) {
-                    alert("⏳ La synchronisation prend plus de temps que prévu. Vérifiez les logs.");
-                }
-                
-                await refreshData();
-                
-            } catch (e) {
-                alert("❌ Erreur: " + e);
-            } finally {
-                btn.disabled = false;
-                btn.textContent = "📡 Sync Maintenant";
-            }
-        }
-
-        async function purgeAllGrabs() {
-            if (confirm("⚠️  Êtes-vous CERTAIN ? Cela supprimera TOUS les grabs !")) {
-                try {
-                    const res = await fetch(API_BASE + '/purge/all', { method: "POST" });
-                    const data = await res.json();
-                    alert("✅ " + data.message);
-                    refreshData();
-                    loadGrabs();
-                } catch (e) {
-                    alert("❌ Erreur: " + e);
-                }
-            }
-        }
-
-        async function loadAdminTab() {
-            await loadAdminStats();
-            await loadSystemLogs();
-        }
-
-        async function loadAdminStats() {
-            try {
-                const [detailedStats, torrentsData] = await Promise.all([
-                    fetch(API_BASE + '/stats/detailed').then(r => r.json()),
-                    fetch(API_BASE + '/torrents').then(r => r.json())
-                ]);
-
-                document.getElementById('admin-db-size').textContent = detailedStats.database.size_mb;
-                document.getElementById('admin-db-grabs').textContent = detailedStats.database.grabs;
-                document.getElementById('admin-db-logs').textContent = detailedStats.database.sync_logs;
-
-                document.getElementById('admin-torrent-count').textContent = torrentsData.total;
-                const totalSize = torrentsData.torrents.reduce((acc, t) => acc + t.size_mb, 0);
-                document.getElementById('admin-torrent-size').textContent = totalSize.toFixed(2);
-
-                // Compter les orphelins
-                const orphans = torrentsData.torrents.filter(t => !t.has_grab).length;
-                document.getElementById('admin-torrent-orphans').textContent = orphans;
-
-                document.getElementById('admin-memory').textContent = detailedStats.system.memory_mb;
-                document.getElementById('admin-cpu').textContent = detailedStats.system.cpu_percent;
-
-                const uptime = detailedStats.system.uptime_seconds;
-                const hours = Math.floor(uptime / 3600);
-                const minutes = Math.floor((uptime % 3600) / 60);
-                document.getElementById('admin-uptime').textContent = hours + 'h ' + minutes + 'm';
-
-            } catch (e) {
-                console.error("Erreur loadAdminStats:", e);
-                alert("❌ Erreur lors du chargement des stats: " + e);
-            }
-        }
-
-        async function loadSystemLogs() {
-            const level = document.getElementById('log-level-filter').value;
-
-            try {
-                // Récupérer tous les logs de sync
-                const res = await fetch(API_BASE + '/sync/logs?limit=100');
-                const logs = await res.json();
-
-                const container = document.getElementById('system-logs-container');
-
-                if (logs.length === 0) {
-                    container.innerHTML = '<p style="text-align: center; color: #888; padding: 20px;">Aucun log trouvé</p>';
-                    return;
-                }
-
-                // Filtrer par niveau
-                let filteredLogs = logs;
-                if (level === 'success') {
-                    filteredLogs = logs.filter(l => l.status === 'success');
-                } else if (level === 'error') {
-                    filteredLogs = logs.filter(l => l.status !== 'success');
-                }
-
-                if (filteredLogs.length === 0) {
-                    container.innerHTML = '<p style="text-align: center; color: #888; padding: 20px;">Aucun log trouvé pour ce niveau</p>';
-                    return;
-                }
-
-                const logIcons = {
-                    'success': '✅',
-                    'error': '❌'
-                };
-
-                container.innerHTML = filteredLogs.map(log => {
-                    const logLevel = log.status === 'success' ? 'success' : 'error';
-                    const icon = logIcons[logLevel] || '•';
-                    const timestamp = new Date(log.sync_at).toLocaleString('fr-FR');
-                    const message = `Sync: ${log.grabs_count} grabs récupérés, ${log.deduplicated_count || 0} doublons ignorés`;
-                    const details = log.error ? `Erreur: ${log.error}` : '';
-
-                    return `
-                        <div class="log-item ${logLevel}" style="position: relative;">
-                            <div class="log-header">
-                                <span class="log-level ${logLevel}">
-                                    ${icon} ${logLevel.toUpperCase()}
-                                </span>
-                                <span class="log-time">${timestamp}</span>
-                            </div>
-                            <div class="log-message">${message}</div>
-                            ${details ? '<div class="log-details">' + details + '</div>' : ''}
-                        </div>
-                    `;
-                }).join('');
-
-            } catch (e) {
-                console.error("Erreur loadSystemLogs:", e);
-                alert("❌ Erreur lors du chargement des logs: " + e);
-            }
-        }
-
-        async function clearCache() {
-            if (confirm("Vider tous les caches (trackers + imports Radarr/Sonarr) ?")) {
-                try {
-                    const res = await fetch(API_BASE + '/cache/clear', { method: "POST" });
-                    const data = await res.json();
-                    alert("✅ " + data.message);
-                    await loadAdminStats();
-                } catch (e) {
-                    alert("❌ Erreur: " + e);
-                }
-            }
-        }
-
-        async function vacuumDatabase() {
-            if (confirm("Optimiser la base de données (VACUUM) ? Cela peut prendre quelques secondes.")) {
-                try {
-                    const res = await fetch(API_BASE + '/db/vacuum', { method: "POST" });
-                    const data = await res.json();
-                    alert("✅ " + data.message + "\\nEspace libéré: " + data.saved_mb + " MB");
-                    await loadAdminStats();
-                } catch (e) {
-                    alert("❌ Erreur: " + e);
-                }
-            }
-        }
-
-        async function purgeOldGrabs() {
-            const hours = prompt("Supprimer les grabs plus anciens que combien d'heures ?\\n(168 = 7 jours, 336 = 14 jours, 720 = 30 jours)", "168");
-
-            if (hours === null) return;
-
-            const hoursInt = parseInt(hours);
-            if (isNaN(hoursInt) || hoursInt < 1) {
-                alert("❌ Valeur invalide");
-                return;
-            }
-
-            if (confirm("Supprimer tous les grabs > " + hoursInt + "h ?")) {
-                try {
-                    const res = await fetch(API_BASE + '/purge/retention?hours=' + hoursInt, { method: "POST" });
-                    const data = await res.json();
-                    alert("✅ " + data.message);
-                    await refreshData();
-                    await loadAdminStats();
-                } catch (e) {
-                    alert("❌ Erreur: " + e);
-                }
-            }
-        }
-
-        async function loadTorrents() {
-            try {
-                const res = await fetch(API_BASE + '/torrents');
-                const data = await res.json();
-
-                // Mettre à jour les statistiques
-                document.getElementById('torrents-total').textContent = data.total;
-
-                const totalSize = data.torrents.reduce((acc, t) => acc + t.size_mb, 0);
-                document.getElementById('torrents-size').textContent = totalSize.toFixed(2);
-
-                const withGrab = data.torrents.filter(t => t.has_grab).length;
-                document.getElementById('torrents-with-grab').textContent = withGrab;
-
-                const orphans = data.torrents.filter(t => !t.has_grab).length;
-                document.getElementById('torrents-orphans').textContent = orphans;
-
-                // Remplir le tableau
-                const tbody = document.getElementById('torrents-table');
-                if (data.torrents.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #888;">Aucun fichier torrent</td></tr>';
-                    return;
-                }
-
-                tbody.innerHTML = data.torrents.map(t => {
-                    const statusColor = t.has_grab ? '#00aa00' : '#ff6b6b';
-                    const statusText = t.has_grab ? '✓ Avec Grab' : '⚠ Orphelin';
-                    const grabDate = t.grabbed_at ? new Date(t.grabbed_at).toLocaleString('fr-FR') : '-';
-
-                    return `
-                        <tr>
-                            <td><input type="checkbox" class="torrent-checkbox" value="${t.filename}"></td>
-                            <td style="font-family: monospace; font-size: 11px; word-break: break-all;">${t.filename}</td>
-                            <td>${t.title}</td>
-                            <td><strong style="color: #1e90ff;">${t.tracker}</strong></td>
-                            <td class="date">${grabDate}</td>
-                            <td>${t.size_mb} MB</td>
-                            <td><span style="color: ${statusColor}; font-weight: bold;">${statusText}</span></td>
-                            <td>
-                                <a href="/torrents/${encodeURIComponent(t.filename)}" target="_blank" class="button" style="text-decoration: none; padding: 5px 10px; font-size: 12px; display: inline-block;">📥 DL</a>
-                                <button class="button danger" onclick="deleteSingleTorrent('${t.filename}')" style="padding: 5px 10px; font-size: 12px; margin-left: 5px;">🗑️</button>
-                            </td>
-                        </tr>
-                    `;
-                }).join('');
-
-                // Gérer l'affichage du bouton d'actions groupées
-                updateBulkActionsVisibility();
-
-            } catch (e) {
-                console.error("Erreur loadTorrents:", e);
-                alert("❌ Erreur lors du chargement des torrents: " + e);
-            }
-        }
-
-        function toggleAllTorrents() {
-            const selectAll = document.getElementById('select-all-torrents');
-            const checkboxes = document.querySelectorAll('.torrent-checkbox');
-            checkboxes.forEach(cb => cb.checked = selectAll.checked);
-            updateBulkActionsVisibility();
-        }
-
-        function updateBulkActionsVisibility() {
-            const checkboxes = document.querySelectorAll('.torrent-checkbox:checked');
-            const bulkActions = document.getElementById('bulk-actions');
-            if (checkboxes.length > 0) {
-                bulkActions.style.display = 'flex';
-            } else {
-                bulkActions.style.display = 'none';
-            }
-        }
-
-        // Écouter les changements sur les checkboxes
-        document.addEventListener('change', (e) => {
-            if (e.target.classList.contains('torrent-checkbox')) {
-                updateBulkActionsVisibility();
-            }
-        });
-
-        async function deleteSingleTorrent(filename) {
-            if (!confirm(`Supprimer le torrent "${filename}" ?`)) return;
-
-            try {
-                const res = await fetch(API_BASE + '/torrents/' + encodeURIComponent(filename), {
-                    method: 'DELETE'
-                });
-
-                if (res.ok) {
-                    alert('✅ Torrent supprimé');
-                    await loadTorrents();
-                } else {
-                    alert('❌ Erreur lors de la suppression');
-                }
-            } catch (e) {
-                alert('❌ Erreur: ' + e);
-            }
-        }
-
-        async function deleteBulkTorrents() {
-            const checkboxes = document.querySelectorAll('.torrent-checkbox:checked');
-            const filenames = Array.from(checkboxes).map(cb => cb.value);
-
-            if (filenames.length === 0) {
-                alert('⚠️ Aucun torrent sélectionné');
-                return;
-            }
-
-            if (!confirm(`Supprimer ${filenames.length} torrent(s) sélectionné(s) ?`)) return;
-
-            try {
-                let successCount = 0;
-                let errorCount = 0;
-
-                for (const filename of filenames) {
-                    try {
-                        const res = await fetch(API_BASE + '/torrents/' + encodeURIComponent(filename), {
-                            method: 'DELETE'
-                        });
-                        if (res.ok) successCount++;
-                        else errorCount++;
-                    } catch (e) {
-                        errorCount++;
-                    }
-                }
-
-                alert(`✅ ${successCount} torrent(s) supprimé(s)${errorCount > 0 ? ', ' + errorCount + ' erreur(s)' : ''}`);
-                await loadTorrents();
-
-            } catch (e) {
-                alert('❌ Erreur: ' + e);
-            }
-        }
-
-        async function cleanupOrphanTorrents() {
-            if (!confirm('Supprimer tous les torrents orphelins (sans grab associé) ?')) return;
-
-            try {
-                const res = await fetch(API_BASE + '/torrents/cleanup-orphans', { method: 'POST' });
-                const data = await res.json();
-                alert('✅ ' + data.message);
-                await loadTorrents();
-            } catch (e) {
-                alert('❌ Erreur: ' + e);
-            }
-        }
-
-        async function purgeAllTorrents() {
-            if (!confirm('⚠️ ATTENTION : Supprimer TOUS les fichiers torrents ? Cette action est irréversible !')) return;
-
-            try {
-                const res = await fetch(API_BASE + '/torrents/purge-all', { method: 'POST' });
-                const data = await res.json();
-                alert('✅ ' + data.message);
-                await loadTorrents();
-                await loadAdminStats(); // Rafraîchir les stats admin
-            } catch (e) {
-                alert('❌ Erreur: ' + e);
-            }
-        }
-
-        async function purgeAllLogs() {
-            if (!confirm('Supprimer tous les logs de synchronisation ?')) return;
-
-            try {
-                const res = await fetch(API_BASE + '/logs/purge-all', { method: 'POST' });
-                const data = await res.json();
-                alert('✅ ' + data.message);
-                await loadSystemLogs();
-            } catch (e) {
-                alert('❌ Erreur: ' + e);
-            }
-        }
-
-        async function testHistoryLimits() {
-            const btn = event.target;
-            const originalText = btn.textContent;
-            btn.disabled = true;
-            btn.textContent = "⏳ Test en cours...";
-
-            try {
-                const res = await fetch(API_BASE + '/test-history-limits', { method: "POST" });
-
-                if (!res.ok) {
-                    throw new Error("Erreur HTTP " + res.status);
-                }
-
-                const data = await res.json();
-
-                // Afficher les résultats
-                const resultsDiv = document.getElementById('history-test-results');
-                resultsDiv.style.display = 'block';
-
-                // Timestamp
-                const timestamp = new Date(data.results.timestamp).toLocaleString('fr-FR');
-                document.getElementById('history-test-timestamp').textContent =
-                    "Test effectué le " + timestamp;
-
-                // Formater les résultats de manière lisible
-                const results = data.results;
-                let output = "=".repeat(80) + "\\n";
-                output += "TEST DES LIMITES D'HISTORIQUE\\n";
-                output += "=".repeat(80) + "\\n\\n";
-
-                // Configuration
-                output += "📋 CONFIGURATION\\n";
-                output += "-".repeat(80) + "\\n";
-                output += "Prowlarr URL:      " + results.configuration.prowlarr_url + "\\n";
-                output += "Prowlarr pageSize: " + results.configuration.prowlarr_page_size + "\\n";
-                output += "Radarr activé:     " + results.configuration.radarr_enabled + "\\n";
-                output += "Sonarr activé:     " + results.configuration.sonarr_enabled + "\\n";
-                output += "Sync interval:     " + results.configuration.sync_interval_seconds + "s\\n";
-                output += "Rétention:         " + results.configuration.retention_hours + "h\\n\\n";
-
-                // Prowlarr
-                output += "📡 PROWLARR\\n";
-                output += "-".repeat(80) + "\\n";
-                results.prowlarr.tested_page_sizes.forEach(test => {
-                    const d = test.data;
-                    if (d.error) {
-                        output += "pageSize=" + test.page_size + " → ❌ " + d.error + "\\n";
-                    } else {
-                        output += "pageSize=" + test.page_size + " → ";
-                        output += d.total + " enregistrements, ";
-                        output += d.successful_grabs + " grabs réussis\\n";
-                        if (d.oldest_grab) {
-                            output += "  Plus ancien: " + new Date(d.oldest_grab).toLocaleString('fr-FR') + "\\n";
-                        }
-                    }
-                });
-
-                output += "\\n🔍 ANALYSE\\n";
-                output += "-".repeat(80) + "\\n";
-                output += "Type de limitation: " + results.prowlarr.analysis.limitation_type + "\\n";
-                output += results.prowlarr.analysis.details + "\\n";
-                output += "\\n💡 Recommandation:\\n";
-                output += results.prowlarr.analysis.recommendation + "\\n\\n";
-
-                // Radarr
-                output += "🎬 RADARR\\n";
-                output += "-".repeat(80) + "\\n";
-                if (results.radarr.error) {
-                    output += "⚠️  " + results.radarr.error + "\\n\\n";
-                } else {
-                    output += "Total: " + results.radarr.total + " | Grabs: " + results.radarr.grabs + "\\n";
-                    if (results.radarr.oldest_grab) {
-                        output += "Plus ancien: " + new Date(results.radarr.oldest_grab).toLocaleString('fr-FR') + "\\n";
-                    }
-                    output += "\\n";
-                }
-
-                // Sonarr
-                output += "📺 SONARR\\n";
-                output += "-".repeat(80) + "\\n";
-                if (results.sonarr.error) {
-                    output += "⚠️  " + results.sonarr.error + "\\n\\n";
-                } else {
-                    output += "Total: " + results.sonarr.total + " | Grabs: " + results.sonarr.grabs + "\\n";
-                    if (results.sonarr.oldest_grab) {
-                        output += "Plus ancien: " + new Date(results.sonarr.oldest_grab).toLocaleString('fr-FR') + "\\n";
-                    }
-                    output += "\\n";
-                }
-
-                // Comparaison
-                output += "🔄 COMPARAISON DES PÉRIODES\\n";
-                output += "-".repeat(80) + "\\n";
-                if (results.comparison.prowlarr_oldest) {
-                    output += "Prowlarr: " + new Date(results.comparison.prowlarr_oldest).toLocaleString('fr-FR') + "\\n";
-                }
-                if (results.comparison.radarr_oldest) {
-                    output += "Radarr:   " + new Date(results.comparison.radarr_oldest).toLocaleString('fr-FR') + "\\n";
-                }
-                if (results.comparison.sonarr_oldest) {
-                    output += "Sonarr:   " + new Date(results.comparison.sonarr_oldest).toLocaleString('fr-FR') + "\\n";
-                }
-
-                document.getElementById('history-test-content').textContent = output;
-
-                // Lien de téléchargement
-                const blob = new Blob([JSON.stringify(results, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                document.getElementById('history-test-download').href = url;
-
-                // Scroll vers les résultats
-                resultsDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-                alert("✅ Test terminé !\\n\\nRésultats sauvegardés dans:\\n" + data.output_file);
-
-            } catch (e) {
-                console.error("Erreur testHistoryLimits:", e);
-                alert("❌ Erreur lors du test: " + e);
-            } finally {
-                btn.disabled = false;
-                btn.textContent = originalText;
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', async () => {
-            console.log("🚀 Initialisation Grab2RSS v2.6.8...");
-            
-            try {
-                await loadTrackers();
-                await refreshData();
-                await loadGrabs();
-                
-                setInterval(refreshData, 30000);
-                
-                console.log("✅ Application initialisée");
-            } catch (error) {
-                console.error("❌ Erreur initialisation:", error);
-                alert("Erreur lors du chargement de l'application. Vérifiez la console (F12).");
-            }
-        });
-    </script>
-</body>
-</html>"""
-    return HTMLResponse(content=html_content)
+async def web_ui(request: Request):
+    """Interface web principale - Redirection serveur si non authentifié"""
+    from fastapi.responses import RedirectResponse
+
+    # Premier lancement ? Rediriger vers setup
+    first_run = setup.is_first_run()
+    if first_run:
+        return RedirectResponse(url='/setup', status_code=302)
+
+    # Auth activée ?
+    auth_enabled = is_auth_enabled()
+    if auth_enabled:
+        session_token = request.cookies.get('session_token')
+        authenticated = verify_session(session_token)
+
+        # Non authentifié ? Rediriger AVANT le rendu
+        if not authenticated:
+            return RedirectResponse(url='/login', status_code=302)
+
+        username = get_username_from_session(session_token) or ""
+    else:
+        authenticated = False
+        username = ""
+
+    # Authentifié ou auth désactivée : retourner le HTML
+    return templates.TemplateResponse("pages/dashboard.html", {
+        "request": request,
+        "first_run": first_run,
+        "auth_enabled": auth_enabled,
+        "authenticated": authenticated,
+        "username": username,
+        "version": APP_VERSION
+    })
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard_page(request: Request):
+    """Page dashboard (alias de /)"""
+    # Utiliser la même logique que la route /
+    return await web_ui(request)
