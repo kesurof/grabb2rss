@@ -63,6 +63,9 @@ jobs:
           python -m compileall .
           mkdir -p .ci/config
           python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.append(str(Path('.').resolve() / 'src'))
           import api, auth, config, db, scheduler, version
           print("Imports OK")
           PY

@@ -40,7 +40,7 @@ Transformez vos grabs Prowlarr en flux RSS pour le seeding automatique avec vos 
 
 ```bash
 mkdir grabb2rss && cd grabb2rss
-curl -o docker-compose.yml https://raw.githubusercontent.com/kesurof/grabb2rss/main/docker-compose.example.yml
+curl -o docker-compose.yml https://raw.githubusercontent.com/kesurof/grabb2rss/main/docker/docker-compose.example.yml
 ```
 
 Ou créez manuellement le fichier `docker-compose.yml` :
@@ -331,7 +331,7 @@ Toutes les expositions (API, UI, Docker, headers, logs) en dépendent automatiqu
 Pour un déploiement prod, utilisez un runner ASGI type Gunicorn + Uvicorn :
 
 ```bash
-WEB_CONCURRENCY=2 gunicorn api:app \
+WEB_CONCURRENCY=2 gunicorn src.api:app \
   --worker-class uvicorn.workers.UvicornWorker \
   --bind 0.0.0.0:8000 \
   --timeout 60
@@ -361,7 +361,7 @@ services:
       sh -c 'WORKERS=${WEB_CONCURRENCY:-$((2 * $(nproc)))}; \
       if [ "$WORKERS" -lt 2 ]; then WORKERS=2; fi; \
       if [ "$WORKERS" -gt 4 ]; then WORKERS=4; fi; \
-      gunicorn api:app --worker-class uvicorn.workers.UvicornWorker --workers "$WORKERS" --bind 0.0.0.0:8000 --timeout 60'
+      gunicorn src.api:app --worker-class uvicorn.workers.UvicornWorker --workers "$WORKERS" --bind 0.0.0.0:8000 --timeout 60'
 ```
 
 - [Installation Détaillée](docs/INSTALLATION.md)
@@ -387,7 +387,7 @@ Si vous souhaitez builder localement pour le développement :
 ```bash
 git clone https://github.com/kesurof/grabb2rss.git
 cd grabb2rss
-docker-compose -f docker-compose.dev.yml up --build
+docker-compose -f docker/docker-compose.dev.yml up --build
 ```
 
 ---

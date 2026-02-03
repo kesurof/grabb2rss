@@ -1,0 +1,29 @@
+auth:
+  api_keys: []
+  cookie_secure: false
+  enabled: false
+  password_hash: ''
+  username: ''
+prowlarr:
+  api_key: 90b7de97d47745cba81cc9a55909514c
+  history_page_size: 500
+  url: http://localhost:9696
+radarr:
+  api_key: 2b7f06a904c44923a838c3a34bef74e5
+  enabled: true
+  url: http://localhost:7878
+rss:
+  description: Prowlarr to RSS Feed
+  domain: localhost
+  scheme: http
+  title: grabb2RSS
+setup_completed: true
+sonarr:
+  api_key: 9c90833a4e2543cd9ba2b41b002810a2
+  enabled: true
+  url: http://localhost:8989
+sync:
+  auto_purge: true
+  dedup_hours: 168
+  interval: 3600
+  retention_hours: 168

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from paths import VERSION_FILE
 
 
 _APP_VERSION: str | None = None
@@ -12,11 +13,10 @@ def get_app_version() -> str:
     if _APP_VERSION is not None:
         return _APP_VERSION
 
-    version_file = Path(__file__).resolve().parent / "VERSION"
-    if not version_file.exists():
+    if not VERSION_FILE.exists():
         raise RuntimeError("Fichier VERSION introuvable. La version est obligatoire.")
 
-    content = version_file.read_text(encoding="utf-8").strip()
+    content = VERSION_FILE.read_text(encoding="utf-8").strip()
     if not content:
         raise RuntimeError("Fichier VERSION vide. La version est obligatoire.")
 

@@ -6,7 +6,6 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from pathlib import Path
 from typing import Optional
 import setup
 import logging
@@ -17,8 +16,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Utiliser un chemin absolu identique à api.py pour éviter les conflits
-TEMPLATE_DIR = Path(__file__).parent.absolute() / "templates"
-templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
+from paths import TEMPLATES_DIR
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
 class SetupConfigModel(BaseModel):
@@ -181,7 +180,7 @@ async def save_setup(config: SetupConfigModel):
                 "scheduler_started": scheduler_started
             }
         else:
-            error_msg = "Impossible de sauvegarder la configuration. Vérifiez les permissions sur /config"
+            error_msg = "Impossible de sauvegarder la configuration. Vérifiez les permissions sur le dossier de config"
             logger.error("%s", error_msg)
             raise HTTPException(status_code=500, detail=error_msg)
 

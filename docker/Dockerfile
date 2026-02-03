@@ -58,15 +58,11 @@ COPY --from=builder /opt/venv /opt/venv
 # Set PATH to use venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy and set entrypoint permissions (before WORKDIR to place at root)
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-
 # Set working directory
 WORKDIR /app
 
 # Copy entrypoint first (before app code for better layer caching)
-COPY entrypoint.sh /app/entrypoint.sh
+COPY docker/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
 # Copy application code (do this late to maximize cache)

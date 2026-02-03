@@ -17,7 +17,7 @@ Chaque étape est conçue pour être **suivie séquentiellement** et **reversibl
 
 ---
 
-## 1) Créer la nouvelle arborescence cible
+## 1) Créer la nouvelle arborescence cible (Terminé)
 
 Créer les dossiers suivants :
 
@@ -29,9 +29,11 @@ Créer les dossiers suivants :
 /docker/              # Dockerfile, entrypoint, compose
 ```
 
+Statut : terminé le 3 février 2026.
+
 ---
 
-## 2) Déplacer le backend dans /src
+## 2) Déplacer le backend dans /src (Terminé)
 
 Déplacer tous les modules Python de la racine vers `src/` :
 
@@ -44,9 +46,11 @@ Actions à prévoir :
 - Mettre à jour les imports internes si nécessaire.
 - Adapter les chemins relatifs qui pointent sur `templates/`, `static/` ou `VERSION`.
 
+Statut : terminé le 3 février 2026.
+
 ---
 
-## 3) Déplacer l’UI dans /web
+## 3) Déplacer l’UI dans /web (Terminé)
 
 Déplacer :
 - `templates/` → `web/templates/`
@@ -56,9 +60,11 @@ Puis mettre à jour :
 - Les chemins de `TEMPLATE_DIR` et `STATIC_DIR` dans `src/api.py`.
 - Les références `href`/`src` si besoin (normalement inchangées).
 
+Statut : terminé le 3 février 2026.
+
 ---
 
-## 4) Centraliser les chemins globaux
+## 4) Centraliser les chemins globaux (Terminé)
 
 Créer un module de chemins (ex: `src/paths.py`) avec :
 - `PROJECT_ROOT`
@@ -69,9 +75,11 @@ Créer un module de chemins (ex: `src/paths.py`) avec :
 
 Et remplacer les chemins codés en dur par ces constantes.
 
+Statut : terminé le 3 février 2026.
+
 ---
 
-## 5) Adapter Docker et runtime
+## 5) Adapter Docker et runtime (Terminé)
 
 Déplacer :
 - `Dockerfile` → `docker/Dockerfile`
@@ -83,9 +91,11 @@ Puis adapter :
 - Le lancement (`python /app/src/main.py`)
 - Les chemins `/app/web` et `/app/VERSION`
 
+Statut : terminé le 3 février 2026.
+
 ---
 
-## 6) Préparer le futur frontend (Tailwind / Alpine)
+## 6) Préparer le futur frontend (Tailwind / Alpine) (Terminé)
 
 Ajouter un scaffold minimal :
 
@@ -97,13 +107,17 @@ Ajouter un scaffold minimal :
 
 Option : ajouter un `package.json` minimal (sans build pour l’instant).
 
+Statut : terminé le 3 février 2026.
+
 ---
 
-## 7) Ajuster la config et la version
+## 7) Ajuster la config et la version (Terminé)
 
 S’assurer que :
 - `VERSION` reste à la racine du repo.
 - Le backend lit toujours la version via `version.py` en utilisant `PROJECT_ROOT/VERSION`.
+
+Statut : terminé le 3 février 2026.
 
 ---
 
@@ -141,4 +155,3 @@ Un dépôt clair, modulaire, prêt pour :
 - migration progressive vers Tailwind
 - intégration Alpine
 - maintenance backend facilitée
-

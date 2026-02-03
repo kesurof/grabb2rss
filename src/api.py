@@ -5,7 +5,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from pathlib import Path
 import logging
 import psutil
 import time
@@ -43,10 +42,9 @@ app = FastAPI(
 
 # Configuration des templates et fichiers statiques
 # Utiliser un chemin absolu pour éviter les problèmes de résolution de chemin
-TEMPLATE_DIR = Path(__file__).parent.absolute() / "templates"
-STATIC_DIR = Path(__file__).parent.absolute() / "static"
+from paths import TEMPLATES_DIR, STATIC_DIR, SETTINGS_FILE, CONFIG_DIR
 
-templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
 @app.middleware("http")
@@ -427,7 +425,7 @@ async def update_configuration(config_data: dict):
         if success:
             return {
                 "status": "updated",
-                "message": "Configuration sauvegardée dans /config/settings.yml. Redémarrez l'application pour appliquer certains paramètres (SYNC_INTERVAL, etc.)"
+                "message": f"Configuration sauvegardée dans {SETTINGS_FILE}. Redémarrez l'application pour appliquer certains paramètres (SYNC_INTERVAL, etc.)"
             }
         else:
             raise HTTPException(status_code=500, detail="Erreur lors de la sauvegarde")
@@ -699,7 +697,7 @@ async def test_history_limits():
             "status": "success",
             "message": "Test des limites d'historique terminé",
             "results": results,
-            "output_file": results.get("output_file", "/config/history_limits_test.json")
+            "output_file": results.get("output_file", str(CONFIG_DIR / "history_limits_test.json"))
         }
     except Exception as e:
         logger.error(f"Erreur test_history_limits: {e}")

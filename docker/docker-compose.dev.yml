@@ -2,7 +2,9 @@ version: "3.8"
 
 services:
   grab2rss:
-    build: .
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
     container_name: grab2rss
     ports:
       - "8000:8000"
@@ -45,8 +47,8 @@ services:
       - RSS_TITLE=${RSS_TITLE:-Grab2RSS}
       - RSS_DESCRIPTION=${RSS_DESCRIPTION:-Prowlarr to RSS Feed}
     volumes:
-      - ./config:/config
-      - ./data:/app/data
+      - ../config:/config
+      - ../data:/app/data
     networks:
       - traefik_proxy
     restart: unless-stopped

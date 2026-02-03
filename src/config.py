@@ -4,23 +4,28 @@ import logging
 from pathlib import Path
 import yaml
 from typing import Optional
+from paths import PROJECT_ROOT, CONFIG_DIR, SETTINGS_FILE, DATA_DIR, TORRENT_DIR
 
 logger = logging.getLogger(__name__)
+
+def _resolve_settings_paths() -> tuple[Path, Path]:
+    """Détermine le chemin settings.yml en tenant compte du contexte CI."""
+    if os.getenv("CI", "").lower() == "true":
+        settings_file = PROJECT_ROOT / ".ci" / "config" / "settings.yml"
+        return settings_file, settings_file.parent
+
+    return SETTINGS_FILE, CONFIG_DIR
 
 # Fonction pour créer le fichier settings.yml par défaut
 def create_default_settings():
     """Crée un fichier settings.yml par défaut si il n'existe pas"""
-    settings_file = Path("/config/settings.yml")
-    config_dir = Path("/config")
-    if os.getenv("CI", "").lower() == "true":
-        settings_file = Path("./.ci/config/settings.yml")
-        config_dir = settings_file.parent
+    settings_file, config_dir = _resolve_settings_paths()
 
-    # Créer le répertoire /config si nécessaire
+    # Créer le répertoire de config si nécessaire
     try:
         config_dir.mkdir(parents=True, exist_ok=True)
     except Exception as e:
-        logger.warning("Erreur création répertoire /config: %s", e)
+        logger.warning("Erreur création répertoire config: %s", e)
         return False
 
     # Créer le fichier settings.yml par défaut
@@ -94,13 +99,11 @@ def create_default_settings():
 # Fonction pour charger la configuration
 def load_configuration():
     """
-    Charge la configuration depuis /config/settings.yml
+    Charge la configuration depuis settings.yml
     Crée le fichier par défaut s'il n'existe pas
     """
     config = {}
-    settings_file = Path("/config/settings.yml")
-    if os.getenv("CI", "").lower() == "true":
-        settings_file = Path("./.ci/config/settings.yml")
+    settings_file, _ = _resolve_settings_paths()
 
     # Créer le fichier par défaut si il n'existe pas
     if not settings_file.exists():
@@ -339,7 +342,7 @@ def reload_config():
     return True
 
 # Chemins
-DATA_DIR = Path(os.getenv("DATA_DIR", "/app/data"))
+DATA_DIR = Path(os.getenv("DATA_DIR", str(DATA_DIR)))
 DB_PATH = DATA_DIR / "grabs.db"
 TORRENT_DIR = DATA_DIR / "torrents"
 
@@ -459,7 +462,7 @@ DESCRIPTIONS = {
 
 def is_setup_completed() -> bool:
     """Vérifie si le setup wizard a été complété"""
-    settings_file = Path("/config/settings.yml")
+    settings_file, _ = _resolve_settings_paths()
     if not settings_file.exists():
         return False
 

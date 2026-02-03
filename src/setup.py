@@ -5,13 +5,12 @@ Gère le setup wizard au premier lancement
 """
 import yaml
 import logging
-from pathlib import Path
 from typing import Optional, Dict, Any
 import requests
 
 # Chemin du fichier de configuration
-CONFIG_FILE = Path("/config/settings.yml")
-CONFIG_DIR = Path("/config")
+from paths import SETTINGS_FILE, CONFIG_DIR
+CONFIG_FILE = SETTINGS_FILE
 logger = logging.getLogger(__name__)
 
 # Configuration par défaut

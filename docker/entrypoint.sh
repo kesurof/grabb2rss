@@ -77,4 +77,4 @@ else
 fi
 
 # Drop privileges and execute main application as abc user
-exec gosu abc python /app/main.py
+exec gosu abc python /app/src/main.py

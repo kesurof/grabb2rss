@@ -12,11 +12,11 @@ import secrets
 import hmac
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
-from pathlib import Path
 import yaml
+from paths import SETTINGS_FILE
 
 # Chemins
-CONFIG_FILE = Path("/config/settings.yml")
+CONFIG_FILE = SETTINGS_FILE
 logger = logging.getLogger(__name__)
 
 # Durée de validité des sessions (7 jours)
