@@ -14,7 +14,7 @@
 mkdir grab2rss && cd grab2rss
 ```
 
-Créez un fichier `docker-compose.yml` :
+Créez un fichier `docker-compose.yml` (exemple dans `docker/docker-compose.example.yml`) :
 
 ```yaml
 version: "3.8"
@@ -86,113 +86,6 @@ curl http://localhost:8000/health
 
 # Ouvrir l'interface web
 # Naviguer vers : http://votre-ip:8000
-```
-
----
-
-## 🐍 Installation Manuelle (Python)
-
-### Prérequis
-
-- Python >= 3.9
-- pip
-- virtualenv (recommandé)
-
-### Étape 1 : Préparer l'Environnement
-
-```bash
-# Créer le dossier du projet
-mkdir -p /opt/grab2rss
-cd /opt/grab2rss
-
-# Télécharger les fichiers du projet
-# (ou git clone)
-
-# Créer l'environnement virtuel
-python3 -m venv venv
-
-# Activer l'environnement
-source venv/bin/activate  # Linux/Mac
-# OU
-venv\Scripts\activate  # Windows
-```
-
-### Étape 2 : Installer les Dépendances
-
-```bash
-# Installer les packages Python
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-### Étape 3 : Configuration
-
-La configuration se fait maintenant via le **Setup Wizard** accessible au premier lancement sur http://localhost:8000
-
-Vous pouvez également modifier la configuration :
-- Via l'interface web (onglet Configuration)
-- En éditant directement `/config/settings.yml`
-
-**Exemple de fichier settings.yml** :
-
-```yaml
-PROWLARR_URL=http://localhost:9696
-PROWLARR_API_KEY=votre_clé_api_prowlarr
-PROWLARR_HISTORY_PAGE_SIZE=100
-
-SYNC_INTERVAL=3600
-RETENTION_HOURS=168
-AUTO_PURGE=true
-DEDUP_HOURS=168
-
-RSS_DOMAIN=localhost:8000
-RSS_SCHEME=http
-
-APP_HOST=0.0.0.0
-APP_PORT=8000
-```
-
-### Étape 4 : Créer les Répertoires
-
-```bash
-# Créer les dossiers nécessaires
-mkdir -p data/torrents
-
-# Définir les permissions
-chmod 755 data/
-chmod 777 data/torrents/
-```
-
-### Étape 5 : Lancement
-
-```bash
-# Lancer l'application
-python main.py
-```
-
-Vous devriez voir :
-
-```
-✅ Configuration chargée depuis /opt/grab2rss/settings.yml
-✅ Configuration valide
-
-INFO:     Started server process [12345]
-✅ Migration complète
-🚀 Scheduler démarré (intervalle: 3600s)
-⏱️  Sync Prowlarr en cours...
-✅ Sync terminée: X grabs, Y doublons
-✅ Application démarrée
-INFO:     Uvicorn running on http://0.0.0.0:8000
-```
-
-### Étape 6 : Tester
-
-```bash
-# Dans un autre terminal
-curl http://localhost:8000/health
-
-# Ouvrir le navigateur
-firefox http://localhost:8000
 ```
 
 ---
@@ -391,26 +284,6 @@ docker-compose up -d
 docker-compose logs -f grab2rss
 ```
 
-### Manuel
-
-```bash
-cd /opt/grab2rss
-source venv/bin/activate
-
-# Sauvegarder la base (recommandé)
-cp data/grabs.db data/grabs.db.backup
-
-# Mettre à jour le code
-git pull
-
-# Mettre à jour les dépendances
-pip install -r requirements.txt --upgrade
-
-# Redémarrer
-# CTRL+C puis
-python main.py
-```
-
 ---
 
 ## 🧪 Tests Post-Installation
@@ -473,37 +346,6 @@ Vérifier :
 
 ## 🚦 Démarrage Automatique
 
-### Systemd (Linux)
-
-Créer `/etc/systemd/system/grab2rss.service` :
-
-```ini
-[Unit]
-Description=Grab2RSS Service
-After=network.target
-
-[Service]
-Type=simple
-User=votre_user
-WorkingDirectory=/opt/grab2rss
-Environment="PATH=/opt/grab2rss/venv/bin"
-ExecStart=/opt/grab2rss/venv/bin/python /opt/grab2rss/main.py
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Activer :
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable grab2rss
-sudo systemctl start grab2rss
-sudo systemctl status grab2rss
-```
-
 ### Docker Auto-Restart
 
 Déjà configuré dans `docker-compose.yml` :
@@ -518,13 +360,10 @@ restart: unless-stopped
 
 ### Checklist
 
-- [ ] Python 3.9+ installé (ou Docker)
-- [ ] Dépendances installées (`pip install -r requirements.txt`)
-- [ ] Fichier `settings.yml` créé et configuré
-- [ ] `PROWLARR_API_KEY` définie
-- [ ] Répertoires `data/` et `data/torrents/` créés
-- [ ] Permissions correctes (755 data/, 777 data/torrents/)
-- [ ] Application démarrée sans erreur
+- [ ] Docker et Docker Compose installés
+- [ ] `docker-compose.yml` créé avec volumes `./config` et `./data`
+- [ ] Container démarré sans erreur
+- [ ] Setup Wizard terminé (Prowlarr configuré, clé API renseignée)
 - [ ] Healthcheck retourne `status: ok`
 - [ ] Interface Web accessible
 - [ ] Première sync effectuée
@@ -576,7 +415,7 @@ Consultez [TROUBLESHOOTING.md](TROUBLESHOOTING.md) pour un guide complet.
 Pour toute question ou problème :
 
 1. Vérifier [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
-2. Consulter les logs : `docker-compose logs -f` ou `python main.py`
+2. Consulter les logs : `docker-compose logs -f`
 3. Tester le healthcheck : `curl http://localhost:8000/health`
 4. Ouvrir une issue sur GitHub
 

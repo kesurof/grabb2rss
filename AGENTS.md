@@ -1,23 +1,20 @@
 # Directives de Répertoire
 
 ## Structure du projet et organisation des modules
-- **Entrée** : `main.py` (démarre FastAPI), configuration centralisée dans `config.py` et schéma dans `settings_schema.py`.  
-- **API** : `api.py` + routes `auth_routes.py`, `setup_routes.py`.  
-- **Logique métier** : `prowlarr.py`, `radarr_sonarr.py`, `torrent.py`, `rss.py`, `scheduler.py`, `db.py`.  
-- **UI** : templates Jinja2 dans `templates/`, assets dans `static/`.  
+- **Entrée** : `src/main.py` (démarre FastAPI), configuration centralisée dans `src/config.py` et schéma dans `src/settings_schema.py`.  
+- **API** : `src/api.py` + routes `src/auth_routes.py`, `src/setup_routes.py`.  
+- **Logique métier** : `src/prowlarr.py`, `src/radarr_sonarr.py`, `src/torrent.py`, `src/rss.py`, `src/scheduler.py`, `src/db.py`.  
+- **UI** : templates Jinja2 dans `web/templates/`, assets dans `web/static/`.  
 - **Docs** : `docs/` (installation, plan de prod, etc.).  
-- **Docker** : `Dockerfile`, `docker-compose*.yml`, `entrypoint.sh`.  
+- **Docker** : `docker/Dockerfile`, `docker/docker-compose*.yml`, `docker/entrypoint.sh`.  
 Exemple de configuration: `/config/settings.yml` ; données: `/app/data/`.
 
 ## Commandes de construction, de test et de développement
 - **Dev Docker** :  
-  `docker-compose -f docker-compose.dev.yml up --build`  
+  `docker-compose -f docker/docker-compose.dev.yml up --build`  
   Lance l’app en mode développement.  
-- **Exécution locale** :  
-  `pip install -r requirements.txt` puis `python main.py`  
-  Démarre l’API sur `APP_HOST:APP_PORT` (voir `config.py`).  
 - **Prod ASGI** :  
-  `WEB_CONCURRENCY=2 gunicorn api:app --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000`  
+  `WEB_CONCURRENCY=2 gunicorn src.api:app --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000`  
   Ajustez `WEB_CONCURRENCY` selon CPU/RAM.
 
 ## Style de codage et conventions de nommage

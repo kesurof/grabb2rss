@@ -125,7 +125,7 @@ Statut : terminé le 3 février 2026.
 
 Après chaque étape clé :
 
-- Lancer l’app localement (`python src/main.py` ou via Docker)
+- Lancer l’app via Docker (compose)
 - Vérifier `/health`, `/api/info`
 - Vérifier `/login` et le chargement du JS
 
