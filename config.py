@@ -12,6 +12,9 @@ def create_default_settings():
     """Crée un fichier settings.yml par défaut si il n'existe pas"""
     settings_file = Path("/config/settings.yml")
     config_dir = Path("/config")
+    if os.getenv("CI", "").lower() == "true":
+        settings_file = Path("./.ci/config/settings.yml")
+        config_dir = settings_file.parent
 
     # Créer le répertoire /config si nécessaire
     try:
@@ -96,6 +99,8 @@ def load_configuration():
     """
     config = {}
     settings_file = Path("/config/settings.yml")
+    if os.getenv("CI", "").lower() == "true":
+        settings_file = Path("./.ci/config/settings.yml")
 
     # Créer le fichier par défaut si il n'existe pas
     if not settings_file.exists():
