@@ -76,6 +76,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
             if request.url.path.startswith(route):
                 return await call_next(request)
 
+        # Ressources statiques toujours publiques
+        if request.url.path.startswith('/static'):
+            return await call_next(request)
+
         # Routes de setup : publiques SEULEMENT si setup non complété
         if request.url.path.startswith('/setup') or request.url.path.startswith('/api/setup'):
             if setup.is_first_run():

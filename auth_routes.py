@@ -24,7 +24,7 @@ router = APIRouter(prefix="/api/auth", tags=["authentication"])
 
 
 @router.post("/login", response_model=LoginResponse)
-async def login(request: LoginRequest, response: Response):
+async def login(request: Request, response: Response):
     """
     Authentification de l'utilisateur
 
@@ -39,8 +39,20 @@ async def login(request: LoginRequest, response: Response):
     if not is_auth_enabled():
         raise HTTPException(status_code=400, detail="L'authentification n'est pas activée")
 
+    # Support JSON + form-urlencoded (fallback sans JS)
+    try:
+        content_type = request.headers.get("content-type", "")
+        if content_type.startswith("application/json"):
+            payload = await request.json()
+        else:
+            form = await request.form()
+            payload = {"username": form.get("username", ""), "password": form.get("password", "")}
+        login_request = LoginRequest(**payload)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Requête de login invalide")
+
     # Vérifier les credentials
-    if not verify_credentials(request.username, request.password):
+    if not verify_credentials(login_request.username, login_request.password):
         return LoginResponse(
             success=False,
             message="Identifiants incorrects"
@@ -60,7 +72,7 @@ async def login(request: LoginRequest, response: Response):
         max_age=7 * 24 * 3600  # 7 jours
     )
 
-    logger.info(f"✅ Connexion réussie pour {request.username}")
+    logger.info("Connexion réussie pour %s", login_request.username)
 
     return LoginResponse(
         success=True,
