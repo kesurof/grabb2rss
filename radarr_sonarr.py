@@ -3,10 +3,11 @@
 Module pour vérifier si les grabs Prowlarr ont été importés dans Radarr/Sonarr
 Utilise les downloadId pour faire le lien entre grabbed et downloadFolderImported
 """
-import requests
 from typing import Set, Optional
 from datetime import datetime
 from pathlib import Path
+from network import request_with_retries
+import logging
 
 # Import de TORRENT_DIR pour reconstruire les chemins
 from config import TORRENT_DIR
@@ -15,6 +16,7 @@ from config import TORRENT_DIR
 _imported_cache = {}
 _cache_timestamp = None
 CACHE_DURATION = 300  # 5 minutes en secondes
+logger = logging.getLogger(__name__)
 
 def get_radarr_imported_download_ids(radarr_url: str, radarr_api_key: str, page_size: int = 200) -> Set[str]:
     """
@@ -29,13 +31,12 @@ def get_radarr_imported_download_ids(radarr_url: str, radarr_api_key: str, page_
     3. Retourner tous les grabbed (pas seulement ceux importés)
     """
     try:
-        response = requests.get(
+        response = request_with_retries(
+            "GET",
             f"{radarr_url}/api/v3/history",
             headers={"X-Api-Key": radarr_api_key},
-            params={"pageSize": page_size},
-            timeout=10
+            params={"pageSize": page_size}
         )
-        response.raise_for_status()
         data = response.json()
         
         # Extraire les downloadId des grabbed
@@ -58,11 +59,11 @@ def get_radarr_imported_download_ids(radarr_url: str, radarr_api_key: str, page_
         # Un torrent "grabbed" = choisi par Radarr pour téléchargement
         valid_ids = grabbed_ids
 
-        print(f"📥 Radarr: {len(grabbed_ids)} grabbed, {len(imported_ids)} imported, {len(valid_ids)} valides")
+        logger.info("Radarr: %s grabbed, %s imported, %s valides", len(grabbed_ids), len(imported_ids), len(valid_ids))
         return valid_ids
         
     except Exception as e:
-        print(f"⚠️  Erreur Radarr API: {e}")
+        logger.warning("Erreur Radarr API: %s", e)
         return set()
 
 def get_sonarr_imported_download_ids(sonarr_url: str, sonarr_api_key: str, page_size: int = 200) -> Set[str]:
@@ -73,13 +74,12 @@ def get_sonarr_imported_download_ids(sonarr_url: str, sonarr_api_key: str, page_
     Un torrent "grabbed" = Sonarr a décidé de le télécharger (même s'il n'est pas encore importé)
     """
     try:
-        response = requests.get(
+        response = request_with_retries(
+            "GET",
             f"{sonarr_url}/api/v3/history",
             headers={"X-Api-Key": sonarr_api_key},
-            params={"pageSize": page_size},
-            timeout=10
+            params={"pageSize": page_size}
         )
-        response.raise_for_status()
         data = response.json()
         
         # Extraire les downloadId des grabbed
@@ -102,11 +102,11 @@ def get_sonarr_imported_download_ids(sonarr_url: str, sonarr_api_key: str, page_
         # Un torrent "grabbed" = choisi par Sonarr pour téléchargement
         valid_ids = grabbed_ids
 
-        print(f"📺 Sonarr: {len(grabbed_ids)} grabbed, {len(imported_ids)} imported, {len(valid_ids)} valides")
+        logger.info("Sonarr: %s grabbed, %s imported, %s valides", len(grabbed_ids), len(imported_ids), len(valid_ids))
         return valid_ids
         
     except Exception as e:
-        print(f"⚠️  Erreur Sonarr API: {e}")
+        logger.warning("Erreur Sonarr API: %s", e)
         return set()
 
 def get_all_imported_download_ids(
@@ -130,7 +130,7 @@ def get_all_imported_download_ids(
     if use_cache and _cache_timestamp:
         elapsed = (datetime.utcnow() - _cache_timestamp).total_seconds()
         if elapsed < CACHE_DURATION:
-            print(f"💾 Utilisation du cache ({int(CACHE_DURATION - elapsed)}s restantes)")
+            logger.info("Utilisation du cache (%ss restantes)", int(CACHE_DURATION - elapsed))
             return _imported_cache
     
     # Récupérer les downloadId
@@ -148,7 +148,7 @@ def get_all_imported_download_ids(
     _imported_cache = all_ids
     _cache_timestamp = datetime.utcnow()
     
-    print(f"✅ Total: {len(all_ids)} downloadId importés dans le cache")
+    logger.info("Total: %s downloadId importés dans le cache", len(all_ids))
     return all_ids
 
 def extract_download_id_from_url(torrent_url: str) -> Optional[str]:
@@ -207,7 +207,7 @@ def calculate_torrent_hash(torrent_file_path: str) -> Optional[str]:
     try:
         # Vérification préalable du fichier
         if not is_valid_torrent_file(torrent_file_path):
-            print(f"⚠️  Fichier torrent invalide ou corrompu: {torrent_file_path}")
+            logger.warning("Fichier torrent invalide ou corrompu: %s", torrent_file_path)
             return None
         
         import hashlib
@@ -218,7 +218,7 @@ def calculate_torrent_hash(torrent_file_path: str) -> Optional[str]:
             
             # Vérifier que 'info' existe
             if b'info' not in torrent_data:
-                print(f"⚠️  Fichier torrent sans clé 'info': {torrent_file_path}")
+                logger.warning("Fichier torrent sans clé 'info': %s", torrent_file_path)
                 return None
             
             info = bencodepy.encode(torrent_data[b'info'])
@@ -226,12 +226,12 @@ def calculate_torrent_hash(torrent_file_path: str) -> Optional[str]:
             return info_hash
             
     except bencodepy.exceptions.BencodeDecodeError as e:
-        print(f"⚠️  Erreur décodage torrent {torrent_file_path}: {e}")
+        logger.warning("Erreur décodage torrent %s: %s", torrent_file_path, e)
         # Le fichier n'est probablement pas un torrent valide (HTML, page d'erreur, etc.)
-        print(f"💡 Le fichier téléchargé n'est pas un torrent valide. Vérifiez l'URL source.")
+        logger.info("Le fichier téléchargé n'est pas un torrent valide. Vérifiez l'URL source.")
         return None
     except Exception as e:
-        print(f"⚠️  Erreur inattendue calcul hash {torrent_file_path}: {e}")
+        logger.warning("Erreur inattendue calcul hash %s: %s", torrent_file_path, e)
         return None
 
 def is_download_id_imported(torrent_file: str, imported_download_ids: Set[str]) -> bool:
@@ -265,7 +265,7 @@ def clear_cache():
     global _imported_cache, _cache_timestamp
     _imported_cache = {}
     _cache_timestamp = None
-    print("🗑️  Cache Radarr/Sonarr vidé")
+    logger.info("Cache Radarr/Sonarr vidé")
 
 def get_cache_info() -> dict:
     """Retourne des informations sur le cache"""

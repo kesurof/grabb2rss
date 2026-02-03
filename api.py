@@ -5,14 +5,15 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from pathlib import Path
 import logging
 import psutil
 import time
 from datetime import datetime
 from typing import Optional
 
-from config import TORRENT_DIR, DB_PATH, DEDUP_HOURS, DESCRIPTIONS, PROWLARR_URL, PROWLARR_API_KEY
+from logging_config import setup_logging
+from version import APP_VERSION
+from config import TORRENT_DIR, DB_PATH, DEDUP_HOURS, DESCRIPTIONS, PROWLARR_URL, PROWLARR_API_KEY, CORS_ALLOW_ORIGINS, TORRENTS_EXPOSE_STATIC
 from db import (
     init_db, get_grabs, get_stats, purge_all, purge_by_retention,
     get_config, set_config, get_all_config, get_sync_logs, get_trackers, get_db,
@@ -27,24 +28,11 @@ from setup_routes import router as setup_router
 from auth_routes import router as auth_router
 from auth import is_auth_enabled, verify_session, verify_api_key, is_local_request, get_username_from_session
 
+setup_logging()
 logger = logging.getLogger(__name__)
 
 # Variable pour tracker le temps de démarrage
 start_time = time.time()
-
-# Lire la version depuis le fichier VERSION
-def get_version() -> str:
-    """Lit et retourne la version depuis le fichier VERSION"""
-    try:
-        version_file = Path(__file__).parent / "VERSION"
-        if version_file.exists():
-            return version_file.read_text().strip()
-        return "unknown"
-    except Exception as e:
-        logger.warning(f"Impossible de lire VERSION: {e}")
-        return "unknown"
-
-APP_VERSION = get_version()
 
 app = FastAPI(
     title="Grab2RSS API",
@@ -59,6 +47,13 @@ STATIC_DIR = Path(__file__).parent.absolute() / "static"
 
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 
+
+@app.middleware("http")
+async def add_version_header(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-App-Version"] = APP_VERSION
+    return response
+
 # Middleware d'authentification simplifié
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -71,7 +66,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
             '/health',              # Healthcheck pour Docker/K8s
             '/login',               # Page de login
             '/api/auth/login',      # API login
-            '/api/auth/status'      # Statut auth
+            '/api/auth/status',     # Statut auth
+            '/api/info'             # Infos version/uptime
         ]
 
         # Vérifier si route publique
@@ -91,8 +87,17 @@ class AuthMiddleware(BaseHTTPMiddleware):
             if not is_auth_enabled():
                 return await call_next(request)
 
-            # Vérifier l'API key dans les query params
-            api_key = request.query_params.get('api_key')
+            # Vérifier l'API key via headers uniquement
+            auth_header = request.headers.get('Authorization')
+            api_key = None
+            if auth_header:
+                parts = auth_header.split()
+                if len(parts) == 2 and parts[0].lower() == "bearer":
+                    api_key = parts[1]
+
+            if not api_key:
+                api_key = request.headers.get('X-API-Key')
+
             if api_key and verify_api_key(api_key):
                 return await call_next(request)
 
@@ -127,7 +132,7 @@ app.include_router(auth_router)
 
 # Monter les fichiers statiques
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-if TORRENT_DIR.exists():
+if TORRENTS_EXPOSE_STATIC and TORRENT_DIR.exists():
     app.mount("/torrents", StaticFiles(directory=str(TORRENT_DIR)), name="torrents")
 
 # Ajouter les middlewares
@@ -142,7 +147,7 @@ if TORRENT_DIR.exists():
 # Ajouter CORS en premier (s'exécutera en dernier)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ALLOW_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -159,29 +164,30 @@ app.add_middleware(AuthMiddleware)
 @app.on_event("startup")
 async def startup():
     """Au démarrage de l'app"""
-    print("🔧 Initialisation de la base de données...")
+    logger.info("Version applicative: %s", APP_VERSION)
+    logger.info("Initialisation de la base de données...")
     try:
         init_db()
-        print("✅ Base de données initialisée")
+        logger.info("Base de données initialisée")
     except Exception as e:
-        print(f"❌ Erreur initialisation DB: {e}")
+        logger.error("Erreur initialisation DB (version %s): %s", APP_VERSION, e)
         import traceback
         traceback.print_exc()
 
-    print("🔧 Démarrage du scheduler...")
+    logger.info("Démarrage du scheduler...")
     try:
         start_scheduler()
-        print("✅ Scheduler démarré")
+        logger.info("Scheduler démarré")
     except Exception as e:
-        print(f"⚠️  Erreur démarrage scheduler: {e}")
+        logger.warning("Erreur démarrage scheduler (version %s): %s", APP_VERSION, e)
 
-    print("✅ Application démarrée v2.9.0")
+    logger.info("Application démarrée v%s", APP_VERSION)
 
 @app.on_event("shutdown")
 async def shutdown():
     """À l'arrêt de l'app"""
     stop_scheduler()
-    print("✅ Application arrêtée")
+    logger.info("Application arrêtée v%s", APP_VERSION)
 
 # ==================== HEALTH ====================
 
@@ -192,6 +198,16 @@ async def health():
         "status": "ok",
         "timestamp": datetime.utcnow().isoformat(),
         "version": APP_VERSION
+    }
+
+
+@app.get("/api/info")
+async def info():
+    """Informations de diagnostic (version, uptime)"""
+    return {
+        "version": APP_VERSION,
+        "uptime_seconds": int(time.time() - start_time),
+        "started_at": datetime.utcfromtimestamp(start_time).isoformat() + "Z"
     }
 
 @app.get("/debug")
@@ -475,7 +491,7 @@ async def delete_api_key(key: str):
 
 @app.get("/api/rss/urls")
 async def get_rss_urls(request: Request):
-    """Génère les URLs RSS avec API key pour l'utilisateur"""
+    """Génère les URLs RSS (sans API key dans l'URL)"""
     try:
         from auth import get_api_keys
         from config import RSS_DOMAIN, RSS_SCHEME
@@ -503,17 +519,17 @@ async def get_rss_urls(request: Request):
         # Construire l'URL de base
         base_url = f"{RSS_SCHEME}://{RSS_DOMAIN}"
 
-        # Générer les URLs
+        # Générer les URLs (sans API key dans l'URL)
         urls = [
             {
                 "name": "Flux RSS complet",
-                "url": f"{base_url}/rss?api_key={api_key}",
+                "url": f"{base_url}/rss",
                 "description": "Tous les torrents récents",
                 "category": "principal"
             },
             {
                 "name": "Flux RSS (format JSON)",
-                "url": f"{base_url}/rss/torrent.json?api_key={api_key}",
+                "url": f"{base_url}/rss/torrent.json",
                 "description": "Format JSON pour intégrations",
                 "category": "principal"
             }
@@ -525,7 +541,7 @@ async def get_rss_urls(request: Request):
         for tracker in trackers[:10]:  # Limiter à 10 trackers
             urls.append({
                 "name": f"Flux {tracker}",
-                "url": f"{base_url}/rss/tracker/{tracker}?api_key={api_key}",
+                "url": f"{base_url}/rss/tracker/{tracker}",
                 "description": f"Torrents de {tracker} uniquement",
                 "category": "tracker"
             })
@@ -534,6 +550,10 @@ async def get_rss_urls(request: Request):
             "api_key": api_key,
             "api_key_name": api_key_data.get("name", "Sans nom"),
             "base_url": base_url,
+            "auth": {
+                "x_api_key": api_key,
+                "authorization": f"Bearer {api_key}"
+            },
             "urls": urls,
             "total_urls": len(urls)
         }
@@ -541,7 +561,7 @@ async def get_rss_urls(request: Request):
         logger.error(f"Erreur get_rss_urls: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# ==================== ADMIN / MAINTENANCE v2.6.8 ====================
+# ==================== ADMIN / MAINTENANCE ====================
 
 @app.post("/api/cache/clear")
 async def clear_cache():
@@ -814,14 +834,14 @@ async def minimal_ui(request: Request):
         if not verify_session(session_token):
             return RedirectResponse(url='/login', status_code=302)
 
-    return """<!DOCTYPE html>
+    return f"""<!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
     <title>Grab2RSS - Test Minimal</title>
 </head>
 <body style="font-family: Arial; max-width: 800px; margin: 50px auto; padding: 20px; background: #0f0f0f; color: #fff;">
-    <h1 style="color: #1e90ff;">🧪 Grab2RSS v2.6.8 - Test Minimal</h1>
+    <h1 style="color: #1e90ff;">🧪 Grab2RSS v{APP_VERSION} - Test Minimal</h1>
     <p style="color: #00ff00;">✅ Si vous voyez cette page, le serveur fonctionne !</p>
     <h2>📋 Liens de Test</h2>
     <a href="/api/stats" target="_blank" style="color: #1e90ff; display: block; padding: 10px; margin: 10px 0; background: #1a1a1a; border-radius: 4px; text-decoration: none;">📊 Stats (JSON)</a>
@@ -837,7 +857,7 @@ async def minimal_ui(request: Request):
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     """Page de connexion moderne et responsive"""
-    return templates.TemplateResponse("pages/login.html", {"request": request})
+    return templates.TemplateResponse("pages/login.html", {"request": request, "version": APP_VERSION})
 
 
 @app.get("/", response_class=HTMLResponse)

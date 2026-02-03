@@ -3,16 +3,15 @@ import uvicorn
 import logging
 
 from config import APP_HOST, APP_PORT
+from version import APP_VERSION
+from logging_config import setup_logging
 
-# Configuration logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+setup_logging()
 
 if __name__ == "__main__":
-    print("🚀 Démarrage de Grabb2RSS v2.9.0")
-    print(f"   Écoute sur {APP_HOST}:{APP_PORT}")
+    logger = logging.getLogger(__name__)
+    logger.info("Démarrage de Grabb2RSS v%s", APP_VERSION)
+    logger.info("Écoute sur %s:%s", APP_HOST, APP_PORT)
 
     uvicorn.run(
         "api:app",

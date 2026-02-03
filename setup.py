@@ -4,12 +4,15 @@ Module de configuration initiale pour Grabb2RSS
 Gère le setup wizard au premier lancement
 """
 import yaml
+import logging
 from pathlib import Path
 from typing import Optional, Dict, Any
+import requests
 
 # Chemin du fichier de configuration
 CONFIG_FILE = Path("/config/settings.yml")
 CONFIG_DIR = Path("/config")
+logger = logging.getLogger(__name__)
 
 # Configuration par défaut
 DEFAULT_CONFIG = {
@@ -44,11 +47,26 @@ DEFAULT_CONFIG = {
         "host": "0.0.0.0",
         "port": 8000
     },
+    "cors": {
+        "allow_origins": [
+            "http://localhost:8000",
+            "http://127.0.0.1:8000"
+        ]
+    },
+    "torrents": {
+        "expose_static": False
+    },
+    "network": {
+        "retries": 3,
+        "backoff_seconds": 1.0,
+        "timeout_seconds": 10
+    },
     "auth": {
         "enabled": False,
         "username": "",
         "password_hash": "",
-        "api_keys": []
+        "api_keys": [],
+        "cookie_secure": False
     },
     "setup_completed": False
 }
@@ -69,7 +87,7 @@ def load_config() -> Dict[str, Any]:
             config = yaml.safe_load(f)
             return config if config else DEFAULT_CONFIG.copy()
     except Exception as e:
-        print(f"⚠️  Erreur lecture config: {e}")
+        logger.warning("Erreur lecture config: %s", e)
         return DEFAULT_CONFIG.copy()
 
 
@@ -77,28 +95,28 @@ def save_config(config: Dict[str, Any]) -> bool:
     """Sauvegarde la configuration dans le fichier YAML"""
     try:
         # Créer le répertoire si nécessaire
-        print(f"📁 Création du répertoire: {CONFIG_DIR}")
+        logger.info("Création du répertoire: %s", CONFIG_DIR)
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
         # Vérifier les permissions
         import os
         if CONFIG_DIR.exists():
-            print(f"✅ Répertoire existe: {CONFIG_DIR}")
-            print(f"   Permissions: {oct(os.stat(CONFIG_DIR).st_mode)[-3:]}")
-            print(f"   User ID: {os.getuid()}, Group ID: {os.getgid()}")
+            logger.info("Répertoire existe: %s", CONFIG_DIR)
+            logger.info("Permissions: %s", oct(os.stat(CONFIG_DIR).st_mode)[-3:])
+            logger.info("User ID: %s, Group ID: %s", os.getuid(), os.getgid())
 
-        print(f"💾 Sauvegarde dans: {CONFIG_FILE}")
+        logger.info("Sauvegarde dans: %s", CONFIG_FILE)
         with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
             yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
 
-        print(f"✅ Configuration sauvegardée: {CONFIG_FILE}")
+        logger.info("Configuration sauvegardée: %s", CONFIG_FILE)
         return True
     except PermissionError as e:
-        print(f"❌ Erreur de permissions: {e}")
-        print(f"   Vérifiez que l'utilisateur a les droits d'écriture sur {CONFIG_DIR}")
+        logger.error("Erreur de permissions: %s", e)
+        logger.info("Vérifiez que l'utilisateur a les droits d'écriture sur %s", CONFIG_DIR)
         return False
     except Exception as e:
-        print(f"❌ Erreur sauvegarde config: {e}")
+        logger.error("Erreur sauvegarde config: %s", e)
         import traceback
         traceback.print_exc()
         return False
@@ -151,11 +169,11 @@ def validate_prowlarr_config(url: str, api_key: str) -> tuple[bool, Optional[str
         return False, "URL et clé API requis"
 
     try:
-        import requests
-        response = requests.get(
+        from network import request_with_retries
+        response = request_with_retries(
+            "GET",
             f"{url}/api/v1/health",
-            headers={"X-Api-Key": api_key},
-            timeout=5
+            headers={"X-Api-Key": api_key}
         )
         if response.status_code == 200:
             return True, None
@@ -166,13 +184,14 @@ def validate_prowlarr_config(url: str, api_key: str) -> tuple[bool, Optional[str
     except requests.exceptions.Timeout:
         return False, "Timeout de connexion"
     except Exception as e:
-        return False, f"Erreur: {str(e)}"
+        logger.warning("Erreur validation Prowlarr: %s", e)
+        return False, "Erreur de validation Prowlarr"
 
 
 def create_initial_config_if_needed():
     """Crée un fichier de config initial si nécessaire"""
     if not CONFIG_FILE.exists():
-        print("📝 Création de la configuration initiale...")
+        logger.info("Création de la configuration initiale...")
         save_config(DEFAULT_CONFIG)
 
 

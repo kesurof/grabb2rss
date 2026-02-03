@@ -5,6 +5,7 @@ class RSSManager {
     constructor() {
         this.apiKeys = [];
         this.rssUrls = [];
+        this.authInfo = null;
     }
 
     // Charger les API keys
@@ -71,10 +72,12 @@ class RSSManager {
 
             if (data.error) {
                 this.rssUrls = [];
+                this.authInfo = null;
                 return { error: data.error, message: data.message };
             }
 
             this.rssUrls = data.urls || [];
+            this.authInfo = data.auth || null;
             return data;
         } catch (error) {
             console.error('Erreur chargement URLs RSS:', error);
@@ -187,6 +190,25 @@ class RSSManager {
                     <p>Générez une clé API d'abord.</p>
                 </div>`;
         } else {
+            if (this.authInfo && (this.authInfo.x_api_key || this.authInfo.authorization)) {
+                const xApiKey = this.authInfo.x_api_key || '';
+                const bearer = this.authInfo.authorization || '';
+                html += `
+                    <div class="info-box" style="margin-bottom: 20px;">
+                        <p><strong>Authentification via headers (recommandé)</strong></p>
+                        <p>Ajoutez un header à votre client torrent :</p>
+                        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                            <code style="background: #0f0f0f; padding: 4px 8px; border-radius: 4px;">X-API-Key: ${xApiKey}</code>
+                            <button class="btn btn-sm btn-secondary" onclick="rssManager.copyToClipboard('X-API-Key: ${xApiKey}', this)">📋 Copier</button>
+                        </div>
+                        <p style="margin-top: 10px; color: #aaa;">Alternative :</p>
+                        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                            <code style="background: #0f0f0f; padding: 4px 8px; border-radius: 4px;">Authorization: ${bearer}</code>
+                            <button class="btn btn-sm btn-secondary" onclick="rssManager.copyToClipboard('Authorization: ${bearer}', this)">📋 Copier</button>
+                        </div>
+                    </div>`;
+            }
+
             // Grouper par catégorie
             const principal = this.rssUrls.filter(u => u.category === 'principal');
             const trackers = this.rssUrls.filter(u => u.category === 'tracker');

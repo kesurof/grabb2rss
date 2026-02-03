@@ -14,7 +14,8 @@ from models import (
 from auth import (
     is_auth_enabled, verify_credentials, create_session, verify_session,
     delete_session, get_api_keys, create_api_key, delete_api_key,
-    toggle_api_key, change_password, get_auth_config, cleanup_expired_sessions
+    toggle_api_key, change_password, get_auth_config, cleanup_expired_sessions,
+    get_auth_cookie_secure
 )
 
 logger = logging.getLogger(__name__)
@@ -49,11 +50,12 @@ async def login(request: LoginRequest, response: Response):
     session_token = create_session()
 
     # Définir le cookie de session
+    cookie_secure = get_auth_cookie_secure()
     response.set_cookie(
         key="session_token",
         value=session_token,
         httponly=True,
-        secure=False,  # Mettre True si HTTPS
+        secure=cookie_secure,
         samesite="lax",
         max_age=7 * 24 * 3600  # 7 jours
     )
@@ -86,7 +88,13 @@ async def logout(
         delete_session(session_token)
 
     # Supprimer le cookie
-    response.delete_cookie(key="session_token")
+    cookie_secure = get_auth_cookie_secure()
+    response.delete_cookie(
+        key="session_token",
+        httponly=True,
+        secure=cookie_secure,
+        samesite="lax"
+    )
 
     logger.info("✅ Déconnexion réussie")
 

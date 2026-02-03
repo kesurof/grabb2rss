@@ -9,7 +9,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 echo -e "${BLUE}═══════════════════════════════════════${NC}"
-echo -e "${BLUE}  Grabb2RSS v2.6.5 - Container Init${NC}"
+echo -e "${BLUE}  Grabb2RSS - Container Init${NC}"
 echo -e "${BLUE}═══════════════════════════════════════${NC}"
 
 # Set default PUID/PGID if not provided
@@ -61,6 +61,20 @@ echo -e "${BLUE}═════════════════════�
 echo -e "${GREEN}✓${NC} Starting Grabb2RSS as user 'abc' (${PUID}:${PGID})"
 echo -e "${BLUE}═══════════════════════════════════════${NC}"
 echo ""
+
+# Version applicative (source de vérité)
+if [ -f /app/VERSION ]; then
+    APP_VERSION=$(cat /app/VERSION | tr -d '\n')
+    if [ -z "$APP_VERSION" ]; then
+        echo -e "${RED}✗${NC} VERSION est vide. Abandon."
+        exit 1
+    fi
+    export APP_VERSION
+    echo -e "${GREEN}✓${NC} Version: ${YELLOW}${APP_VERSION}${NC}"
+else
+    echo -e "${RED}✗${NC} Fichier /app/VERSION introuvable. Abandon."
+    exit 1
+fi
 
 # Drop privileges and execute main application as abc user
 exec gosu abc python /app/main.py

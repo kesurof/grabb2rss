@@ -34,10 +34,12 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # ============================================
 FROM python:3.11-slim
 
+ARG APP_VERSION=unknown
+
 # Labels
 LABEL maintainer="Grab2RSS"
 LABEL description="Prowlarr to RSS converter with multi-tracker support"
-LABEL version="2.6.0"
+LABEL org.opencontainers.image.version=$APP_VERSION
 LABEL org.opencontainers.image.source="https://github.com/kesurof/grabb2rss"
 LABEL org.opencontainers.image.description="Prowlarr to RSS converter inspired by LinuxServer.io standards"
 LABEL org.opencontainers.image.licenses="MIT"
@@ -74,7 +76,8 @@ COPY . .
 RUN mkdir -p /app/data/torrents /config
 
 # Environment variables (LinuxServer.io style)
-ENV PUID=1000 \
+ENV APP_VERSION=$APP_VERSION \
+    PUID=1000 \
     PGID=1000 \
     TZ=Etc/UTC \
     PYTHONUNBUFFERED=1

@@ -1,12 +1,23 @@
-name: Create GitHub Release
+name: Release (main only)
 
 on:
   push:
-    tags:
-      - 'v*.*.*'
+    branches:
+      - main
+
+# VERSION est la source de vérité. Aucun déclenchement sur tags
+# pour éviter les doubles builds et les boucles.
+env:
+  REGISTRY_GHCR: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   release:
@@ -17,73 +28,105 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get version from tag
-        id: get_version
+      - name: Prepare release (VERSION source de vérité)
+        id: prepare
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
-      - name: Generate changelog
-        id: changelog
-        run: |
-          # Get previous tag
-          PREV_TAG=$(git describe --tags --abbrev=0 ${{ steps.get_version.outputs.tag }}^ 2>/dev/null || echo "")
-
-          if [ -z "$PREV_TAG" ]; then
-            # First release - get all commits
-            CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges)
-          else
-            # Get commits since previous tag
-            CHANGELOG=$(git log ${PREV_TAG}..${{ steps.get_version.outputs.tag }} --pretty=format:"- %s (%h)" --no-merges)
+          VERSION=$(cat VERSION)
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "VERSION invalide: $VERSION"
+            exit 1
           fi
 
-          # Save changelog to file
-          echo "$CHANGELOG" > CHANGELOG.txt
+          LAST_TAG=$(git tag --list 'v*.*.*' --sort=-v:refname | head -n1)
+          LAST_VERSION=${LAST_TAG#v}
 
-          # Also save to output (for release body)
-          echo "changelog<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGELOG" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          if [ -n "$LAST_TAG" ] && [ "$VERSION" = "$LAST_VERSION" ]; then
+            echo "Aucune nouvelle version (VERSION=$VERSION)."
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          if [ -n "$LAST_TAG" ] && [ "$VERSION" != "$LAST_VERSION" ]; then
+            # Échec si downgrade
+            if [ "$(printf '%s\n' "$VERSION" "$LAST_VERSION" | sort -V | head -n1)" = "$VERSION" ]; then
+              echo "Version downgrade détectée: $VERSION < $LAST_VERSION"
+              exit 1
+            fi
+          fi
+
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "Tag v$VERSION existe déjà"
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "should_release=true" >> $GITHUB_OUTPUT
+
+      - name: Create Git tag
+        if: steps.prepare.outputs.should_release == 'true'
+        run: |
+          git tag "v${{ steps.prepare.outputs.version }}"
+          git push origin "v${{ steps.prepare.outputs.version }}"
+
+      - name: Read VERSION for build
+        if: steps.prepare.outputs.should_release == 'true'
+        id: version
+        run: echo "version=$(cat VERSION)" >> $GITHUB_OUTPUT
+
+      - name: Compute SemVer tags
+        if: steps.prepare.outputs.should_release == 'true'
+        id: semver
+        run: |
+          VERSION="${{ steps.prepare.outputs.version }}"
+          MAJOR=$(echo "$VERSION" | cut -d. -f1)
+          MINOR=$(echo "$VERSION" | cut -d. -f2)
+          echo "major=$MAJOR" >> $GITHUB_OUTPUT
+          echo "minor=$MINOR" >> $GITHUB_OUTPUT
+
+      - name: Set up QEMU
+        if: steps.prepare.outputs.should_release == 'true'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        if: steps.prepare.outputs.should_release == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: steps.prepare.outputs.should_release == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY_GHCR }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image (SemVer + latest)
+        if: steps.prepare.outputs.should_release == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push: true
+          tags: |
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:v${{ steps.prepare.outputs.version }}
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:v${{ steps.semver.outputs.major }}.${{ steps.semver.outputs.minor }}
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:v${{ steps.semver.outputs.major }}
+            ${{ env.REGISTRY_GHCR }}/${{ env.IMAGE_NAME }}:latest
+          build-args: |
+            APP_VERSION=${{ steps.prepare.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Create Release
+        if: steps.prepare.outputs.should_release == 'true'
         uses: softprops/action-gh-release@v1
         with:
-          name: Release v${{ steps.get_version.outputs.version }}
-          body: |
-            ## 🚀 Grab2RSS v${{ steps.get_version.outputs.version }}
-
-            ### 📦 Installation Docker
-
-            ```bash
-            # Pull l'image depuis GitHub Container Registry
-            docker pull ghcr.io/kesurof/grabb2rss:${{ steps.get_version.outputs.version }}
-
-            # Ou utilisez le tag latest
-            docker pull ghcr.io/kesurof/grabb2rss:latest
-            ```
-
-            ### 📋 Changements
-
-            ${{ steps.changelog.outputs.changelog }}
-
-            ### 🔗 Images Docker
-
-            - **Multi-arch**: AMD64, ARM64, ARMv7
-            - **Registry**: [ghcr.io/kesurof/grabb2rss](https://ghcr.io/kesurof/grabb2rss)
-            - **Tags disponibles**:
-              - `${{ steps.get_version.outputs.version }}`
-              - `latest` (toujours la dernière version stable)
-
-            ### 📖 Documentation
-
-            Consultez le [README.md](https://github.com/kesurof/grabb2rss/blob/main/README.md) pour plus d'informations.
-          draft: false
-          prerelease: false
+          tag_name: v${{ steps.prepare.outputs.version }}
+          name: Release v${{ steps.prepare.outputs.version }}
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Update VERSION file
-        run: |
-          echo "Version ${{ steps.get_version.outputs.version }} released on $(date +'%Y-%m-%d')"
+# Rappels:
+# - Ce workflow ne se déclenche pas sur tags pour éviter les doubles builds.
+# - Release uniquement si VERSION change sur main.
+# - Concurrence activée pour éviter collisions.

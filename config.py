@@ -1,7 +1,10 @@
 # config.py
 import os
+import logging
 from pathlib import Path
 import yaml
+
+logger = logging.getLogger(__name__)
 
 # Fonction pour créer le fichier settings.yml par défaut
 def create_default_settings():
@@ -13,7 +16,7 @@ def create_default_settings():
     try:
         config_dir.mkdir(parents=True, exist_ok=True)
     except Exception as e:
-        print(f"⚠️  Erreur création répertoire /config: {e}")
+        logger.warning("Erreur création répertoire /config: %s", e)
         return False
 
     # Créer le fichier settings.yml par défaut
@@ -45,16 +48,43 @@ def create_default_settings():
             "title": "Grabb2RSS",
             "description": "Prowlarr to RSS Feed"
         },
+        "cors": {
+            "allow_origins": [
+                "http://localhost:8000",
+                "http://127.0.0.1:8000"
+            ]
+        },
+        "torrents": {
+            "expose_static": False
+        },
+        "network": {
+            "retries": 3,
+            "backoff_seconds": 1.0,
+            "timeout_seconds": 10
+        },
+        "torrents_download": {
+            "max_size_mb": 50
+        },
+        "logging": {
+            "level": "INFO"
+        },
+        "auth": {
+            "enabled": False,
+            "username": "",
+            "password_hash": "",
+            "api_keys": [],
+            "cookie_secure": False
+        },
         "setup_completed": False
     }
 
     try:
         with open(settings_file, 'w', encoding='utf-8') as f:
             yaml.dump(default_config, f, default_flow_style=False, allow_unicode=True)
-        print(f"✅ Configuration par défaut créée: {settings_file}")
+        logger.info("Configuration par défaut créée: %s", settings_file)
         return True
     except Exception as e:
-        print(f"❌ Erreur création settings.yml: {e}")
+        logger.error("Erreur création settings.yml: %s", e)
         return False
 
 # Fonction pour charger la configuration
@@ -68,8 +98,8 @@ def load_configuration():
 
     # Créer le fichier par défaut si il n'existe pas
     if not settings_file.exists():
-        print(f"⚠️  Fichier settings.yml manquant")
-        print(f"💡 Création de la configuration par défaut...")
+        logger.warning("Fichier settings.yml manquant")
+        logger.info("Création de la configuration par défaut...")
         create_default_settings()
 
     # Charger la configuration depuis settings.yml
@@ -77,12 +107,27 @@ def load_configuration():
         with open(settings_file, 'r', encoding='utf-8') as f:
             yaml_config = yaml.safe_load(f)
             if yaml_config:
+                # Validation stricte du settings.yml
+                try:
+                    from settings_schema import SettingsConfig
+                    validated = SettingsConfig.model_validate(yaml_config)
+                    yaml_config = validated.model_dump()
+                except Exception as e:
+                    from pydantic import ValidationError
+                    if isinstance(e, ValidationError):
+                        logger.error("settings.yml invalide. Détails:")
+                        for err in e.errors():
+                            loc = ".".join(str(part) for part in err.get("loc", []))
+                            msg = err.get("msg", "Erreur de validation")
+                            logger.error(" - %s: %s", loc, msg)
+                    raise ValueError("settings.yml invalide, corrigez les erreurs avant de démarrer.")
+
                 setup_completed = yaml_config.get("setup_completed", False)
 
                 if setup_completed:
-                    print(f"✅ Configuration chargée depuis {settings_file}")
+                    logger.info("Configuration chargée depuis %s", settings_file)
                 else:
-                    print(f"⚙️  Mode Setup Wizard - Configuration à effectuer via l'interface web")
+                    logger.info("Mode Setup Wizard - Configuration à effectuer via l'interface web")
 
                 # Mapper la config YAML vers les variables
                 prowlarr = yaml_config.get("prowlarr", {})
@@ -111,9 +156,27 @@ def load_configuration():
                 config["RSS_SCHEME"] = rss.get("scheme", "http")
                 config["RSS_TITLE"] = rss.get("title", "Grabb2RSS")
                 config["RSS_DESCRIPTION"] = rss.get("description", "Prowlarr to RSS Feed")
+
+                cors = yaml_config.get("cors", {})
+                config["CORS_ALLOW_ORIGINS"] = cors.get("allow_origins", [])
+
+                torrents = yaml_config.get("torrents", {})
+                config["TORRENTS_EXPOSE_STATIC"] = torrents.get("expose_static", False)
+
+                network = yaml_config.get("network", {})
+                config["NETWORK_RETRIES"] = network.get("retries", 3)
+                config["NETWORK_BACKOFF_SECONDS"] = network.get("backoff_seconds", 1.0)
+                config["NETWORK_TIMEOUT_SECONDS"] = network.get("timeout_seconds", 10)
+
+                torrents_download = yaml_config.get("torrents_download", {})
+                config["TORRENTS_MAX_SIZE_MB"] = torrents_download.get("max_size_mb", 50)
+
+                logging_cfg = yaml_config.get("logging", {})
+                config["LOG_LEVEL"] = logging_cfg.get("level", "INFO")
     except Exception as e:
-        print(f"⚠️  Erreur lecture {settings_file}: {e}")
-        print(f"💡 Utilisation de la configuration par défaut")
+        logger.error("Erreur lecture %s: %s", settings_file, e)
+        logger.error("Le fichier settings.yml est invalide. Corrigez-le pour démarrer.")
+        raise
 
     return config
 
@@ -131,6 +194,50 @@ def _get_config(key: str, default: any, convert_type: type = str):
 
     return default
 
+def _get_list_config(key: str, default: list[str]) -> list[str]:
+    """Récupère une config liste depuis YAML avec fallback"""
+    if key in _loaded_config:
+        value = _loaded_config[key]
+        if isinstance(value, list):
+            return [str(v) for v in value if str(v).strip()]
+        if isinstance(value, str):
+            return [v.strip() for v in value.split(",") if v.strip()]
+    return default
+
+def _get_env_list(env_key: str) -> Optional[list[str]]:
+    """Parse une liste depuis une variable d'environnement (séparée par virgules)."""
+    value = os.getenv(env_key)
+    if value is None:
+        return None
+    return [v.strip() for v in value.split(",") if v.strip()]
+
+def _get_env_bool(env_key: str) -> Optional[bool]:
+    """Parse un booléen depuis une variable d'environnement."""
+    value = os.getenv(env_key)
+    if value is None:
+        return None
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+def _get_env_int(env_key: str) -> Optional[int]:
+    """Parse un entier depuis une variable d'environnement."""
+    value = os.getenv(env_key)
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+def _get_env_float(env_key: str) -> Optional[float]:
+    """Parse un float depuis une variable d'environnement."""
+    value = os.getenv(env_key)
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
 def reload_config():
     """Recharge la configuration depuis settings.yml et met à jour les variables globales"""
     global _loaded_config
@@ -140,8 +247,13 @@ def reload_config():
     global RETENTION_HOURS, AUTO_PURGE, DEDUP_HOURS, SYNC_INTERVAL
     global RSS_DOMAIN, RSS_SCHEME, RSS_INTERNAL_URL
     global RSS_TITLE, RSS_DESCRIPTION
+    global CORS_ALLOW_ORIGINS
+    global TORRENTS_EXPOSE_STATIC
+    global NETWORK_RETRIES, NETWORK_BACKOFF_SECONDS, NETWORK_TIMEOUT_SECONDS
+    global TORRENTS_MAX_SIZE_MB
+    global LOG_LEVEL
 
-    print("🔄 Rechargement de la configuration depuis settings.yml...")
+    logger.info("Rechargement de la configuration depuis settings.yml...")
 
     # Recharger le dict
     _loaded_config = load_configuration()
@@ -171,10 +283,52 @@ def reload_config():
     RSS_TITLE = _get_config("RSS_TITLE", "grabb2rss", str)
     RSS_DESCRIPTION = _get_config("RSS_DESCRIPTION", "Derniers torrents grabbés via Prowlarr", str)
 
-    print(f"✅ Configuration rechargée:")
-    print(f"   - Prowlarr URL: {PROWLARR_URL}")
-    print(f"   - Sync interval: {SYNC_INTERVAL}s")
-    print(f"   - RSS domain: {RSS_DOMAIN}")
+    env_cors = _get_env_list("CORS_ALLOW_ORIGINS")
+    CORS_ALLOW_ORIGINS = env_cors if env_cors is not None else _get_list_config(
+        "CORS_ALLOW_ORIGINS",
+        ["http://localhost:8000", "http://127.0.0.1:8000"]
+    )
+
+    env_torrents_expose = _get_env_bool("TORRENTS_EXPOSE_STATIC")
+    TORRENTS_EXPOSE_STATIC = env_torrents_expose if env_torrents_expose is not None else _get_config(
+        "TORRENTS_EXPOSE_STATIC",
+        False,
+        bool
+    )
+
+    env_network_retries = _get_env_int("NETWORK_RETRIES")
+    NETWORK_RETRIES = env_network_retries if env_network_retries is not None else _get_config(
+        "NETWORK_RETRIES",
+        3,
+        int
+    )
+    env_network_backoff = _get_env_float("NETWORK_BACKOFF_SECONDS")
+    NETWORK_BACKOFF_SECONDS = env_network_backoff if env_network_backoff is not None else _get_config(
+        "NETWORK_BACKOFF_SECONDS",
+        1.0,
+        float
+    )
+    env_network_timeout = _get_env_float("NETWORK_TIMEOUT_SECONDS")
+    NETWORK_TIMEOUT_SECONDS = env_network_timeout if env_network_timeout is not None else _get_config(
+        "NETWORK_TIMEOUT_SECONDS",
+        10,
+        float
+    )
+
+    env_torrents_max_size = _get_env_int("TORRENTS_MAX_SIZE_MB")
+    TORRENTS_MAX_SIZE_MB = env_torrents_max_size if env_torrents_max_size is not None else _get_config(
+        "TORRENTS_MAX_SIZE_MB",
+        50,
+        int
+    )
+
+    env_log_level = os.getenv("LOG_LEVEL")
+    LOG_LEVEL = env_log_level if env_log_level else _get_config("LOG_LEVEL", "INFO", str)
+
+    logger.info("Configuration rechargée")
+    logger.info("Prowlarr URL: %s", PROWLARR_URL)
+    logger.info("Sync interval: %ss", SYNC_INTERVAL)
+    logger.info("RSS domain: %s", RSS_DOMAIN)
 
     return True
 
@@ -188,12 +342,12 @@ try:
     DATA_DIR.mkdir(mode=0o755, exist_ok=True, parents=True)
     DB_PATH.parent.mkdir(mode=0o755, exist_ok=True, parents=True)
     TORRENT_DIR.mkdir(mode=0o777, exist_ok=True, parents=True)
-    print(f"✅ Répertoires créés/vérifiés:")
-    print(f"   - DATA_DIR: {DATA_DIR} (exists: {DATA_DIR.exists()})")
-    print(f"   - TORRENT_DIR: {TORRENT_DIR} (exists: {TORRENT_DIR.exists()})")
+    logger.info("Répertoires créés/vérifiés")
+    logger.info("DATA_DIR: %s (exists: %s)", DATA_DIR, DATA_DIR.exists())
+    logger.info("TORRENT_DIR: %s (exists: %s)", TORRENT_DIR, TORRENT_DIR.exists())
 except Exception as e:
-    print(f"⚠️  Erreur lors de la création des répertoires: {e}")
-    print(f"💡 Vérifiez les permissions sur {DATA_DIR.parent}")
+    logger.warning("Erreur lors de la création des répertoires: %s", e)
+    logger.info("Vérifiez les permissions sur %s", DATA_DIR.parent)
 
 
 # Prowlarr
@@ -236,6 +390,47 @@ RSS_INTERNAL_URL = _get_config("RSS_INTERNAL_URL", "http://grabb2rss:8000", str)
 RSS_TITLE = _get_config("RSS_TITLE", "grabb2rss", str)
 RSS_DESCRIPTION = _get_config("RSS_DESCRIPTION", "Derniers torrents grabbés via Prowlarr", str)
 
+_env_cors = _get_env_list("CORS_ALLOW_ORIGINS")
+CORS_ALLOW_ORIGINS = _env_cors if _env_cors is not None else _get_list_config(
+    "CORS_ALLOW_ORIGINS",
+    ["http://localhost:8000", "http://127.0.0.1:8000"]
+)
+
+_env_torrents_expose = _get_env_bool("TORRENTS_EXPOSE_STATIC")
+TORRENTS_EXPOSE_STATIC = _env_torrents_expose if _env_torrents_expose is not None else _get_config(
+    "TORRENTS_EXPOSE_STATIC",
+    False,
+    bool
+)
+
+_env_network_retries = _get_env_int("NETWORK_RETRIES")
+NETWORK_RETRIES = _env_network_retries if _env_network_retries is not None else _get_config(
+    "NETWORK_RETRIES",
+    3,
+    int
+)
+_env_network_backoff = _get_env_float("NETWORK_BACKOFF_SECONDS")
+NETWORK_BACKOFF_SECONDS = _env_network_backoff if _env_network_backoff is not None else _get_config(
+    "NETWORK_BACKOFF_SECONDS",
+    1.0,
+    float
+)
+_env_network_timeout = _get_env_float("NETWORK_TIMEOUT_SECONDS")
+NETWORK_TIMEOUT_SECONDS = _env_network_timeout if _env_network_timeout is not None else _get_config(
+    "NETWORK_TIMEOUT_SECONDS",
+    10,
+    float
+)
+
+_env_torrents_max_size = _get_env_int("TORRENTS_MAX_SIZE_MB")
+TORRENTS_MAX_SIZE_MB = _env_torrents_max_size if _env_torrents_max_size is not None else _get_config(
+    "TORRENTS_MAX_SIZE_MB",
+    50,
+    int
+)
+
+LOG_LEVEL = os.getenv("LOG_LEVEL") or _get_config("LOG_LEVEL", "INFO", str)
+
 # Descriptions pour l'UI
 DESCRIPTIONS = {
     "PROWLARR_URL": "URL de votre serveur Prowlarr (ex: http://localhost:9696)",
@@ -247,7 +442,13 @@ DESCRIPTIONS = {
     "AUTO_PURGE": "Activer la suppression automatique des anciens grabs",
     "RSS_DOMAIN": "Domaine pour les URLs RSS publiques (ex: grabb2rss.example.com)",
     "RSS_SCHEME": "Protocole pour les URLs RSS (http ou https)",
-    "RSS_INTERNAL_URL": "URL interne complète pour accès Docker (ex: http://grabb2rss:8000)"
+    "RSS_INTERNAL_URL": "URL interne complète pour accès Docker (ex: http://grabb2rss:8000)",
+    "NETWORK_RETRIES": "Nombre de tentatives réseau en cas d'échec",
+    "NETWORK_BACKOFF_SECONDS": "Backoff initial en secondes (exponentiel)",
+    "NETWORK_TIMEOUT_SECONDS": "Timeout réseau en secondes",
+    "TORRENTS_EXPOSE_STATIC": "Exposer /torrents en statique (true/false)",
+    "TORRENTS_MAX_SIZE_MB": "Taille max des torrents téléchargés (MB)",
+    "LOG_LEVEL": "Niveau de logs (DEBUG, INFO, WARNING, ERROR)"
 }
 
 def is_setup_completed() -> bool:

@@ -8,6 +8,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from prowlarr import fetch_history, extract_grabs
 from torrent import download_torrent
 from db import insert_grab, purge_by_retention, log_sync, init_db, is_duplicate, cleanup_orphan_torrents
+from auth import cleanup_expired_sessions
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ def sync_prowlarr():
 
     with sync_lock:
         if is_syncing:
-            print("⚠️  Sync déjà en cours...")
+            logger.warning("Sync déjà en cours")
             return
 
         is_syncing = True
@@ -46,7 +47,7 @@ def sync_prowlarr():
         sonarr_url = SONARR_URL if SONARR_ENABLED else None
         sonarr_api_key = SONARR_API_KEY if SONARR_ENABLED else None
 
-        print(f"⏱️  Sync Prowlarr en cours... ({datetime.utcnow().isoformat()})")
+        logger.info("Sync Prowlarr en cours... (%s)", datetime.utcnow().isoformat())
 
         # Récupérer les downloadId grabbed (choisis) depuis Radarr/Sonarr (si configurés ET activés)
         imported_download_ids = set()
@@ -58,13 +59,13 @@ def sync_prowlarr():
                 sonarr_url=sonarr_url if sonarr_url else None,
                 sonarr_api_key=sonarr_api_key if sonarr_api_key else None
             )
-            print(f"🔍 Vérification activée: {len(imported_download_ids)} downloadId grabbed")
+            logger.info("Vérification activée: %s downloadId grabbed", len(imported_download_ids))
         else:
-            print("ℹ️  Vérification Radarr/Sonarr désactivée (pas de config)")
+            logger.info("Vérification Radarr/Sonarr désactivée (pas de config)")
         
         records = fetch_history()
         if not records:
-            print("⚠️  Aucun enregistrement Prowlarr")
+            logger.warning("Aucun enregistrement Prowlarr")
             log_sync("success", None, 0, 0)
             last_sync_time = datetime.utcnow()
             last_sync_error = None
@@ -79,7 +80,7 @@ def sync_prowlarr():
                 # Vérifier la déduplication avec config dynamique
                 if is_duplicate(grab["title"], dedup_hours):
                     deduplicated_count += 1
-                    print(f"⊘ Doublon ({dedup_hours}h): {grab['title']}")
+                    logger.info("Doublon (%sh): %s", dedup_hours, grab["title"])
                     continue
                 
                 # Télécharger le torrent
@@ -90,7 +91,7 @@ def sync_prowlarr():
                     from radarr_sonarr import is_download_id_imported
                     if not is_download_id_imported(torrent_file, imported_download_ids):
                         rejected_count += 1
-                        print(f"⊘ Non grabbed par Radarr/Sonarr: {grab['title']}")
+                        logger.info("Non grabbed par Radarr/Sonarr: %s", grab["title"])
                         continue
                 
                 # Insérer dans la BD
@@ -98,41 +99,46 @@ def sync_prowlarr():
                 
                 if success:
                     grabs_count += 1
-                    print(f"✔️  {grab['title']}")
+                    logger.info("Grab ajouté: %s", grab["title"])
                 else:
-                    print(f"⊘ {message}: {grab['title']}")
+                    logger.info("%s: %s", message, grab["title"])
                     deduplicated_count += 1
                     
             except Exception as e:
-                print(f"❌ {grab['title']}: {e}")
+                logger.error("Erreur grab %s: %s", grab["title"], e)
                 continue
         
         # Purge automatique avec config dynamique
         if auto_purge and retention_hours:
             purged = purge_by_retention(retention_hours)
             if purged > 0:
-                print(f"🗑️  Purge: {purged} anciens grabs supprimés")
+                logger.info("Purge: %s anciens grabs supprimés", purged)
 
         # Nettoyage automatique des torrents orphelins
         orphans_count, orphans_files = cleanup_orphan_torrents()
         if orphans_count > 0:
-            print(f"🧹 Nettoyage: {orphans_count} torrents orphelins supprimés")
+            logger.info("Nettoyage: %s torrents orphelins supprimés", orphans_count)
 
         log_sync("success", None, grabs_count, deduplicated_count)
         last_sync_time = datetime.utcnow()
         last_sync_error = None
         
         if rejected_count > 0:
-            print(f"✅ Sync terminée: {grabs_count} grabs, {deduplicated_count} doublons, {rejected_count} rejetés (non grabbed)")
+            logger.info(
+                "Sync terminée: %s grabs, %s doublons, %s rejetés (non grabbed)",
+                grabs_count,
+                deduplicated_count,
+                rejected_count
+            )
         else:
-            print(f"✅ Sync terminée: {grabs_count} grabs, {deduplicated_count} doublons")
+            logger.info("Sync terminée: %s grabs, %s doublons", grabs_count, deduplicated_count)
         
     except Exception as e:
         error_msg = str(e)
-        logger.error(f"Erreur sync: {error_msg}")
+        logger.error("Erreur sync: %s", error_msg)
         log_sync("error", error_msg, 0, 0)
         last_sync_error = error_msg
-        print(f"❌ Erreur sync: {error_msg}")
+        logger.error("Erreur sync: %s", error_msg)
     
     finally:
         is_syncing = False
@@ -144,9 +150,17 @@ def start_scheduler():
     # Vérifier si le setup est complété
     from config import is_setup_completed, SYNC_INTERVAL
     if not is_setup_completed():
-        print("⚙️  Setup Wizard non complété - Scheduler en attente")
-        print("💡 Configurez l'application via http://localhost:8000/setup")
+        logger.info("Setup Wizard non complété - Scheduler en attente")
+        logger.info("Configurez l'application via http://localhost:8000/setup")
         # On démarre quand même le scheduler mais sans job
+        scheduler.add_job(
+            cleanup_expired_sessions,
+            "interval",
+            seconds=3600,
+            id="cleanup_sessions",
+            name="Cleanup sessions expirées",
+            replace_existing=True
+        )
         scheduler.start()
         return
 
@@ -162,8 +176,17 @@ def start_scheduler():
         replace_existing=True
     )
 
+    scheduler.add_job(
+        cleanup_expired_sessions,
+        "interval",
+        seconds=3600,
+        id="cleanup_sessions",
+        name="Cleanup sessions expirées",
+        replace_existing=True
+    )
+
     scheduler.start()
-    print(f"🚀 Scheduler démarré (intervalle: {sync_interval}s)")
+    logger.info("Scheduler démarré (intervalle: %ss)", sync_interval)
 
     # Sync immédiate au démarrage
     sync_prowlarr()
@@ -171,7 +194,7 @@ def start_scheduler():
 def stop_scheduler():
     """Arrête le scheduler"""
     scheduler.shutdown()
-    print("🛑 Scheduler arrêté")
+    logger.info("Scheduler arrêté")
 
 def get_sync_status():
     """Retourne le statut de sync"""
@@ -203,6 +226,8 @@ def restart_scheduler_after_setup():
         # Arrêter les jobs existants
         if scheduler.get_job("sync_prowlarr"):
             scheduler.remove_job("sync_prowlarr")
+        if scheduler.get_job("cleanup_sessions"):
+            scheduler.remove_job("cleanup_sessions")
 
         # Relire la config depuis config.py
         from config import SYNC_INTERVAL
@@ -218,12 +243,21 @@ def restart_scheduler_after_setup():
             replace_existing=True
         )
 
-        print(f"🔄 Scheduler redémarré après setup (intervalle: {sync_interval}s)")
+        scheduler.add_job(
+            cleanup_expired_sessions,
+            "interval",
+            seconds=3600,
+            id="cleanup_sessions",
+            name="Cleanup sessions expirées",
+            replace_existing=True
+        )
+
+        logger.info("Scheduler redémarré après setup (intervalle: %ss)", sync_interval)
 
         # Lancer une sync immédiate
         threading.Thread(target=sync_prowlarr, daemon=True).start()
 
         return True
     except Exception as e:
-        print(f"❌ Erreur redémarrage scheduler: {e}")
+        logger.error("Erreur redémarrage scheduler: %s", e)
         return False

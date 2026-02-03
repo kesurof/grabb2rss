@@ -7,7 +7,7 @@
         <header>
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
-                    <h1>📡 Grabb2RSS v{{ version }}</h1>
+                    <h1>📡 Grabb2RSS</h1>
                     <p class="subtitle">Convertisseur Prowlarr → RSS avec Flux Personnalisés + Admin</p>
                 </div>
                 <div id="auth-info" style="display: none; text-align: right;">
@@ -36,7 +36,7 @@
         <!-- TAB: DASHBOARD -->
         <div id="dashboard" class="tab-content active">
             <div class="alert info" style="margin-bottom: 20px;">
-                <strong>👋 Bienvenue sur Grab2RSS v2.6.8</strong><br>
+                <strong>👋 Bienvenue sur Grab2RSS v{{ version }}</strong><br>
                 <span style="color: #ddd;">Votre convertisseur Prowlarr → RSS est opérationnel. Surveillez vos grabs, gérez vos torrents et configurez vos flux RSS personnalisés.</span>
             </div>
 
@@ -221,7 +221,7 @@
 
             <!-- RSS URLs Section -->
             <h2 style="margin-top: 40px; margin-bottom: 15px;">📋 URLs RSS Disponibles</h2>
-            <p style="color: #888; margin-bottom: 20px;">Copiez l'URL pour votre client torrent (qBittorrent, Transmission, etc.)</p>
+            <p style="color: #888; margin-bottom: 20px;">Copiez l'URL pour votre client torrent et ajoutez le header d'authentification.</p>
 
             <div id="rss-urls-container">
                 <div class="info-box">
@@ -233,7 +233,7 @@
                 <strong>💡 Utilisation:</strong><br>
                 1. Générez une clé API si vous n'en avez pas<br>
                 2. Copiez l'URL RSS souhaitée<br>
-                3. Ajoutez-la dans votre client torrent<br>
+                3. Ajoutez le header <code>X-API-Key</code> (ou <code>Authorization: Bearer</code>) dans votre client torrent<br>
                 4. Les flux se mettent à jour automatiquement
             </div>
         </div>
@@ -265,9 +265,15 @@
                 <button class="btn btn-primary" onclick="saveConfig()">💾 Sauvegarder</button>
                 <button class="btn btn-secondary" onclick="loadConfig()">🔄 Recharger</button>
             </div>
+            <div class="alert alert-info" style="margin-top: 20px;">
+                <strong>💡 Prod (ASGI) :</strong><br>
+                Recommandation workers Gunicorn :
+                <code>WEB_CONCURRENCY = min(4, max(2, CPU * 2))</code><br>
+                Ajustez à la baisse si la RAM est limitée.
+            </div>
         </div>
 
-        <!-- TAB: ADMIN (NOUVEAU v2.6.8) -->
+        <!-- TAB: ADMIN -->
         <div id="admin" class="tab-content">
             <h2>🔧 Administration & Maintenance</h2>
             
@@ -395,7 +401,8 @@
                 <h3>🔑 API Keys</h3>
                 <p style="color: #888; font-size: 13px; margin-bottom: 15px;">
                     Les API Keys permettent l'accès aux flux RSS depuis l'extérieur du réseau local.
-                    Ajoutez <code style="background: #0f0f0f; padding: 2px 6px; border-radius: 3px;">?api_key=VOTRE_CLE</code> à l'URL du flux RSS.
+                    Utilisez un header HTTP <code style="background: #0f0f0f; padding: 2px 6px; border-radius: 3px;">X-API-Key</code>
+                    ou <code style="background: #0f0f0f; padding: 2px 6px; border-radius: 3px;">Authorization: Bearer</code>.
                 </p>
 
                 <!-- Création d'API Key -->
@@ -412,6 +419,10 @@
                     <p style="color: #888; text-align: center;">Chargement...</p>
                 </div>
             </div>
+        </div>
+
+        <div style="margin-top: 30px; text-align: center; color: #777; font-size: 12px;">
+            Version {{ version }}
         </div>
     </div>
 

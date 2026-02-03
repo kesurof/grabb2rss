@@ -1,4 +1,4 @@
-# 📦 Guide d'Installation - Grab2RSS v2.6+
+# 📦 Guide d'Installation - Grab2RSS
 
 ## 🎯 Installation Rapide (Docker)
 
@@ -181,7 +181,7 @@ INFO:     Started server process [12345]
 🚀 Scheduler démarré (intervalle: 3600s)
 ⏱️  Sync Prowlarr en cours...
 ✅ Sync terminée: X grabs, Y doublons
-✅ Application démarrée v2.4
+✅ Application démarrée
 INFO:     Uvicorn running on http://0.0.0.0:8000
 ```
 

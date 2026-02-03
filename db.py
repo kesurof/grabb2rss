@@ -1,11 +1,14 @@
 # db.py
 import sqlite3
 import hashlib
+import logging
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any, Tuple
 from contextlib import contextmanager
 from config import DB_PATH, TORRENT_DIR
+
+logger = logging.getLogger(__name__)
 
 @contextmanager
 def get_db():
@@ -26,8 +29,8 @@ def get_db_connection():
         conn.execute("PRAGMA journal_mode=WAL;")
         conn.execute("PRAGMA synchronous=NORMAL;")
     except sqlite3.OperationalError as e:
-        print(f"⚠️  Impossible d'activer WAL mode: {e}")
-        print("💡 Conseil: Vérifier les permissions sur le dossier data/")
+        logger.warning("Impossible d'activer WAL mode: %s", e)
+        logger.info("Conseil: Vérifier les permissions sur le dossier data/")
     
     return conn
 
@@ -45,7 +48,7 @@ def init_config_from_env():
         existing = get_all_config()
 
         if not existing:
-            print("📝 Initialisation de la configuration depuis settings.yml...")
+            logger.info("Initialisation de la configuration depuis settings.yml...")
             
             # Définir toutes les valeurs
             configs = {
@@ -67,12 +70,12 @@ def init_config_from_env():
             for key, (value, description) in configs.items():
                 set_config(key, value, description)
             
-            print(f"✅ {len(configs)} paramètres initialisés")
+            logger.info("%s paramètres initialisés", len(configs))
         else:
-            print(f"ℹ️  Configuration existante ({len(existing)} paramètres)")
+            logger.info("Configuration existante (%s paramètres)", len(existing))
             
     except Exception as e:
-        print(f"⚠️  Erreur initialisation config: {e}")
+        logger.warning("Erreur initialisation config: %s", e)
 
 def reload_config_from_env() -> int:
     """
@@ -88,7 +91,7 @@ def reload_config_from_env() -> int:
             SONARR_URL, SONARR_API_KEY, DESCRIPTIONS
         )
 
-        print("🔄 Rechargement de la configuration depuis settings.yml...")
+        logger.info("Rechargement de la configuration depuis settings.yml...")
         
         # Définir toutes les valeurs (écrase les existantes)
         configs = {
@@ -111,24 +114,24 @@ def reload_config_from_env() -> int:
         for key, (value, description) in configs.items():
             set_config(key, value, description)
         
-        print(f"✅ {len(configs)} paramètres rechargés depuis settings.yml")
+        logger.info("%s paramètres rechargés depuis settings.yml", len(configs))
         return len(configs)
         
     except Exception as e:
-        print(f"⚠️  Erreur rechargement config: {e}")
+        logger.warning("Erreur rechargement config: %s", e)
         raise
 
 def init_db():
     """Initialise la base de données avec toutes les tables"""
-    print(f"🔄 Initialisation de la base de données: {DB_PATH}")
+    logger.info("Initialisation de la base de données: %s", DB_PATH)
 
     # Vérifier que le répertoire parent existe
     if not DB_PATH.parent.exists():
-        print(f"📁 Création du répertoire: {DB_PATH.parent}")
+        logger.info("Création du répertoire: %s", DB_PATH.parent)
         try:
             DB_PATH.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
         except Exception as e:
-            print(f"❌ Erreur création répertoire: {e}")
+            logger.error("Erreur création répertoire: %s", e)
             raise
 
     conn = get_db_connection()
@@ -171,26 +174,36 @@ def init_db():
         )
         """)
 
+        # Table sessions (persistantes)
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS sessions (
+            token TEXT PRIMARY KEY,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL
+        )
+        """)
+
         # Index pour performances
         conn.execute("CREATE INDEX IF NOT EXISTS idx_grabs_date ON grabs(grabbed_at DESC)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_grabs_title_hash ON grabs(title_hash)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_grabs_prowlarr ON grabs(prowlarr_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_grabs_tracker ON grabs(tracker)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)")
 
         conn.commit()
 
         # Vérifier que la DB a bien été créée
         if DB_PATH.exists():
             size_mb = DB_PATH.stat().st_size / (1024 * 1024)
-            print(f"✅ Base de données initialisée: {DB_PATH} ({size_mb:.2f} MB)")
+            logger.info("Base de données initialisée: %s (%.2f MB)", DB_PATH, size_mb)
         else:
-            print(f"⚠️  Fichier DB non trouvé après création: {DB_PATH}")
+            logger.warning("Fichier DB non trouvé après création: %s", DB_PATH)
 
         # Migration des colonnes si nécessaire
         migrate_db()
 
     except Exception as e:
-        print(f"❌ Erreur initialisation DB: {e}")
+        logger.error("Erreur initialisation DB: %s", e)
         import traceback
         traceback.print_exc()
         raise
@@ -206,21 +219,31 @@ def migrate_db():
         
         # Ajout colonne title_hash si manquante
         if "title_hash" not in columns:
-            print("🔄 Migration: Ajout colonne title_hash...")
+            logger.info("Migration: Ajout colonne title_hash...")
             conn.execute("ALTER TABLE grabs ADD COLUMN title_hash TEXT")
             conn.commit()
         
         # Ajout colonne tracker si manquante
         if "tracker" not in columns:
-            print("🔄 Migration: Ajout colonne tracker...")
+            logger.info("Migration: Ajout colonne tracker...")
             conn.execute("ALTER TABLE grabs ADD COLUMN tracker TEXT")
             conn.commit()
         
         # Ajout colonne indexer_id si manquante
         if "indexer_id" not in columns:
-            print("🔄 Migration: Ajout colonne indexer_id...")
+            logger.info("Migration: Ajout colonne indexer_id...")
             conn.execute("ALTER TABLE grabs ADD COLUMN indexer_id INTEGER")
             conn.commit()
+
+        # Créer table sessions si absente (pour compatibilité anciennes DB)
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS sessions (
+            token TEXT PRIMARY KEY,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL
+        )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)")
         
         # Remplir les hashes existants
         rows = conn.execute("SELECT id, title FROM grabs WHERE title_hash IS NULL").fetchall()
@@ -229,13 +252,13 @@ def migrate_db():
             conn.execute("UPDATE grabs SET title_hash = ? WHERE id = ?", (title_hash, row_id))
         
         conn.commit()
-        print("✅ Migration complète")
+        logger.info("Migration complète")
 
         # Initialiser la config DB depuis settings.yml si nécessaire
         init_config_from_env()
             
     except Exception as e:
-        print(f"⚠️  Migration: {e}")
+        logger.warning("Migration: %s", e)
     finally:
         conn.close()
 
@@ -553,7 +576,7 @@ def cleanup_orphan_torrents() -> Tuple[int, List[str]]:
                     deleted_count += 1
                     deleted_files.append(filename)
                 except Exception as e:
-                    print(f"⚠️ Erreur lors de la suppression de {filename}: {e}")
+                    logger.warning("Erreur lors de la suppression de %s: %s", filename, e)
 
     return deleted_count, deleted_files
 
@@ -573,7 +596,7 @@ def delete_torrent_file(filename: str) -> bool:
         torrent_path.unlink()
         return True
     except Exception as e:
-        print(f"⚠️ Erreur lors de la suppression de {filename}: {e}")
+        logger.warning("Erreur lors de la suppression de %s: %s", filename, e)
         return False
 
 def purge_all_torrents() -> Tuple[int, float]:
@@ -595,7 +618,7 @@ def purge_all_torrents() -> Tuple[int, float]:
             filepath.unlink()
             deleted_count += 1
         except Exception as e:
-            print(f"⚠️ Erreur lors de la suppression de {filepath.name}: {e}")
+            logger.warning("Erreur lors de la suppression de %s: %s", filepath.name, e)
 
     size_freed_mb = size_freed / (1024 * 1024)
     return deleted_count, round(size_freed_mb, 2)
@@ -608,7 +631,7 @@ def delete_log(log_id: int) -> bool:
             conn.commit()
             return cursor.rowcount > 0
         except Exception as e:
-            print(f"⚠️ Erreur lors de la suppression du log {log_id}: {e}")
+            logger.warning("Erreur lors de la suppression du log %s: %s", log_id, e)
             return False
 
 def purge_all_logs() -> int:

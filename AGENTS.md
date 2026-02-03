@@ -1,41 +1,49 @@
 # Directives de Répertoire
 
 ## Structure du projet et organisation des modules
-- **Entrée principale** : `main.py` démarre l’API FastAPI via Uvicorn.  
-- **API et routes** : `api.py`, `auth_routes.py`, `setup_routes.py`.  
-- **Données et logique** : `db.py`, `models.py`, `rss.py`, `scheduler.py`, `torrent.py`, `prowlarr.py`, `radarr_sonarr.py`.  
-- **Configuration** : `config.py` et fichiers Docker (`docker-compose*.yml`).  
-- **UI** : templates Jinja2 dans `templates/` et assets dans `static/`.  
-- **Docs** : guides dans `docs/`.  
+- **Entrée** : `main.py` (démarre FastAPI), configuration centralisée dans `config.py` et schéma dans `settings_schema.py`.  
+- **API** : `api.py` + routes `auth_routes.py`, `setup_routes.py`.  
+- **Logique métier** : `prowlarr.py`, `radarr_sonarr.py`, `torrent.py`, `rss.py`, `scheduler.py`, `db.py`.  
+- **UI** : templates Jinja2 dans `templates/`, assets dans `static/`.  
+- **Docs** : `docs/` (installation, plan de prod, etc.).  
+- **Docker** : `Dockerfile`, `docker-compose*.yml`, `entrypoint.sh`.  
+Exemple de configuration: `/config/settings.yml` ; données: `/app/data/`.
 
 ## Commandes de construction, de test et de développement
-- **Dev via Docker (recommandé)** :  
+- **Dev Docker** :  
   `docker-compose -f docker-compose.dev.yml up --build`  
-  Lance un environnement complet pour développement local.  
-- **Exécution locale Python** :  
-  `python main.py`  
-  Démarre l’API sur l’hôte/port définis dans `config.py`.  
-- **Dépendances** :  
-  `pip install -r requirements.txt`  
-  Installe les bibliothèques Python.  
+  Lance l’app en mode développement.  
+- **Exécution locale** :  
+  `pip install -r requirements.txt` puis `python main.py`  
+  Démarre l’API sur `APP_HOST:APP_PORT` (voir `config.py`).  
+- **Prod ASGI** :  
+  `WEB_CONCURRENCY=2 gunicorn api:app --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000`  
+  Ajustez `WEB_CONCURRENCY` selon CPU/RAM.
 
 ## Style de codage et conventions de nommage
-- **Python** : indentation 4 espaces, `snake_case` pour fonctions/variables, `PascalCase` pour classes.  
-- **Logs et messages** : privilégier les messages concis et en français (cohérent avec l’UI).  
-- **Formatage/Lint** : aucun outil imposé (ex. Black/Ruff non configurés). Soyez cohérent avec le style existant.  
+- **Python** : 4 espaces, `snake_case`, `PascalCase` pour classes.  
+- **Logs** : utilisez `logging.getLogger(__name__)` (messages concis, français).  
+- **Formatage/Lint** : pas d’outil imposé (pas de Black/Ruff configurés). Restez cohérent avec l’existant.
 
 ## Directives de test
-- **Script de vérification** : `python test_history_limits.py`  
-  Teste les limites d’historique Prowlarr/Radarr/Sonarr selon la config locale.  
-- **Convention** : les scripts de test sont au niveau racine et nommés `test_*.py`.  
-- **Couverture** : pas d’exigence explicite ; privilégier des tests ciblés lors d’ajouts logiques.  
+- **Script principal** : `python test_history_limits.py`  
+  Valide l’historique Prowlarr/Radarr/Sonarr.  
+- **Convention** : tests/scripts nommés `test_*.py` à la racine.  
+- **Couverture** : pas d’exigence formelle ; ajouter des tests ciblés lors d’ajouts logiques.
 
 ## Directives de Commit et de Pull Request
-- **Messages de commit** : tendance aux préfixes type Conventional Commits (`feat:`, `fix:`, `refactor:`, `security:`) et parfois des merges automatiques.  
-- **PR** : décrire le changement, l’impact utilisateur, et lier les issues si pertinentes.  
-  - Si vous modifiez l’UI, fournissez une capture d’écran.  
-  - Indiquez les commandes de test exécutées (ou pourquoi elles n’ont pas pu l’être).  
+- **Commits** : usage courant de préfixes type Conventional Commits (`feat:`, `fix:`, `docs:`), avec merges GitHub.  
+- **PR** : décrire le changement, l’impact, lier les issues si besoin.  
+  - UI modifiée → capture d’écran.  
+  - Mentionner les tests exécutés (ou “non exécutés”).
 
-## Notes de configuration et sécurité
-- **Secrets** : ne commitez jamais de clés API ; utilisez `settings.yml` ou variables d’environnement.  
-- **Ports** : par défaut, l’app écoute sur `8000`.  
+## Sécurité & configuration
+- **Secrets** : ne jamais commiter de clés API. Utiliser `settings.yml` ou variables d’env.  
+- **Ports** : par défaut `8000`.  
+- **CORS / cookies** : configurez via `settings.yml` pour la prod.
+
+## Versionnement et releases
+- **Source de vérité** : la version applicative vit uniquement dans `VERSION`.  
+- **SemVer** : suivez `MAJOR.MINOR.PATCH` (compatibilité API, nouvelles features, correctifs).  
+- **Gouvernance** : modifiez `VERSION` via une PR dédiée (ou une étape de release) juste avant de taguer `vX.Y.Z`.  
+- **CI/CD** : les workflows refusent une release si le tag Git ne correspond pas à `VERSION`.

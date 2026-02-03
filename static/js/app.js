@@ -1246,7 +1246,7 @@ function initLoginPage() {
 // ==================== INITIALIZATION ====================
 
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log("🚀 Initialisation Grab2RSS v2.6.8...");
+    console.log("🚀 Initialisation Grab2RSS...");
 
     // Check if we're on the login page
     if (document.getElementById('login-form')) {

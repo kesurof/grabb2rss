@@ -1,6 +1,5 @@
 # 📡 grabb2rss
 
-[![Version](https://img.shields.io/badge/version-2.6.5-blue)](https://github.com/kesurof/grabb2rss)
 [![Docker](https://img.shields.io/badge/docker-ghcr.io-blue)](https://ghcr.io/kesurof/grabb2rss)
 [![Python](https://img.shields.io/badge/python-3.11+-green)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -106,11 +105,114 @@ http://localhost:8000/rss/tracker/NomDuTracker
 http://localhost:8000/rss.json
 ```
 
+**Authentification (API Keys) :**
+
+Ajoutez un header HTTP dans votre client torrent :
+
+- `X-API-Key: VOTRE_CLE`
+- ou `Authorization: Bearer VOTRE_CLE`
+
 ### Configuration
 
 La configuration peut être modifiée :
 - ✅ Via l'interface web : http://localhost:8000 (onglet Configuration)
 - ✅ En éditant directement `/config/settings.yml`
+
+### Valeurs par défaut
+
+Résumé des valeurs par défaut principales :
+
+- `sync.interval`: `3600` (1h)
+- `sync.retention_hours`: `168` (7 jours)
+- `sync.dedup_hours`: `168` (7 jours)
+- `sync.auto_purge`: `true`
+- `prowlarr.history_page_size`: `500`
+- `rss.scheme`: `http`
+- `rss.domain`: `localhost:8000`
+- `cors.allow_origins`: `http://localhost:8000`, `http://127.0.0.1:8000`
+- `torrents.expose_static`: `false`
+- `torrents_download.max_size_mb`: `50`
+- `network.retries`: `3`
+- `network.backoff_seconds`: `1.0`
+- `network.timeout_seconds`: `10`
+- `logging.level`: `INFO`
+
+### Cookies de session (HTTPS)
+
+En production derrière HTTPS, activez les cookies sécurisés pour l'authentification :
+
+- Dans `/config/settings.yml` (section `auth`) :
+
+```yaml
+auth:
+  cookie_secure: true
+```
+
+- Ou via la variable d'environnement `AUTH_COOKIE_SECURE=true`
+
+### Sessions persistantes
+
+Les sessions sont stockées en base de données SQLite afin de survivre aux redémarrages
+et permettre un scale-out léger (multi-workers).
+
+### CORS (origines autorisées)
+
+Par défaut, seules les origines locales sont autorisées. Pour la prod, définissez la liste :
+
+- Dans `/config/settings.yml` :
+
+```yaml
+cors:
+  allow_origins:
+    - "https://grabb2rss.example.com"
+    - "https://dashboard.example.com"
+```
+
+- Ou via `CORS_ALLOW_ORIGINS` (séparé par virgules) :
+
+```
+CORS_ALLOW_ORIGINS=https://grabb2rss.example.com,https://dashboard.example.com
+```
+
+### Accès aux fichiers torrents
+
+Par défaut, le dossier `/torrents` n'est **pas** exposé. Pour l'activer explicitement :
+
+- Dans `/config/settings.yml` :
+
+```yaml
+torrents:
+  expose_static: true
+```
+
+- Ou via `TORRENTS_EXPOSE_STATIC=true`
+
+### Téléchargement des torrents (streaming + limite)
+
+Le téléchargement est effectué en streaming avec une limite de taille.
+Définissez la taille max (MB) :
+
+- Dans `/config/settings.yml` :
+
+```yaml
+torrents_download:
+  max_size_mb: 50
+```
+
+- Ou via `TORRENTS_MAX_SIZE_MB=50`
+
+### Niveau de logs
+
+Définissez le niveau de logs (ex: `DEBUG`, `INFO`, `WARNING`, `ERROR`) :
+
+- Dans `/config/settings.yml` :
+
+```yaml
+logging:
+  level: "INFO"
+```
+
+- Ou via `LOG_LEVEL=INFO`
 
 ### API
 
@@ -216,6 +318,51 @@ Votre configuration dans `/config` sera préservée.
 ---
 
 ## 📚 Documentation
+
+- [Processus de Release](docs/release-process.md)
+
+### Versionnement
+
+La version applicative est **exclusivement** définie par le fichier `VERSION` à la racine.
+Toutes les expositions (API, UI, Docker, headers, logs) en dépendent automatiquement.
+
+### Production (ASGI)
+
+Pour un déploiement prod, utilisez un runner ASGI type Gunicorn + Uvicorn :
+
+```bash
+WEB_CONCURRENCY=2 gunicorn api:app \
+  --worker-class uvicorn.workers.UvicornWorker \
+  --bind 0.0.0.0:8000 \
+  --timeout 60
+```
+
+Variables utiles :
+
+- `WEB_CONCURRENCY`: nombre de workers (ex: `2`)
+- `LOG_LEVEL`: niveau de logs (`INFO`, `WARNING`, etc.)
+
+Recommandation (adapter aux capacités) :
+
+- `WEB_CONCURRENCY = min(4, max(2, CPU * 2))`
+- Ajustez si la RAM est limitée (ex: 512MB → 1 worker).
+
+Exemple docker-compose :
+
+```yaml
+services:
+  grabb2rss:
+    image: ghcr.io/kesurof/grabb2rss:latest
+    ports:
+      - "8000:8000"
+    environment:
+      - LOG_LEVEL=INFO
+    command: >
+      sh -c 'WORKERS=${WEB_CONCURRENCY:-$((2 * $(nproc)))}; \
+      if [ "$WORKERS" -lt 2 ]; then WORKERS=2; fi; \
+      if [ "$WORKERS" -gt 4 ]; then WORKERS=4; fi; \
+      gunicorn api:app --worker-class uvicorn.workers.UvicornWorker --workers "$WORKERS" --bind 0.0.0.0:8000 --timeout 60'
+```
 
 - [Installation Détaillée](docs/INSTALLATION.md)
 - [Guide Rapide](docs/QUICKSTART.md)

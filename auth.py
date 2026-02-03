@@ -6,6 +6,8 @@ Module de gestion de l'authentification pour Grabb2RSS
 - API Keys pour accès RSS externe
 """
 import hashlib
+import os
+import logging
 import secrets
 import hmac
 from datetime import datetime, timedelta
@@ -15,13 +17,12 @@ import yaml
 
 # Chemins
 CONFIG_FILE = Path("/config/settings.yml")
+logger = logging.getLogger(__name__)
 
 # Durée de validité des sessions (7 jours)
 SESSION_DURATION = timedelta(days=7)
 
-# Store des sessions en mémoire (simple pour mono-utilisateur)
-# Format: {session_token: {"created_at": datetime, "expires_at": datetime}}
-_sessions: Dict[str, Dict[str, datetime]] = {}
+from db import get_db
 
 
 def hash_password(password: str) -> str:
@@ -79,8 +80,30 @@ def get_auth_config() -> Dict[str, Any]:
             config = yaml.safe_load(f)
             return config.get("auth", {}) if config else {}
     except Exception as e:
-        print(f"⚠️  Erreur lecture config auth: {e}")
+        logger.warning("Erreur lecture config auth: %s", e)
         return {}
+
+
+def _parse_bool(value: Any) -> bool:
+    """Convertit une valeur en booléen de manière permissive."""
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def get_auth_cookie_secure() -> bool:
+    """
+    Détermine si le cookie de session doit être sécurisé (HTTPS only).
+    Priorité: variable d'environnement AUTH_COOKIE_SECURE, puis settings.yml.
+    """
+    env_value = os.getenv("AUTH_COOKIE_SECURE")
+    if env_value is not None:
+        return _parse_bool(env_value)
+
+    auth_config = get_auth_config() or {}
+    return _parse_bool(auth_config.get("cookie_secure", False))
 
 
 def save_auth_config(auth_config: Dict[str, Any]) -> bool:
@@ -107,10 +130,10 @@ def save_auth_config(auth_config: Dict[str, Any]) -> bool:
         with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
             yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
 
-        print(f"✅ Configuration auth sauvegardée")
+        logger.info("Configuration auth sauvegardée")
         return True
     except Exception as e:
-        print(f"❌ Erreur sauvegarde config auth: {e}")
+        logger.error("Erreur sauvegarde config auth: %s", e)
         return False
 
 
@@ -163,12 +186,15 @@ def create_session() -> str:
     # Générer un token sécurisé
     session_token = secrets.token_urlsafe(32)
 
-    # Stocker la session
-    now = datetime.now()
-    _sessions[session_token] = {
-        "created_at": now,
-        "expires_at": now + SESSION_DURATION
-    }
+    # Stocker la session en DB
+    now = datetime.utcnow()
+    expires_at = now + SESSION_DURATION
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO sessions (token, created_at, expires_at) VALUES (?, ?, ?)",
+            (session_token, now.isoformat() + "Z", expires_at.isoformat() + "Z")
+        )
+        conn.commit()
 
     return session_token
 
@@ -186,15 +212,20 @@ def verify_session(session_token: Optional[str]) -> bool:
     if not session_token:
         return False
 
-    session = _sessions.get(session_token)
-    if not session:
-        return False
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT expires_at FROM sessions WHERE token = ?",
+            (session_token,)
+        ).fetchone()
+        if not row:
+            return False
 
-    # Vérifier l'expiration
-    if datetime.now() > session["expires_at"]:
-        # Session expirée, la supprimer
-        del _sessions[session_token]
-        return False
+        expires_at = row[0]
+        now = datetime.utcnow().isoformat() + "Z"
+        if now > expires_at:
+            conn.execute("DELETE FROM sessions WHERE token = ?", (session_token,))
+            conn.commit()
+            return False
 
     return True
 
@@ -230,27 +261,22 @@ def delete_session(session_token: str) -> bool:
     Returns:
         True si la session a été supprimée
     """
-    if session_token in _sessions:
-        del _sessions[session_token]
-        return True
-    return False
+    with get_db() as conn:
+        cur = conn.execute("DELETE FROM sessions WHERE token = ?", (session_token,))
+        conn.commit()
+        return cur.rowcount > 0
 
 
 def cleanup_expired_sessions():
     """
     Nettoie les sessions expirées (à appeler périodiquement)
     """
-    now = datetime.now()
-    expired = [
-        token for token, session in _sessions.items()
-        if now > session["expires_at"]
-    ]
-
-    for token in expired:
-        del _sessions[token]
-
-    if expired:
-        print(f"🧹 {len(expired)} session(s) expirée(s) nettoyée(s)")
+    now = datetime.utcnow().isoformat() + "Z"
+    with get_db() as conn:
+        cur = conn.execute("DELETE FROM sessions WHERE expires_at < ?", (now,))
+        conn.commit()
+        if cur.rowcount:
+            logger.info("%s session(s) expirée(s) nettoyée(s)", cur.rowcount)
 
 
 def generate_api_key() -> str:

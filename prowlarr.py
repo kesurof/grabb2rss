@@ -1,9 +1,12 @@
 # prowlarr.py
 import requests
+import logging
 from typing import Generator, Dict, Any
+from network import request_with_retries
 
 # Cache pour les trackers (indexerId -> nom du tracker)
 _TRACKER_CACHE: Dict[int, str] = {}
+logger = logging.getLogger(__name__)
 
 def fetch_history() -> list:
     """Récupère l'historique Prowlarr avec config depuis config.py"""
@@ -15,16 +18,15 @@ def fetch_history() -> list:
         prowlarr_api_key = PROWLARR_API_KEY
         page_size = PROWLARR_HISTORY_PAGE_SIZE
         
-        response = requests.get(
+        response = request_with_retries(
+            "GET",
             f"{prowlarr_url}/api/v1/history",
             headers={"X-Api-Key": prowlarr_api_key},
-            params={"pageSize": page_size},
-            timeout=10
+            params={"pageSize": page_size}
         )
-        response.raise_for_status()
         return response.json().get("records", [])
     except requests.RequestException as e:
-        print(f"❌ Erreur Prowlarr: {e}")
+        logger.error("Erreur Prowlarr: %s", e)
         return []
 
 def extract_tracker_name(record: dict) -> str:
@@ -68,7 +70,7 @@ def extract_tracker_name(record: dict) -> str:
                 # Capitaliser la première lettre
                 tracker_name = domain.split('.')[0].capitalize()
             except Exception as e:
-                print(f"⚠️  Erreur extraction URL: {e}")
+                logger.warning("Erreur extraction URL tracker: %s", e)
     
     # Fallback
     if not tracker_name:
@@ -97,7 +99,7 @@ def extract_grabs(records: list) -> Generator[Dict[str, Any], None, None]:
                     "indexer_id": record.get("indexerId")
                 }
             except Exception as e:
-                print(f"❌ Erreur extraction grab: {e}")
+                logger.warning("Erreur extraction grab: %s", e)
                 continue
 
 def clear_tracker_cache():
@@ -105,7 +107,7 @@ def clear_tracker_cache():
     global _TRACKER_CACHE
     count = len(_TRACKER_CACHE)
     _TRACKER_CACHE.clear()
-    print(f"🗑️  Cache trackers vidé ({count} entrées)")
+    logger.info("Cache trackers vidé (%s entrées)", count)
     return count
 
 def get_tracker_cache_info() -> dict:

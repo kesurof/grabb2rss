@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Optional
 import setup
 import logging
+from version import APP_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -18,18 +19,6 @@ router = APIRouter()
 # Utiliser un chemin absolu identique à api.py pour éviter les conflits
 TEMPLATE_DIR = Path(__file__).parent.absolute() / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
-
-# Lire la version depuis le fichier VERSION
-def get_version() -> str:
-    """Lit et retourne la version depuis le fichier VERSION"""
-    try:
-        version_file = Path(__file__).parent / "VERSION"
-        if version_file.exists():
-            return version_file.read_text().strip()
-        return "unknown"
-    except Exception as e:
-        logger.warning(f"Impossible de lire VERSION: {e}")
-        return "unknown"
 
 
 class SetupConfigModel(BaseModel):
@@ -60,6 +49,7 @@ class SetupConfigModel(BaseModel):
     auth_enabled: Optional[bool] = False
     auth_username: Optional[str] = ""
     auth_password: Optional[str] = ""
+    auth_cookie_secure: Optional[bool] = False
 
 
 @router.get("/setup", response_class=HTMLResponse)
@@ -84,7 +74,7 @@ async def setup_page(request: Request):
         "request": request,
         "first_run": first_run,
         "config_exists": config_exists,
-        "version": get_version()
+        "version": APP_VERSION
     })
 
 
@@ -106,8 +96,8 @@ async def test_prowlarr(data: dict):
 async def save_setup(config: SetupConfigModel):
     """Sauvegarde la configuration initiale"""
     try:
-        print("🔧 Début sauvegarde configuration setup...")
-        print(f"   Prowlarr URL: {config.prowlarr_url}")
+        logger.info("Début sauvegarde configuration setup...")
+        logger.info("Prowlarr URL: %s", config.prowlarr_url)
 
         # Construire la config
         new_config = {
@@ -144,43 +134,45 @@ async def save_setup(config: SetupConfigModel):
         # Ajouter la configuration d'authentification si activée
         if config.auth_enabled and config.auth_username and config.auth_password:
             from auth import hash_password
-            print(f"🔐 Configuration de l'authentification pour {config.auth_username}")
+            logger.info("Configuration de l'authentification pour %s", config.auth_username)
             new_config["auth"] = {
                 "enabled": True,
                 "username": config.auth_username,
                 "password_hash": hash_password(config.auth_password),
-                "api_keys": []
+                "api_keys": [],
+                "cookie_secure": config.auth_cookie_secure
             }
         else:
-            print("ℹ️  Authentification désactivée")
+            logger.info("Authentification désactivée")
             new_config["auth"] = {
                 "enabled": False,
                 "username": "",
                 "password_hash": "",
-                "api_keys": []
+                "api_keys": [],
+                "cookie_secure": config.auth_cookie_secure
             }
 
         # Sauvegarder
         success = setup.save_config(new_config)
 
         if success:
-            print("✅ Configuration sauvegardée avec succès")
+            logger.info("Configuration sauvegardée avec succès")
 
             # CRITIQUE : Recharger la configuration dans le module config
             try:
                 from config import reload_config
                 reload_config()
-                print("✅ Configuration rechargée dans l'application")
+                logger.info("Configuration rechargée dans l'application")
             except Exception as reload_err:
-                print(f"⚠️  Erreur rechargement config: {reload_err}")
+                logger.warning("Erreur rechargement config: %s", reload_err)
 
             # Redémarrer le scheduler avec la nouvelle config
             try:
                 from scheduler import restart_scheduler_after_setup
                 scheduler_started = restart_scheduler_after_setup()
-                print(f"   Scheduler: {'démarré' if scheduler_started else 'erreur'}")
+                logger.info("Scheduler: %s", "démarré" if scheduler_started else "erreur")
             except Exception as sched_err:
-                print(f"⚠️  Erreur démarrage scheduler: {sched_err}")
+                logger.warning("Erreur démarrage scheduler: %s", sched_err)
                 scheduler_started = False
 
             return {
@@ -190,14 +182,14 @@ async def save_setup(config: SetupConfigModel):
             }
         else:
             error_msg = "Impossible de sauvegarder la configuration. Vérifiez les permissions sur /config"
-            print(f"❌ {error_msg}")
+            logger.error("%s", error_msg)
             raise HTTPException(status_code=500, detail=error_msg)
 
     except HTTPException:
         raise
     except Exception as e:
         error_msg = f"Erreur lors de la sauvegarde: {str(e)}"
-        print(f"❌ {error_msg}")
+        logger.error("%s", error_msg)
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=error_msg)

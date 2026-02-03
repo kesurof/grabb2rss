@@ -1,8 +1,9 @@
 # torrent.py
 import os
 import requests
+import logging
 from pathlib import Path
-from config import TORRENT_DIR
+from config import TORRENT_DIR, TORRENTS_MAX_SIZE_MB
 
 def safe_filename(name: str) -> str:
     """Nettoie le nom de fichier pour éviter les caractères interdits"""
@@ -31,6 +32,8 @@ def is_valid_torrent_content(content: bytes) -> bool:
     # Si ça commence par '<', c'est du HTML (erreur 404, etc.)
     return content[0:1] == b'd'
 
+logger = logging.getLogger(__name__)
+
 def download_torrent(title: str, url: str) -> str:
     """Télécharge et sauvegarde le fichier torrent - Retourne SEULEMENT le nom du fichier"""
     filename = safe_filename(f"{title}.torrent")
@@ -41,32 +44,54 @@ def download_torrent(title: str, url: str) -> str:
         return filename
     
     try:
-        response = requests.get(url, timeout=30)
+        response = requests.get(url, timeout=30, stream=True)
         response.raise_for_status()
-        
-        # Vérifier que le contenu est un torrent valide
-        content = response.content
-        if not is_valid_torrent_content(content):
-            # Détecter si c'est du HTML
-            if content[0:1] == b'<':
-                raise ValueError(
-                    f"Le fichier téléchargé est du HTML (erreur 404, page tracker, etc.), pas un torrent. "
-                    f"URL: {url[:100]}"
-                )
-            else:
-                raise ValueError(
-                    f"Le fichier téléchargé n'est pas un torrent valide (ne commence pas par 'd'). "
-                    f"Premier octet: {content[0:1]}"
-                )
-        
+
+        max_size_bytes = max(int(TORRENTS_MAX_SIZE_MB), 1) * 1024 * 1024
+        bytes_written = 0
+        first_chunk = b""
+
         with open(path, "wb") as f:
-            f.write(content)
+            for chunk in response.iter_content(chunk_size=8192):
+                if not chunk:
+                    continue
+                if not first_chunk:
+                    first_chunk = chunk[:1]
+                    if first_chunk != b'd':
+                        if first_chunk == b'<':
+                            raise ValueError(
+                                "Le fichier téléchargé est du HTML (erreur 404, page tracker, etc.), pas un torrent."
+                            )
+                        raise ValueError(
+                            "Le fichier téléchargé n'est pas un torrent valide (ne commence pas par 'd')."
+                        )
+
+                bytes_written += len(chunk)
+                if bytes_written > max_size_bytes:
+                    raise ValueError(
+                        f"Le fichier torrent dépasse la taille max ({TORRENTS_MAX_SIZE_MB} MB)."
+                    )
+                f.write(chunk)
+
+        # Vérification finale basique
+        if not is_valid_torrent_content(first_chunk):
+            raise ValueError("Le fichier torrent est invalide (contenu inattendu).")
         
         # Retourner SEULEMENT le nom du fichier (pas le chemin complet)
         return filename
     except requests.RequestException as e:
-        print(f"❌ Erreur download torrent {title}: {e}")
+        logger.error("Erreur téléchargement torrent %s: %s", title, e)
+        if path.exists():
+            try:
+                os.remove(path)
+            except Exception:
+                pass
         raise
     except ValueError as e:
-        print(f"❌ Fichier invalide {title}: {e}")
+        logger.error("Fichier torrent invalide %s: %s", title, e)
+        if path.exists():
+            try:
+                os.remove(path)
+            except Exception:
+                pass
         raise
