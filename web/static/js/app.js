@@ -1237,7 +1237,7 @@ function initDrawer() {
 // ==================== SETUP PAGE ====================
 
 function initSetupPage() {
-    const container = document.querySelector('.container[data-first-run][data-config-exists]');
+    const container = document.querySelector('.page-shell[data-first-run][data-config-exists]');
     if (!container) return;
 
     const firstRun = container.dataset.firstRun === 'true';
