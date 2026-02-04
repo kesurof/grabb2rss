@@ -17,7 +17,6 @@
     <div class="page-shell" data-first-run="{{ 'true' if first_run else 'false' }}" data-config-exists="{{ 'true' if config_exists else 'false' }}">
         <div class="page-header page-header--row">
             <div>
-                <div class="section-note" data-role="setup-step-label">Étape 1 sur 4</div>
                 <h1>Configuration initiale</h1>
                 <p class="page-desc">Connectez vos services externes puis validez vos paramètres de base.</p>
             </div>
@@ -40,6 +39,7 @@
                 <div class="setup-wizard__progress">
                     <div class="setup-wizard__progress-bar" data-role="setup-progress"></div>
                 </div>
+                <div class="setup-wizard__meta" aria-hidden="true"></div>
             </div>
 
             <div class="page-section setup-step" data-setup-step="0">
@@ -101,6 +101,11 @@
                         </div>
                     </div>
                 </div>
+                <div class="actions-bar">
+                    <button type="button" class="btn btn-secondary" data-action="test-connection">
+                        Tester la connexion
+                    </button>
+                </div>
             </div>
 
             <div class="page-section setup-step" data-setup-step="1">
@@ -121,6 +126,16 @@
                             <input type="checkbox" id="auto_purge" name="auto_purge" checked>
                             <label for="auto_purge" class="form-label" style="margin: 0;">Purge automatique des anciens torrents</label>
                         </div>
+                        <details class="advanced-block">
+                            <summary>Paramètres avancés (optionnel)</summary>
+                            <div class="advanced-block__content">
+                                <div class="form-field">
+                                    <label class="form-label">Déduplication (heures)</label>
+                                    <input class="form-input" type="number" id="dedup_hours" name="dedup_hours" value="168" min="1">
+                                    <div class="form-help">Empêche les doublons sur la période définie.</div>
+                                </div>
+                            </div>
+                        </details>
                     </div>
                 </div>
             </div>
@@ -129,10 +144,15 @@
                 <div class="section-header">Sécurité (recommandée)</div>
                 <div class="section-note">Ajoutez une authentification pour protéger l’accès à l’interface.</div>
 
-                <div class="checkbox-group">
-                    <input type="checkbox" id="auth_enabled" name="auth_enabled" data-action="toggle-auth">
-                    <label for="auth_enabled" class="form-label" style="margin: 0; font-weight: 600; color: #1e90ff;">
-                        ✅ Activer l'authentification
+                <div class="auth-toggle">
+                    <div class="auth-toggle__label">
+                        <span class="auth-toggle__title">Activer l'authentification</span>
+                        <span class="auth-toggle__note">Recommandée pour protéger l’accès</span>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="auth_enabled" name="auth_enabled" data-action="toggle-auth">
+                        <span class="switch__track" aria-hidden="true"></span>
+                        <span class="switch__thumb" aria-hidden="true"></span>
                     </label>
                 </div>
                 <div id="auth_fields" style="display: none;">
@@ -155,18 +175,18 @@
                 <div class="section-header">Finalisation</div>
                 <div class="section-note">Validez la configuration et lancez la première synchronisation.</div>
                 <div class="actions-bar">
+                    <button type="button" class="btn btn-secondary" data-action="go-fix">
+                        Corriger
+                    </button>
                     <button type="submit" class="btn btn-primary" data-action="submit-setup">
                         Enregistrer et démarrer
-                    </button>
-                    <button type="button" class="btn btn-secondary" data-action="test-connection">
-                        Tester la connexion
                     </button>
                 </div>
             </div>
 
-            <div class="setup-wizard__actions">
+            <div class="setup-wizard__actions" data-role="setup-wizard-actions">
                 <button type="button" class="btn btn-secondary" data-action="prev-step">Retour</button>
-                <button type="button" class="btn btn-secondary" data-action="next-step">Continuer</button>
+                <button type="button" class="btn btn-primary" data-action="next-step">Continuer</button>
             </div>
         </form>
 

@@ -1184,14 +1184,16 @@ function initDrawer() {
 // ==================== SETUP PAGE ====================
 
 function initSetupPage() {
-    const container = document.querySelector('.page-shell[data-first-run][data-config-exists]');
+    const container = document.querySelector('.page-shell[data-first-run][data-config-exists]') || document.querySelector('.page-shell');
     if (!container) return;
 
-    const firstRun = container.dataset.firstRun === 'true';
-    const configExists = container.dataset.configExists === 'true';
-    if (!firstRun && configExists) {
-        window.location.href = '/';
-        return;
+    if ('firstRun' in container.dataset && 'configExists' in container.dataset) {
+        const firstRun = container.dataset.firstRun === 'true';
+        const configExists = container.dataset.configExists === 'true';
+        if (!firstRun && configExists) {
+            window.location.href = '/';
+            return;
+        }
     }
 
     const form = byId('setupForm');
@@ -1200,10 +1202,11 @@ function initSetupPage() {
     const authToggle = byId('auth_enabled');
     const authFields = byId('auth_fields');
     const steps = Array.from(document.querySelectorAll('[data-setup-step]'));
-    const stepLabel = document.querySelector('[data-role="setup-step-label"]');
     const stepPills = Array.from(document.querySelectorAll('.setup-wizard__step'));
     const nextStepButton = document.querySelector('[data-action="next-step"]');
     const prevStepButton = document.querySelector('[data-action="prev-step"]');
+    const wizardActions = document.querySelector('[data-role="setup-wizard-actions"]');
+    const goFixButton = document.querySelector('[data-action="go-fix"]');
     const progressBar = document.querySelector('[data-role="setup-progress"]');
 
     if (!form || !alertEl || !loadingEl || !authToggle || !authFields) {
@@ -1243,17 +1246,19 @@ function initSetupPage() {
         steps.forEach((step, index) => {
             step.hidden = index !== currentStep;
         });
-        if (stepLabel) {
-            stepLabel.textContent = `Étape ${currentStep + 1} sur ${steps.length}`;
-        }
         stepPills.forEach((pill, index) => {
             pill.classList.toggle('is-active', index === currentStep);
+            pill.setAttribute('aria-current', index === currentStep ? 'step' : 'false');
         });
         if (prevStepButton) {
             prevStepButton.disabled = currentStep === 0;
         }
         if (nextStepButton) {
             nextStepButton.hidden = currentStep >= steps.length - 1;
+        }
+        if (wizardActions) {
+            wizardActions.hidden = currentStep >= steps.length - 1;
+            wizardActions.classList.toggle('is-hidden', currentStep >= steps.length - 1);
         }
         if (progressBar) {
             const progress = ((currentStep + 1) / steps.length) * 100;
@@ -1287,6 +1292,31 @@ function initSetupPage() {
             }
         });
     }
+
+    if (goFixButton) {
+        goFixButton.addEventListener('click', () => {
+            currentStep = 0;
+            updateWizard();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+    }
+
+    stepPills.forEach((pill, index) => {
+        pill.setAttribute('tabindex', '0');
+        pill.addEventListener('click', () => {
+            currentStep = index;
+            updateWizard();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+        pill.addEventListener('keydown', event => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                currentStep = index;
+                updateWizard();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        });
+    });
 
     const showAlert = (message, type) => {
         alertEl.textContent = message;
@@ -1465,6 +1495,8 @@ function initSetupPage() {
             validateStep();
         }
     });
+
+    updateWizard();
 }
 
 // Event listener for torrent checkboxes

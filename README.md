@@ -3,7 +3,7 @@
 
   <h1>Grabb2RSS</h1>
   <p>Convertisseur Prowlarr vers RSS avec support multi-tracker, filtrage intelligent et interface web moderne.</p>
-  <p><strong>Version</strong> : <!-- version:start -->v2.9.0<!-- version:end --></p>
+  <p><strong>Version</strong> : <!-- version:start -->v2.9.1<!-- version:end --></p>
 </div>
 
 [![Docker](https://img.shields.io/badge/docker-ghcr.io-blue)](https://ghcr.io/kesurof/grabb2rss)
