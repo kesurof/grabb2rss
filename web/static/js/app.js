@@ -1199,10 +1199,93 @@ function initSetupPage() {
     const loadingEl = byId('loading');
     const authToggle = byId('auth_enabled');
     const authFields = byId('auth_fields');
+    const steps = Array.from(document.querySelectorAll('[data-setup-step]'));
+    const stepLabel = document.querySelector('[data-role="setup-step-label"]');
+    const stepPills = Array.from(document.querySelectorAll('.setup-wizard__step'));
+    const nextStepButton = document.querySelector('[data-action="next-step"]');
+    const prevStepButton = document.querySelector('[data-action="prev-step"]');
+    const progressBar = document.querySelector('[data-role="setup-progress"]');
 
     if (!form || !alertEl || !loadingEl || !authToggle || !authFields) {
         warnMissing('setup', '#setupForm, #alert, #loading, #auth_enabled, #auth_fields');
         return;
+    }
+
+    let currentStep = 0;
+
+    const getStepRequiredFields = () => {
+        const current = steps[currentStep];
+        if (!current) return [];
+        const fields = Array.from(current.querySelectorAll('input[required], select[required]'));
+        if (!authToggle.checked) {
+            return fields.filter(field => !['auth_username', 'auth_password'].includes(field.id));
+        }
+        return fields;
+    };
+
+    const validateStep = () => {
+        const fields = getStepRequiredFields();
+        let valid = true;
+        fields.forEach(field => {
+            const value = field.value?.trim();
+            if (!value) {
+                valid = false;
+            }
+        });
+        if (nextStepButton) {
+            nextStepButton.disabled = !valid;
+        }
+        return valid;
+    };
+
+    const updateWizard = () => {
+        if (!steps.length) return;
+        steps.forEach((step, index) => {
+            step.hidden = index !== currentStep;
+        });
+        if (stepLabel) {
+            stepLabel.textContent = `Étape ${currentStep + 1} sur ${steps.length}`;
+        }
+        stepPills.forEach((pill, index) => {
+            pill.classList.toggle('is-active', index === currentStep);
+        });
+        if (prevStepButton) {
+            prevStepButton.disabled = currentStep === 0;
+        }
+        if (nextStepButton) {
+            nextStepButton.hidden = currentStep >= steps.length - 1;
+        }
+        if (progressBar) {
+            const progress = ((currentStep + 1) / steps.length) * 100;
+            progressBar.style.width = `${progress}%`;
+        }
+        validateStep();
+    };
+
+    updateWizard();
+
+    if (nextStepButton) {
+        nextStepButton.addEventListener('click', () => {
+            if (!validateStep()) {
+                showAlert('Veuillez compléter les champs obligatoires avant de continuer.', 'error');
+                return;
+            }
+            if (currentStep < steps.length - 1) {
+                currentStep += 1;
+                updateWizard();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        });
+    }
+
+    if (prevStepButton) {
+        prevStepButton.addEventListener('click', () => {
+            if (currentStep > 0) {
+                currentStep -= 1;
+                updateWizard();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        });
     }
 
     const showAlert = (message, type) => {
@@ -1232,6 +1315,7 @@ function initSetupPage() {
                 passwordField.removeAttribute('required');
             }
         }
+        validateStep();
     };
 
     let testInFlight = false;
@@ -1376,6 +1460,11 @@ function initSetupPage() {
     const testButton = document.querySelector('[data-action="test-connection"]');
     if (testButton) testButton.addEventListener('click', testConnection);
     form.addEventListener('submit', submitSetup);
+    form.addEventListener('input', () => {
+        if (steps[currentStep]?.contains(document.activeElement)) {
+            validateStep();
+        }
+    });
 }
 
 // Event listener for torrent checkboxes

@@ -17,7 +17,7 @@
     <div class="page-shell" data-first-run="{{ 'true' if first_run else 'false' }}" data-config-exists="{{ 'true' if config_exists else 'false' }}">
         <div class="page-header page-header--row">
             <div>
-                <div class="section-note">Étape 1 sur 1</div>
+                <div class="section-note" data-role="setup-step-label">Étape 1 sur 4</div>
                 <h1>Configuration initiale</h1>
                 <p class="page-desc">Connectez vos services externes puis validez vos paramètres de base.</p>
             </div>
@@ -30,7 +30,19 @@
         </div>
 
         <form id="setupForm">
-            <div class="page-section">
+            <div class="setup-wizard" data-step-total="4">
+                <div class="setup-wizard__steps" aria-hidden="true">
+                    <div class="setup-wizard__step" data-step-index="0">Services</div>
+                    <div class="setup-wizard__step" data-step-index="1">Paramètres</div>
+                    <div class="setup-wizard__step" data-step-index="2">Sécurité</div>
+                    <div class="setup-wizard__step" data-step-index="3">Finalisation</div>
+                </div>
+                <div class="setup-wizard__progress">
+                    <div class="setup-wizard__progress-bar" data-role="setup-progress"></div>
+                </div>
+            </div>
+
+            <div class="page-section setup-step" data-setup-step="0">
                 <div class="section-header">Services externes</div>
                 <div class="section-note">Ajoutez les URL et clés API. Les champs obligatoires sont marqués.</div>
 
@@ -91,7 +103,7 @@
                 </div>
             </div>
 
-            <div class="page-section">
+            <div class="page-section setup-step" data-setup-step="1">
                 <div class="section-header">Paramètres</div>
                 <div class="section-grid">
                     <div class="service-card">
@@ -113,7 +125,7 @@
                 </div>
             </div>
 
-            <div class="page-section page-section--subtle">
+            <div class="page-section page-section--subtle setup-step" data-setup-step="2">
                 <div class="section-header">Sécurité (recommandée)</div>
                 <div class="section-note">Ajoutez une authentification pour protéger l’accès à l’interface.</div>
 
@@ -139,8 +151,9 @@
                 </div>
             </div>
 
-            <div class="page-section">
-                <div class="section-header">Actions finales</div>
+            <div class="page-section setup-step" data-setup-step="3">
+                <div class="section-header">Finalisation</div>
+                <div class="section-note">Validez la configuration et lancez la première synchronisation.</div>
                 <div class="actions-bar">
                     <button type="submit" class="btn btn-primary" data-action="submit-setup">
                         Enregistrer et démarrer
@@ -149,6 +162,11 @@
                         Tester la connexion
                     </button>
                 </div>
+            </div>
+
+            <div class="setup-wizard__actions">
+                <button type="button" class="btn btn-secondary" data-action="prev-step">Retour</button>
+                <button type="button" class="btn btn-secondary" data-action="next-step">Continuer</button>
             </div>
         </form>
 
