@@ -16,8 +16,9 @@
 {% block content %}
     <div class="page-shell" data-first-run="{{ 'true' if first_run else 'false' }}" data-config-exists="{{ 'true' if config_exists else 'false' }}">
         <div class="page-header">
+            <div class="section-note">Étape 1 sur 1</div>
             <h1>Configuration initiale</h1>
-            <p class="page-desc">Renseignez vos services externes et paramètres de base pour démarrer.</p>
+            <p class="page-desc">Connectez vos services externes puis validez vos paramètres de base.</p>
         </div>
 
         <div id="alert" class="alert"></div>
@@ -29,11 +30,11 @@
         <form id="setupForm">
             <div class="page-section">
                 <div class="section-header">Services externes</div>
-                <div class="section-note">Ajoutez les URL et clés API de vos services. Les champs obligatoires sont marqués.</div>
+                <div class="section-note">Ajoutez les URL et clés API. Les champs obligatoires sont marqués.</div>
 
                 <div class="section-grid">
                     <div class="service-card">
-                        <div class="service-title"><span>🔍</span>Prowlarr</div>
+                        <div class="service-title"><span class="service-badge">PR</span>Prowlarr</div>
                         <div class="form-field">
                             <label class="form-label">URL <span class="required">*</span></label>
                             <input class="form-input" type="url" id="prowlarr_url" name="prowlarr_url"
@@ -55,7 +56,7 @@
                     </div>
 
                     <div class="service-card">
-                        <div class="service-title"><span>🎬</span>Radarr</div>
+                        <div class="service-title"><span class="service-badge">RA</span>Radarr</div>
                         <div class="form-field">
                             <label class="form-label">URL <span class="required">*</span></label>
                             <input class="form-input" type="url" id="radarr_url" name="radarr_url"
@@ -71,7 +72,7 @@
                     </div>
 
                     <div class="service-card">
-                        <div class="service-title"><span>📺</span>Sonarr</div>
+                        <div class="service-title"><span class="service-badge">SO</span>Sonarr</div>
                         <div class="form-field">
                             <label class="form-label">URL <span class="required">*</span></label>
                             <input class="form-input" type="url" id="sonarr_url" name="sonarr_url"
@@ -140,10 +141,10 @@
                 <div class="section-header">Actions finales</div>
                 <div class="actions-bar">
                     <button type="submit" class="btn btn-primary" data-action="submit-setup">
-                        ✅ Enregistrer et démarrer
+                        Enregistrer et démarrer
                     </button>
                     <button type="button" class="btn btn-secondary" data-action="test-connection">
-                        🔌 Tester la connexion
+                        Tester la connexion
                     </button>
                 </div>
             </div>

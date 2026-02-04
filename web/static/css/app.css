@@ -389,12 +389,14 @@ body.auth-page {
 }
 
 .page-header h1 {
-    font-size: 26px;
+    font-size: 28px;
+    font-weight: 700;
     color: #e5e7eb;
+    letter-spacing: -0.01em;
 }
 
 .page-desc {
-    color: #9ca3af;
+    color: #b6c2d4;
     font-size: 14px;
 }
 
@@ -451,8 +453,17 @@ body.auth-page {
     font-size: 14px;
 }
 
-.service-title span {
-    color: #60a5fa;
+.service-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    background: rgba(96, 165, 250, 0.15);
+    color: #93c5fd;
+    font-size: 12px;
+    font-weight: 700;
 }
 
 .actions-bar {
@@ -464,6 +475,37 @@ body.auth-page {
 
 .actions-bar .btn-primary {
     min-width: 220px;
+}
+
+/* Global typography */
+body {
+    font-family: "Manrope", "Segoe UI", sans-serif;
+    color: #e5e7eb;
+    background: #0b1220;
+}
+
+/* Form refinement */
+.form-label {
+    color: #b7c7e6;
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.form-input,
+.form-select,
+.form-textarea {
+    background: #0b1220;
+    border: 1px solid #1f2937;
+}
+
+.form-input:hover,
+.form-select:hover,
+.form-textarea:hover {
+    border-color: rgba(147, 197, 253, 0.5);
+}
+
+.form-help {
+    color: #a8b7cc;
 }
 
 /* Page error banner */
