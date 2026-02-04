@@ -2,6 +2,16 @@
 
 {% block title %}Configuration Initiale - Grabb2RSS{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/app.css">
+{% endblock %}
+
+{% block legacy_css %}{% endblock %}
+
+{% block shell %}
+    {{ self.content() }}
+{% endblock %}
+
 {% block content %}
     <div class="container">
         <header>
@@ -162,146 +172,6 @@
         </div>
     </div>
 
-    <script>
-        // Toggle auth fields visibility
-        function toggleAuthFields() {
-            const authEnabled = document.getElementById('auth_enabled').checked;
-            const authFields = document.getElementById('auth_fields');
-            authFields.style.display = authEnabled ? 'block' : 'none';
-
-            // Rendre les champs required si l'auth est activée
-            const usernameField = document.getElementById('auth_username');
-            const passwordField = document.getElementById('auth_password');
-
-            if (authEnabled) {
-                usernameField.setAttribute('required', 'required');
-                passwordField.setAttribute('required', 'required');
-            } else {
-                usernameField.removeAttribute('required');
-                passwordField.removeAttribute('required');
-            }
-        }
-
-        // Test connection
-        async function testConnection() {
-            const url = document.getElementById('prowlarr_url').value;
-            const apiKey = document.getElementById('prowlarr_api_key').value;
-
-            if (!url || !apiKey) {
-                showAlert("Veuillez remplir l'URL et la clé API Prowlarr", 'error');
-                return;
-            }
-
-            showAlert('Test de connexion en cours...', 'success');
-
-            try {
-                const response = await fetch('/api/setup/test-prowlarr', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url: url, api_key: apiKey })
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    showAlert('Connexion réussie à Prowlarr !', 'success');
-                } else {
-                    showAlert('Erreur: ' + (data.error || 'Connexion échouée'), 'error');
-                }
-            } catch (error) {
-                showAlert('Erreur de connexion: ' + error.message, 'error');
-            }
-        }
-
-        // Submit form
-        document.getElementById('setupForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-
-            const formData = new FormData(e.target);
-            const config = {
-                prowlarr_url: formData.get('prowlarr_url'),
-                prowlarr_api_key: formData.get('prowlarr_api_key'),
-                prowlarr_history_page_size: parseInt(formData.get('prowlarr_history_page_size')),
-
-                radarr_enabled: true,
-                radarr_url: formData.get('radarr_url'),
-                radarr_api_key: formData.get('radarr_api_key'),
-
-                sonarr_enabled: true,
-                sonarr_url: formData.get('sonarr_url'),
-                sonarr_api_key: formData.get('sonarr_api_key'),
-
-                sync_interval: parseInt(formData.get('sync_interval')),
-                retention_hours: parseInt(formData.get('retention_hours')),
-                auto_purge: document.getElementById('auto_purge').checked,
-                dedup_hours: 168,
-
-                rss_domain: window.location.hostname,
-                rss_scheme: window.location.protocol.replace(':', ''),
-                rss_title: 'grabb2RSS',
-                rss_description: 'Prowlarr to RSS Feed',
-
-                // Authentification
-                auth_enabled: document.getElementById('auth_enabled').checked,
-                auth_username: formData.get('auth_username') || '',
-                auth_password: formData.get('auth_password') || ''
-            };
-
-            // Validation de l'authentification si activée
-            if (config.auth_enabled) {
-                if (!config.auth_username || !config.auth_password) {
-                    showAlert('Veuillez remplir le nom d\'utilisateur et le mot de passe pour l\'authentification', 'error');
-                    return;
-                }
-                if (config.auth_password.length < 8) {
-                    showAlert('Le mot de passe doit contenir au moins 8 caractères', 'error');
-                    return;
-                }
-            }
-
-            // Show loading
-            document.getElementById('setupForm').style.display = 'none';
-            document.getElementById('loading').style.display = 'block';
-
-            try {
-                const response = await fetch('/api/setup/save', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(config)
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    showAlert('Configuration enregistrée ! Redirection...', 'success');
-                    setTimeout(function() {
-                        window.location.href = '/';
-                    }, 2000);
-                } else {
-                    document.getElementById('setupForm').style.display = 'block';
-                    document.getElementById('loading').style.display = 'none';
-                    showAlert('Erreur: ' + (data.error || data.message || 'Impossible de sauvegarder'), 'error');
-                }
-            } catch (error) {
-                document.getElementById('setupForm').style.display = 'block';
-                document.getElementById('loading').style.display = 'none';
-                showAlert('Erreur: ' + error.message, 'error');
-            }
-        });
-
-        function showAlert(message, type) {
-            const alert = document.getElementById('alert');
-            alert.textContent = message;
-            alert.className = 'alert ' + type;
-            alert.style.display = 'block';
-
-            if (type === 'success' && !message.includes('Test')) {
-                setTimeout(() => {
-                    alert.style.display = 'none';
-                }, 3000);
-            }
-        }
-    </script>
 {% endblock %}
 
 {% block scripts %}

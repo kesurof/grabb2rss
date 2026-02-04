@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "partials/ui_components.html" import alert %}
+
+{% block title %}Sécurité - Grabb2RSS{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/app.css">
+{% endblock %}
+
+{% block legacy_css %}{% endblock %}
+
+{% block content %}
+<section class="page">
+    <h1>Sécurité</h1>
+    <p class="subtitle">Gérez votre compte et vos clés API.</p>
+
+    {{ alert("Les API keys permettent l'accès aux flux RSS depuis l'extérieur du réseau local.", "info") }}
+
+    <div class="ui-card" style="margin-top: 20px;">
+        <div class="ui-card__title">Mon compte</div>
+        <div style="margin-top: 10px;">
+            <p>Utilisateur: <strong id="security-username">-</strong></p>
+            <div class="actions">
+                <button class="button" onclick="showChangePasswordForm()">Changer le mot de passe</button>
+            </div>
+        </div>
+
+        <div id="change-password-form" style="display: none; margin-top: 15px;">
+            <div class="form-field">
+                <label class="form-label">Ancien mot de passe</label>
+                <input class="form-input" type="password" id="old-password" placeholder="Ancien mot de passe">
+            </div>
+            <div class="form-field">
+                <label class="form-label">Nouveau mot de passe</label>
+                <input class="form-input" type="password" id="new-password" placeholder="Minimum 8 caractères">
+            </div>
+            <div class="actions">
+                <button class="button success" onclick="changePassword()">Confirmer</button>
+                <button class="button" onclick="hideChangePasswordForm()">Annuler</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="ui-card" style="margin-top: 20px;">
+        <div class="ui-card__title">API Keys</div>
+        <div id="api-keys-list" style="margin-top: 10px;">
+            <p>Chargement...</p>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/app.js"></script>
+{% endblock %}

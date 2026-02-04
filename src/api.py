@@ -1,6 +1,6 @@
 # api.py
 from fastapi import FastAPI, HTTPException, Query, Request, Cookie
-from fastapi.responses import Response, HTMLResponse, JSONResponse
+from fastapi.responses import Response, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
@@ -863,11 +863,7 @@ async def login_page(request: Request):
     return templates.TemplateResponse("pages/login.html", {"request": request, "version": APP_VERSION})
 
 
-@app.get("/", response_class=HTMLResponse)
-async def web_ui(request: Request):
-    """Interface web principale - Redirection serveur si non authentifié"""
-    from fastapi.responses import RedirectResponse
-
+def _ui_context_or_redirect(request: Request):
     # Premier lancement ? Rediriger vers setup
     first_run = setup.is_first_run()
     if first_run:
@@ -888,19 +884,84 @@ async def web_ui(request: Request):
         authenticated = False
         username = ""
 
-    # Authentifié ou auth désactivée : retourner le HTML
-    return templates.TemplateResponse("pages/dashboard.html", {
+    return {
         "request": request,
         "first_run": first_run,
         "auth_enabled": auth_enabled,
         "authenticated": authenticated,
         "username": username,
         "version": APP_VERSION
-    })
+    }
+
+
+@app.get("/", response_class=HTMLResponse)
+async def web_ui(request: Request):
+    """Interface web principale - Redirection serveur si non authentifié"""
+    ctx = _ui_context_or_redirect(request)
+    if isinstance(ctx, RedirectResponse):
+        return ctx
+
+    # Authentifié ou auth désactivée : retourner le HTML
+    return templates.TemplateResponse("pages/overview.html", ctx)
 
 
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard_page(request: Request):
     """Page dashboard (alias de /)"""
-    # Utiliser la même logique que la route /
-    return await web_ui(request)
+    return RedirectResponse(url='/overview', status_code=302)
+
+
+@app.get("/overview", response_class=HTMLResponse)
+async def overview_page(request: Request):
+    ctx = _ui_context_or_redirect(request)
+    if isinstance(ctx, RedirectResponse):
+        return ctx
+    return templates.TemplateResponse("pages/overview.html", ctx)
+
+
+@app.get("/grabs", response_class=HTMLResponse)
+async def grabs_page(request: Request):
+    ctx = _ui_context_or_redirect(request)
+    if isinstance(ctx, RedirectResponse):
+        return ctx
+    return templates.TemplateResponse("pages/grabs.html", ctx)
+
+
+@app.get("/torrents", response_class=HTMLResponse)
+async def torrents_page(request: Request):
+    ctx = _ui_context_or_redirect(request)
+    if isinstance(ctx, RedirectResponse):
+        return ctx
+    return templates.TemplateResponse("pages/torrents.html", ctx)
+
+
+@app.get("/rss-ui", response_class=HTMLResponse)
+async def rss_ui_page(request: Request):
+    ctx = _ui_context_or_redirect(request)
+    if isinstance(ctx, RedirectResponse):
+        return ctx
+    return templates.TemplateResponse("pages/rss.html", ctx)
+
+
+@app.get("/config", response_class=HTMLResponse)
+async def configuration_page(request: Request):
+    ctx = _ui_context_or_redirect(request)
+    if isinstance(ctx, RedirectResponse):
+        return ctx
+    return templates.TemplateResponse("pages/configuration.html", ctx)
+
+
+@app.get("/security", response_class=HTMLResponse)
+async def security_page(request: Request):
+    ctx = _ui_context_or_redirect(request)
+    if isinstance(ctx, RedirectResponse):
+        return ctx
+    return templates.TemplateResponse("pages/security.html", ctx)
+
+
+@app.get("/logs", response_class=HTMLResponse)
+async def logs_page(request: Request):
+    ctx = _ui_context_or_redirect(request)
+    if isinstance(ctx, RedirectResponse):
+        return ctx
+    return templates.TemplateResponse("pages/logs.html", ctx)

@@ -1,1 +1,1 @@
-// Entrée future Alpine.js
+// Source JS pour Alpine (entrée unique).

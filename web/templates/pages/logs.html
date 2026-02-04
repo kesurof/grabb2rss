@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% from "partials/ui_components.html" import table_state, alert %}
+
+{% block title %}Logs & Diagnostics - Grabb2RSS{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/app.css">
+{% endblock %}
+
+{% block legacy_css %}{% endblock %}
+
+{% block content %}
+<section class="page">
+    <h1>Logs & Diagnostics</h1>
+    <p class="subtitle">Historique des synchronisations, diagnostics et actions de maintenance.</p>
+
+    <div class="filter-bar">
+        <label class="form-label" for="log-level-filter">Niveau</label>
+        <select id="log-level-filter" class="form-select" onchange="loadSystemLogs()">
+            <option value="all">Tous</option>
+            <option value="success">Succès</option>
+            <option value="error">Erreurs</option>
+            <option value="warning">Avertissements</option>
+            <option value="info">Informations</option>
+        </select>
+        <button class="button danger" onclick="purgeAllLogs()" style="margin-left: auto;">Vider tous les logs</button>
+    </div>
+
+    <table class="ui-table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Statut</th>
+                <th>Grabs</th>
+                <th>Doublons</th>
+                <th>Erreur</th>
+            </tr>
+        </thead>
+        <tbody id="logs-table">
+            <tr>
+                <td colspan="5">{{ table_state("Chargement...", "loading") }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div style="margin-top: 24px;">
+        {{ alert("Les logs affichent l'historique des synchronisations. Vous pouvez filtrer ou purger l'historique.", "info") }}
+    </div>
+
+    <h2 style="margin-top: 30px;">Logs système</h2>
+    <div id="system-logs-container" style="margin-top: 10px;">
+        <p>Chargement des logs...</p>
+    </div>
+
+    <h2 style="margin-top: 30px;">Test des limites d'historique</h2>
+    <div id="history-test-results" style="display: none;">
+        <div class="ui-card">
+            <div class="ui-card__title">Résultats du test</div>
+            <div id="history-test-timestamp" class="form-help"></div>
+            <pre id="history-test-content" style="margin-top: 10px;"></pre>
+            <div style="margin-top: 10px; text-align: right;">
+                <a id="history-test-download" href="#" class="button">Télécharger JSON</a>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/app.js"></script>
+{% endblock %}

@@ -1,1 +1,28 @@
-/* Entrée future Tailwind CSS */
+/* Source CSS pour le build Tailwind (entrée unique). */
+
+/* Tokens UI (étape 3) */
+:root {
+    --ui-color-primary: #2563eb;
+    --ui-color-primary-contrast: #ffffff;
+    --ui-color-neutral-900: #0b1220;
+    --ui-color-neutral-800: #111827;
+    --ui-color-neutral-700: #1f2937;
+    --ui-color-neutral-500: #6b7280;
+    --ui-color-neutral-300: #d1d5db;
+    --ui-color-success: #16a34a;
+    --ui-color-warning: #d97706;
+    --ui-color-danger: #dc2626;
+    --ui-color-info: #0ea5e9;
+    --ui-radius-sm: 6px;
+    --ui-radius-md: 10px;
+    --ui-radius-lg: 14px;
+    --ui-space-1: 4px;
+    --ui-space-2: 8px;
+    --ui-space-3: 12px;
+    --ui-space-4: 16px;
+    --ui-space-5: 20px;
+    --ui-space-6: 24px;
+    --ui-font-body: "Segoe UI", sans-serif;
+    --ui-font-mono: "Courier New", monospace;
+    --ui-shadow-md: 0 8px 20px rgba(0, 0, 0, 0.35);
+}

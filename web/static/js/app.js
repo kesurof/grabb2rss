@@ -8,6 +8,22 @@ let trackerChartInstance = null;
 let grabsByDayChartInstance = null;
 let topTorrentsChartInstance = null;
 
+// ==================== NOTIFICATIONS ====================
+
+function showNotification(message, type = 'info') {
+    const existing = document.querySelector('.ui-toast');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.className = `ui-toast ui-toast--${type}`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+
+    setTimeout(() => {
+        toast.remove();
+    }, 3000);
+}
+
 // ==================== UTILITY FUNCTIONS ====================
 
 function getRssBaseUrl() {
@@ -1254,6 +1270,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
     }
 
+    initDrawer();
+
     // Dashboard initialization
     try {
         // 1. Vérifier si c'est le premier lancement (setup requis)
@@ -1282,6 +1300,71 @@ document.addEventListener('DOMContentLoaded', async () => {
         alert("Erreur lors du chargement de l'application. Vérifiez la console (F12).");
     }
 });
+
+// ==================== DRAWER NAVIGATION ====================
+
+function initDrawer() {
+    const toggleBtn = document.getElementById('drawer-toggle');
+    const drawer = document.getElementById('app-drawer');
+    const overlay = document.getElementById('drawer-overlay');
+
+    if (!toggleBtn || !drawer || !overlay) return;
+
+    let lastFocused = null;
+
+    const openDrawer = () => {
+        lastFocused = document.activeElement;
+        document.body.classList.add('drawer-open');
+        overlay.hidden = false;
+        drawer.setAttribute('aria-hidden', 'false');
+        toggleBtn.setAttribute('aria-expanded', 'true');
+
+        const focusTarget = drawer.querySelector('a, button, input, [tabindex]:not([tabindex="-1"])') || drawer;
+        focusTarget.focus();
+    };
+
+    const closeDrawer = () => {
+        document.body.classList.remove('drawer-open');
+        overlay.hidden = true;
+        drawer.setAttribute('aria-hidden', 'true');
+        toggleBtn.setAttribute('aria-expanded', 'false');
+        if (lastFocused) {
+            lastFocused.focus();
+        } else {
+            toggleBtn.focus();
+        }
+    };
+
+    toggleBtn.addEventListener('click', () => {
+        if (document.body.classList.contains('drawer-open')) {
+            closeDrawer();
+        } else {
+            openDrawer();
+        }
+    });
+
+    overlay.addEventListener('click', () => closeDrawer());
+
+    drawer.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closeDrawer();
+        }
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && document.body.classList.contains('drawer-open')) {
+            event.preventDefault();
+            closeDrawer();
+        }
+    });
+
+    drawer.querySelectorAll('a').forEach(link => {
+        link.addEventListener('click', () => {
+            setTimeout(() => closeDrawer(), 0);
+        });
+    });
+}
 
 // Event listener for torrent checkboxes
 document.addEventListener('change', (e) => {

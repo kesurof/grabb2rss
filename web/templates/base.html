@@ -4,11 +4,24 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Grabb2RSS{% endblock %}</title>
-    <link rel="stylesheet" href="/static/css/style.css">
     {% block extra_css %}{% endblock %}
 </head>
 <body {% block body_class %}{% endblock %}>
-    {% block content %}{% endblock %}
+    {% block shell %}
+    <div class="app-shell">
+        {% include "partials/sidebar.html" %}
+        <div class="app-main">
+            {% include "partials/topbar.html" %}
+            <main class="app-content">
+                {% block content %}{% endblock %}
+            </main>
+        </div>
+    </div>
+    <div class="app-overlay" id="drawer-overlay" hidden></div>
+    <aside class="app-drawer" id="app-drawer" role="dialog" aria-modal="true" aria-hidden="true" tabindex="-1">
+        {% include "partials/sidebar.html" %}
+    </aside>
+    {% endblock %}
 
     {% block scripts %}{% endblock %}
 </body>

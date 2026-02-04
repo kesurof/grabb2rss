@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% from "partials/ui_components.html" import alert %}
+
+{% block title %}Configuration - Grabb2RSS{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/app.css">
+{% endblock %}
+
+{% block legacy_css %}{% endblock %}
+
+{% block content %}
+<section class="page">
+    <h1>Configuration</h1>
+    <p class="subtitle">Paramètres applicatifs organisés par catégories.</p>
+
+    <div id="config-form"></div>
+
+    <div class="actions" style="margin-top: 20px;">
+        <button class="button success" onclick="saveConfig()">Sauvegarder</button>
+        <button class="button" onclick="loadConfig()">Recharger</button>
+    </div>
+
+    <div style="margin-top: 20px;">
+        {{ alert("Recommandation: ajustez les workers selon CPU/RAM en production.", "info") }}
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/app.js"></script>
+{% endblock %}

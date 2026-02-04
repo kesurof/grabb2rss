@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "partials/ui_components.html" import alert %}
+
+{% block title %}Flux RSS - Grabb2RSS{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/app.css">
+{% endblock %}
+
+{% block legacy_css %}{% endblock %}
+
+{% block content %}
+<section class="page">
+    <h1>Flux RSS</h1>
+    <p class="subtitle">Gérez vos clés API et URLs RSS pour accéder aux flux.</p>
+
+    {{ alert("Générez une clé API pour activer les URLs RSS externes.", "info") }}
+
+    <div id="api-keys-container"></div>
+
+    <h2>URLs RSS Disponibles</h2>
+    <div id="rss-urls-container"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/rss-manager.js"></script>
+{% endblock %}

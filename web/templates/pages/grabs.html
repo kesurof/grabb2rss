@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "partials/ui_components.html" import table_state %}
+
+{% block title %}Grabs - Grabb2RSS{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/app.css">
+{% endblock %}
+
+{% block legacy_css %}{% endblock %}
+
+{% block content %}
+<section class="page">
+    <h1>Grabs</h1>
+    <p class="subtitle">Derniers grabs enregistrés avec filtre tracker.</p>
+
+    <div class="filter-bar">
+        <label class="form-label" for="tracker-filter-grabs">Filtrer par tracker</label>
+        <select id="tracker-filter-grabs" class="form-select" onchange="filterGrabs()">
+            <option value="all">Tous les trackers</option>
+        </select>
+    </div>
+
+    <table class="ui-table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Titre</th>
+                <th>Tracker</th>
+                <th>Fichier</th>
+            </tr>
+        </thead>
+        <tbody id="grabs-table">
+            <tr>
+                <td colspan="4">
+                    {{ table_state("Chargement...", "loading") }}
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/app.js"></script>
+{% endblock %}

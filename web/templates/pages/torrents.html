@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% from "partials/ui_components.html" import table_state %}
+
+{% block title %}Torrents - Grabb2RSS{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/app.css">
+{% endblock %}
+
+{% block legacy_css %}{% endblock %}
+
+{% block content %}
+<section class="page">
+    <h1>Torrents</h1>
+    <p class="subtitle">Gestion des fichiers torrents et actions groupées.</p>
+
+    <div class="grid" style="margin-bottom: 20px;">
+        <div class="ui-card">
+            <div class="ui-card__title">Total fichiers</div>
+            <div class="ui-card__value" id="torrents-total">-</div>
+        </div>
+        <div class="ui-card">
+            <div class="ui-card__title">Taille totale</div>
+            <div class="ui-card__value"><span id="torrents-size">-</span> MB</div>
+        </div>
+        <div class="ui-card">
+            <div class="ui-card__title">Avec grab</div>
+            <div class="ui-card__value" id="torrents-with-grab">-</div>
+        </div>
+        <div class="ui-card">
+            <div class="ui-card__title">Orphelins</div>
+            <div class="ui-card__value" id="torrents-orphans">-</div>
+        </div>
+    </div>
+
+    <div class="actions" style="margin-bottom: 20px;">
+        <button class="button" onclick="loadTorrents()">Actualiser</button>
+        <button class="button" onclick="cleanupOrphanTorrents()">Nettoyer orphelins</button>
+        <button class="button danger" onclick="purgeAllTorrents()">Vider tous les torrents</button>
+    </div>
+
+    <table class="ui-table">
+        <thead>
+            <tr>
+                <th style="width: 40px;">
+                    <input type="checkbox" id="select-all-torrents" onchange="toggleAllTorrents()">
+                </th>
+                <th>Fichier</th>
+                <th>Titre</th>
+                <th>Tracker</th>
+                <th>Date Grab</th>
+                <th>Taille</th>
+                <th>Statut</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="torrents-table">
+            <tr>
+                <td colspan="8">
+                    {{ table_state("Chargement...", "loading") }}
+                </td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="actions" style="margin-top: 20px;" id="bulk-actions">
+        <button class="button danger" onclick="deleteBulkTorrents()">Supprimer la sélection</button>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/app.js"></script>
+{% endblock %}
