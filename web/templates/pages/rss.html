@@ -11,17 +11,26 @@
 {% block legacy_css %}{% endblock %}
 
 {% block content %}
-<section class="page">
-    <h1>Flux RSS</h1>
-    <p class="subtitle">Gérez vos clés API et URLs RSS pour accéder aux flux.</p>
+<div class="page-shell">
+    <div class="page-header">
+        <h1>Flux RSS</h1>
+        <p class="page-desc">Gérez vos clés API et URLs RSS pour accéder aux flux.</p>
+    </div>
 
-    {{ alert("Générez une clé API pour activer les URLs RSS externes.", "info") }}
+    <div class="page-section page-section--subtle">
+        {{ alert("Générez une clé API pour activer les URLs RSS externes.", "info") }}
+    </div>
 
-    <div id="api-keys-container"></div>
+    <div class="page-section">
+        <div class="section-header">Clés API</div>
+        <div id="api-keys-container"></div>
+    </div>
 
-    <h2>URLs RSS Disponibles</h2>
-    <div id="rss-urls-container"></div>
-</section>
+    <div class="page-section">
+        <div class="section-header">URLs RSS disponibles</div>
+        <div id="rss-urls-container"></div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}

@@ -11,64 +11,73 @@
 {% block legacy_css %}{% endblock %}
 
 {% block content %}
-<section class="page">
-    <h1>Overview</h1>
-    <p class="subtitle">Synthèse de l'activité et actions rapides.</p>
+<div class="page-shell">
+    <div class="page-header">
+        <h1>Overview</h1>
+        <p class="page-desc">Synthèse de l'activité et actions rapides.</p>
+    </div>
 
-    {{ alert("Votre convertisseur Prowlarr → RSS est opérationnel.", "info") }}
+    <div class="page-section page-section--subtle">
+        {{ alert("Votre convertisseur Prowlarr → RSS est opérationnel.", "info") }}
+    </div>
 
-    <div class="grid" style="margin-top: 20px;">
-        <div class="ui-card">
-            <div class="ui-card__title">Total Grabs</div>
-            <div class="ui-card__value" id="total-grabs">-</div>
+    <div class="page-section">
+        <div class="section-header">Indicateurs clés</div>
+        <div class="section-grid">
+            <div class="ui-card">
+                <div class="ui-card__title">Total Grabs</div>
+                <div class="ui-card__value" id="total-grabs">-</div>
+            </div>
+            <div class="ui-card">
+                <div class="ui-card__title">Fichiers Torrents</div>
+                <div class="ui-card__value" id="dashboard-torrent-count">-</div>
+            </div>
+            <div class="ui-card">
+                <div class="ui-card__title">Stockage Total</div>
+                <div class="ui-card__value"><span id="storage-size">-</span> MB</div>
+            </div>
+            <div class="ui-card">
+                <div class="ui-card__title">Statut Sync</div>
+                <div class="ui-card__value" id="sync-status">-</div>
+            </div>
         </div>
-        <div class="ui-card">
-            <div class="ui-card__title">Fichiers Torrents</div>
-            <div class="ui-card__value" id="dashboard-torrent-count">-</div>
-        </div>
-        <div class="ui-card">
-            <div class="ui-card__title">Stockage Total</div>
-            <div class="ui-card__value"><span id="storage-size">-</span> MB</div>
-        </div>
-        <div class="ui-card">
-            <div class="ui-card__title">Statut Sync</div>
-            <div class="ui-card__value" id="sync-status">-</div>
+
+        <div class="actions-bar">
+            <button class="btn btn-primary" id="sync-btn" onclick="syncNow()">Synchroniser</button>
+            <button class="btn btn-secondary" onclick="refreshData()">Actualiser</button>
+            <button class="btn btn-secondary" onclick="purgeAllGrabs()">Vider tous les grabs</button>
         </div>
     </div>
 
-    <div class="actions" style="margin-top: 20px;">
-        <button class="button" onclick="refreshData()">Actualiser</button>
-        <button class="button success" id="sync-btn" onclick="syncNow()">Synchroniser</button>
-        <button class="button danger" onclick="purgeAllGrabs()">Vider tous les grabs</button>
-    </div>
-
-    <h2 style="margin-top: 30px;">Statistiques</h2>
-    <div class="grid" style="margin-top: 15px;">
-        <div class="ui-card">
-            <div class="ui-card__title">Trackers Actifs</div>
-            <div class="ui-card__value" id="dashboard-trackers-count">-</div>
-        </div>
-        <div class="ui-card">
-            <div class="ui-card__title">Grabs Aujourd'hui</div>
-            <div class="ui-card__value" id="dashboard-grabs-today">-</div>
-        </div>
-        <div class="ui-card">
-            <div class="ui-card__title">Uptime</div>
-            <div class="ui-card__value" id="dashboard-uptime">-</div>
-        </div>
-        <div class="ui-card">
-            <div class="ui-card__title">Prochaine Sync</div>
-            <div class="ui-card__value" id="next-sync">-</div>
+    <div class="page-section">
+        <div class="section-header">Statistiques</div>
+        <div class="section-grid">
+            <div class="ui-card">
+                <div class="ui-card__title">Trackers Actifs</div>
+                <div class="ui-card__value" id="dashboard-trackers-count">-</div>
+            </div>
+            <div class="ui-card">
+                <div class="ui-card__title">Grabs Aujourd'hui</div>
+                <div class="ui-card__value" id="dashboard-grabs-today">-</div>
+            </div>
+            <div class="ui-card">
+                <div class="ui-card__title">Uptime</div>
+                <div class="ui-card__value" id="dashboard-uptime">-</div>
+            </div>
+            <div class="ui-card">
+                <div class="ui-card__title">Prochaine Sync</div>
+                <div class="ui-card__value" id="next-sync">-</div>
+            </div>
         </div>
     </div>
 
-    <div class="ui-card" style="margin-top: 30px;">
-        <div class="ui-card__title">Charts</div>
-        <div style="height: 260px; margin-top: 10px;">
+    <div class="page-section">
+        <div class="section-header">Charts</div>
+        <div style="height: 260px;">
             <canvas id="trackerChart"></canvas>
         </div>
     </div>
-</section>
+</div>
 {% endblock %}
 
 {% block scripts %}

@@ -14,161 +14,142 @@
 {% endblock %}
 
 {% block content %}
-    <div class="container" data-first-run="{{ 'true' if first_run else 'false' }}" data-config-exists="{{ 'true' if config_exists else 'false' }}">
-        <header>
-            <h1>🚀 Bienvenue sur grabb2RSS</h1>
-            <p class="subtitle">Configuration initiale</p>
-        </header>
+    <div class="page-shell" data-first-run="{{ 'true' if first_run else 'false' }}" data-config-exists="{{ 'true' if config_exists else 'false' }}">
+        <div class="page-header">
+            <h1>Configuration initiale</h1>
+            <p class="page-desc">Renseignez vos services externes et paramètres de base pour démarrer.</p>
+        </div>
 
         <div id="alert" class="alert"></div>
         <div id="loading" class="loading" data-role="loading">
             <div class="spinner"></div>
-            <p style="margin-top: 15px; color: #888;">Validation et sauvegarde en cours...</p>
+            <p class="section-note">Validation et sauvegarde en cours...</p>
         </div>
 
         <form id="setupForm">
-            <!-- Applications Grid Layout -->
-            <div class="apps-grid">
-                <!-- Prowlarr (Obligatoire) -->
-                <div class="section">
-                    <div class="section-title">🔍 Prowlarr (Obligatoire)</div>
-                    <div class="form-group">
-                        <label>
-                            URL de Prowlarr <span class="required">*</span>
-                        </label>
-                        <input type="url" id="prowlarr_url" name="prowlarr_url"
-                               value="http://prowlarr:9696" placeholder="http://prowlarr:9696" required>
-                        <div class="help-text">
-                            URL complète de votre instance Prowlarr (avec le port)
+            <div class="page-section">
+                <div class="section-header">Services externes</div>
+                <div class="section-note">Ajoutez les URL et clés API de vos services. Les champs obligatoires sont marqués.</div>
+
+                <div class="section-grid">
+                    <div class="service-card">
+                        <div class="service-title"><span>🔍</span>Prowlarr</div>
+                        <div class="form-field">
+                            <label class="form-label">URL <span class="required">*</span></label>
+                            <input class="form-input" type="url" id="prowlarr_url" name="prowlarr_url"
+                                   value="http://prowlarr:9696" placeholder="http://prowlarr:9696" required>
+                            <div class="form-help">URL complète de l’instance (avec port).</div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Clé API <span class="required">*</span></label>
+                            <input class="form-input" type="text" id="prowlarr_api_key" name="prowlarr_api_key"
+                                   placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" required>
+                            <div class="form-help">Prowlarr → Paramètres → Sécurité.</div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Historique</label>
+                            <input class="form-input" type="number" id="prowlarr_history_page_size"
+                                   name="prowlarr_history_page_size" value="500" min="100" max="1000">
+                            <div class="form-help">Grabs récupérés par sync (défaut 500).</div>
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label>
-                            Clé API Prowlarr <span class="required">*</span>
-                        </label>
-                        <input type="text" id="prowlarr_api_key" name="prowlarr_api_key"
-                               placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" required>
-                        <div class="help-text">
-                            Prowlarr &gt; Paramètres &gt; Général &gt; Sécurité
+
+                    <div class="service-card">
+                        <div class="service-title"><span>🎬</span>Radarr</div>
+                        <div class="form-field">
+                            <label class="form-label">URL <span class="required">*</span></label>
+                            <input class="form-input" type="url" id="radarr_url" name="radarr_url"
+                                   value="http://radarr:7878" placeholder="http://radarr:7878" required>
+                            <div class="form-help">URL complète de l’instance.</div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Clé API <span class="required">*</span></label>
+                            <input class="form-input" type="text" id="radarr_api_key" name="radarr_api_key"
+                                   placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" required>
+                            <div class="form-help">Radarr → Paramètres → Sécurité.</div>
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label>Taille de l'historique</label>
-                        <input type="number" id="prowlarr_history_page_size"
-                               name="prowlarr_history_page_size" value="500" min="100" max="1000">
-                        <div class="help-text">Nombre de grabs à récupérer par sync (défaut: 500)</div>
-                    </div>
-                </div>
 
-                <!-- Radarr (Obligatoire) -->
-                <div class="section">
-                    <div class="section-title">🎬 Radarr (Obligatoire)</div>
-                    <div class="form-group">
-                        <label>
-                            URL de Radarr <span class="required">*</span>
-                        </label>
-                        <input type="url" id="radarr_url" name="radarr_url"
-                               value="http://radarr:7878" placeholder="http://radarr:7878" required>
-                        <div class="help-text">URL complète de votre instance Radarr</div>
-                    </div>
-                    <div class="form-group">
-                        <label>
-                            Clé API Radarr <span class="required">*</span>
-                        </label>
-                        <input type="text" id="radarr_api_key" name="radarr_api_key"
-                               placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" required>
-                        <div class="help-text">Radarr &gt; Paramètres &gt; Général &gt; Sécurité</div>
-                    </div>
-                </div>
-
-                <!-- Sonarr (Obligatoire) -->
-                <div class="section">
-                    <div class="section-title">📺 Sonarr (Obligatoire)</div>
-                    <div class="form-group">
-                        <label>
-                            URL de Sonarr <span class="required">*</span>
-                        </label>
-                        <input type="url" id="sonarr_url" name="sonarr_url"
-                               value="http://sonarr:8989" placeholder="http://sonarr:8989" required>
-                        <div class="help-text">URL complète de votre instance Sonarr</div>
-                    </div>
-                    <div class="form-group">
-                        <label>
-                            Clé API Sonarr <span class="required">*</span>
-                        </label>
-                        <input type="text" id="sonarr_api_key" name="sonarr_api_key"
-                               placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" required>
-                        <div class="help-text">Sonarr &gt; Paramètres &gt; Général &gt; Sécurité</div>
+                    <div class="service-card">
+                        <div class="service-title"><span>📺</span>Sonarr</div>
+                        <div class="form-field">
+                            <label class="form-label">URL <span class="required">*</span></label>
+                            <input class="form-input" type="url" id="sonarr_url" name="sonarr_url"
+                                   value="http://sonarr:8989" placeholder="http://sonarr:8989" required>
+                            <div class="form-help">URL complète de l’instance.</div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Clé API <span class="required">*</span></label>
+                            <input class="form-input" type="text" id="sonarr_api_key" name="sonarr_api_key"
+                                   placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" required>
+                            <div class="form-help">Sonarr → Paramètres → Sécurité.</div>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Paramètres avancés -->
-            <div class="section">
-                <div class="section-title">⚙️ Paramètres</div>
-                <div class="form-group">
-                    <label>Intervalle de synchronisation (secondes)</label>
-                    <input type="number" id="sync_interval" name="sync_interval" value="3600">
-                    <div class="help-text">Fréquence de synchronisation avec Prowlarr (3600 = 1 heure)</div>
+            <div class="page-section">
+                <div class="section-header">Paramètres</div>
+                <div class="section-grid">
+                    <div class="service-card">
+                        <div class="form-field">
+                            <label class="form-label">Intervalle de synchronisation</label>
+                            <input class="form-input" type="number" id="sync_interval" name="sync_interval" value="3600">
+                            <div class="form-help">Secondes entre chaque sync (3600 = 1h).</div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Rétention torrents</label>
+                            <input class="form-input" type="number" id="retention_hours" name="retention_hours" value="168">
+                            <div class="form-help">Durée de conservation (168 = 7 jours).</div>
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="auto_purge" name="auto_purge" checked>
+                            <label for="auto_purge" class="form-label" style="margin: 0;">Purge automatique des anciens torrents</label>
+                        </div>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>Rétention des torrents (heures)</label>
-                    <input type="number" id="retention_hours" name="retention_hours" value="168">
-                    <div class="help-text">Durée de conservation des torrents (168 = 7 jours)</div>
-                </div>
+            </div>
+
+            <div class="page-section page-section--subtle">
+                <div class="section-header">Sécurité (recommandée)</div>
+                <div class="section-note">Ajoutez une authentification pour protéger l’accès à l’interface.</div>
+
                 <div class="checkbox-group">
-                    <input type="checkbox" id="auto_purge" name="auto_purge" checked>
-                    <label for="auto_purge" class="form-label" style="margin: 0;">
-                        Purge automatique des anciens torrents
-                    </label>
-                </div>
-            </div>
-
-            <!-- Section: Authentification -->
-            <div class="section">
-                <div class="section-title">🔐 Authentification (Optionnel mais Recommandé)</div>
-                <div class="alert-info" style="background: #003366; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #1e90ff;">
-                    <strong>💡 Protection de votre interface</strong><br>
-                    <span style="font-size: 13px; color: #ddd;">
-                        Activez l'authentification pour protéger l'accès à votre interface web.
-                        Les flux RSS locaux resteront accessibles sans authentification,
-                        mais vous pourrez générer des API Keys pour l'accès externe.
-                    </span>
-                </div>
-                <div class="checkbox-group" style="margin-bottom: 20px;">
                     <input type="checkbox" id="auth_enabled" name="auth_enabled" data-action="toggle-auth">
                     <label for="auth_enabled" class="form-label" style="margin: 0; font-weight: 600; color: #1e90ff;">
                         ✅ Activer l'authentification
                     </label>
                 </div>
                 <div id="auth_fields" style="display: none;">
-                    <div class="form-group">
-                        <label>Nom d'utilisateur <span class="required">*</span></label>
-                        <input type="text" id="auth_username" name="auth_username"
+                    <div class="form-field">
+                        <label class="form-label">Nom d'utilisateur <span class="required">*</span></label>
+                        <input class="form-input" type="text" id="auth_username" name="auth_username"
                                placeholder="admin" autocomplete="username">
-                        <div class="help-text">Choisissez un nom d'utilisateur pour vous connecter</div>
+                        <div class="form-help">Identifiant de connexion.</div>
                     </div>
-                    <div class="form-group">
-                        <label>Mot de passe <span class="required">*</span></label>
-                        <input type="password" id="auth_password" name="auth_password"
+                    <div class="form-field">
+                        <label class="form-label">Mot de passe <span class="required">*</span></label>
+                        <input class="form-input" type="password" id="auth_password" name="auth_password"
                                placeholder="Mot de passe sécurisé" autocomplete="new-password">
-                        <div class="help-text">Minimum 8 caractères recommandés</div>
+                        <div class="form-help">Minimum 8 caractères.</div>
                     </div>
                 </div>
             </div>
 
-            <!-- Boutons -->
-            <div class="button-group">
-                <button type="button" class="btn btn-secondary" data-action="test-connection">
-                    🔌 Tester la connexion
-                </button>
-                <button type="submit" class="btn btn-primary" data-action="submit-setup">
-                    ✅ Enregistrer et démarrer
-                </button>
+            <div class="page-section">
+                <div class="section-header">Actions finales</div>
+                <div class="actions-bar">
+                    <button type="submit" class="btn btn-primary" data-action="submit-setup">
+                        ✅ Enregistrer et démarrer
+                    </button>
+                    <button type="button" class="btn btn-secondary" data-action="test-connection">
+                        🔌 Tester la connexion
+                    </button>
+                </div>
             </div>
         </form>
 
-        <div style="margin-top: 30px; text-align: center; color: #777; font-size: 12px;">
+        <div class="section-note" style="text-align: center;">
             Version {{ version }}
         </div>
     </div>

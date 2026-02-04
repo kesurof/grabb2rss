@@ -11,19 +11,22 @@
 {% block legacy_css %}{% endblock %}
 
 {% block content %}
-<section class="page">
-    <h1>Sécurité</h1>
-    <p class="subtitle">Gérez votre compte et vos clés API.</p>
+<div class="page-shell">
+    <div class="page-header">
+        <h1>Sécurité</h1>
+        <p class="page-desc">Gérez votre compte et vos clés API de manière sereine.</p>
+    </div>
 
-    {{ alert("Les API keys permettent l'accès aux flux RSS depuis l'extérieur du réseau local.", "info") }}
+    <div class="page-section page-section--subtle">
+        <div class="section-header">Authentification</div>
+        <div class="section-note">Recommandée pour protéger l’accès à l’interface.</div>
+    </div>
 
-    <div class="ui-card" style="margin-top: 20px;">
-        <div class="ui-card__title">Mon compte</div>
-        <div style="margin-top: 10px;">
-            <p>Utilisateur: <strong id="security-username">-</strong></p>
-            <div class="actions">
-                <button class="button" onclick="showChangePasswordForm()">Changer le mot de passe</button>
-            </div>
+    <div class="page-section">
+        <div class="section-header">Mon compte</div>
+        <p>Utilisateur: <strong id="security-username">-</strong></p>
+        <div class="actions-bar">
+            <button class="btn btn-secondary" onclick="showChangePasswordForm()">Changer le mot de passe</button>
         </div>
 
         <div id="change-password-form" style="display: none; margin-top: 15px;">
@@ -35,20 +38,21 @@
                 <label class="form-label">Nouveau mot de passe</label>
                 <input class="form-input" type="password" id="new-password" placeholder="Minimum 8 caractères">
             </div>
-            <div class="actions">
-                <button class="button success" onclick="changePassword()">Confirmer</button>
-                <button class="button" onclick="hideChangePasswordForm()">Annuler</button>
+            <div class="actions-bar">
+                <button class="btn btn-primary" onclick="changePassword()">Confirmer</button>
+                <button class="btn btn-secondary" onclick="hideChangePasswordForm()">Annuler</button>
             </div>
         </div>
     </div>
 
-    <div class="ui-card" style="margin-top: 20px;">
-        <div class="ui-card__title">API Keys</div>
-        <div id="api-keys-list" style="margin-top: 10px;">
+    <div class="page-section">
+        <div class="section-header">API Keys</div>
+        <div class="section-note">Accès RSS externe possible via une clé active.</div>
+        <div id="api-keys-list">
             <p>Chargement...</p>
         </div>
     </div>
-</section>
+</div>
 {% endblock %}
 
 {% block scripts %}

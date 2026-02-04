@@ -11,63 +11,57 @@
 {% block legacy_css %}{% endblock %}
 
 {% block content %}
-<section class="page">
-    <h1>Logs & Diagnostics</h1>
-    <p class="subtitle">Historique des synchronisations, diagnostics et actions de maintenance.</p>
-
-    <div class="section-state section-state--error" data-role="section-error" hidden></div>
-    <div class="section-state section-state--empty" data-role="section-empty" hidden>Aucun log de synchronisation.</div>
-
-    <div class="filter-bar">
-        <label class="form-label" for="log-level-filter">Niveau</label>
-        <select id="log-level-filter" class="form-select" onchange="loadSystemLogs()">
-            <option value="all">Tous</option>
-            <option value="success">Succès</option>
-            <option value="error">Erreurs</option>
-            <option value="warning">Avertissements</option>
-            <option value="info">Informations</option>
-        </select>
-        <button class="button danger" onclick="purgeAllLogs()" style="margin-left: auto;">Vider tous les logs</button>
+<div class="page-shell">
+    <div class="page-header">
+        <h1>Logs & Diagnostics</h1>
+        <p class="page-desc">Historique des synchronisations, diagnostics et actions de maintenance.</p>
     </div>
 
-    <table class="ui-table">
-        <thead>
-            <tr>
-                <th>Date</th>
-                <th>Statut</th>
-                <th>Grabs</th>
-                <th>Doublons</th>
-                <th>Erreur</th>
-            </tr>
-        </thead>
-        <tbody id="logs-table" aria-live="polite" aria-busy="true">
-            <tr>
-                <td colspan="5" data-role="section-loading">{{ table_state("Chargement...", "loading") }}</td>
-            </tr>
-        </tbody>
-    </table>
-
-    <div style="margin-top: 24px;">
-        {{ alert("Les logs affichent l'historique des synchronisations. Vous pouvez filtrer ou purger l'historique.", "info") }}
+    <div class="page-section">
+        <div class="section-header">Filtres</div>
+        <div class="filter-bar">
+            <label class="form-label" for="log-level-filter">Niveau</label>
+            <select id="log-level-filter" class="form-select" onchange="loadSystemLogs()">
+                <option value="all">Tous</option>
+                <option value="success">Succès</option>
+                <option value="error">Erreurs</option>
+                <option value="warning">Avertissements</option>
+                <option value="info">Informations</option>
+            </select>
+            <button class="btn btn-secondary" onclick="purgeAllLogs()" style="margin-left: auto;">Vider tous les logs</button>
+        </div>
+        <div class="section-state section-state--error" data-role="section-error" hidden></div>
+        <div class="section-state section-state--empty" data-role="section-empty" hidden>Aucun log de synchronisation.</div>
     </div>
 
-    <h2 style="margin-top: 30px;">Logs système</h2>
-    <div id="system-logs-container" style="margin-top: 10px;">
-        <p>Chargement des logs...</p>
+    <div class="page-section">
+        <div class="section-header">Logs de synchronisation</div>
+        <table class="ui-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Statut</th>
+                    <th>Grabs</th>
+                    <th>Doublons</th>
+                    <th>Erreur</th>
+                </tr>
+            </thead>
+            <tbody id="logs-table" aria-live="polite" aria-busy="true">
+                <tr>
+                    <td colspan="5" data-role="section-loading">{{ table_state("Chargement...", "loading") }}</td>
+                </tr>
+            </tbody>
+        </table>
+        <div class="section-note">Filtrez ou purgez l’historique selon vos besoins.</div>
     </div>
 
-    <h2 style="margin-top: 30px;">Test des limites d'historique</h2>
-    <div id="history-test-results" style="display: none;">
-        <div class="ui-card">
-            <div class="ui-card__title">Résultats du test</div>
-            <div id="history-test-timestamp" class="form-help"></div>
-            <pre id="history-test-content" style="margin-top: 10px;"></pre>
-            <div style="margin-top: 10px; text-align: right;">
-                <a id="history-test-download" href="#" class="button">Télécharger JSON</a>
-            </div>
+    <div class="page-section">
+        <div class="section-header">Logs système</div>
+        <div id="system-logs-container">
+            <p>Chargement des logs...</p>
         </div>
     </div>
-</section>
+</div>
 {% endblock %}
 
 {% block scripts %}

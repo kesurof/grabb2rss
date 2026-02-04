@@ -11,21 +11,26 @@
 {% block legacy_css %}{% endblock %}
 
 {% block content %}
-<section class="page">
-    <h1>Configuration</h1>
-    <p class="subtitle">Paramètres applicatifs organisés par catégories.</p>
-
-    <div id="config-form"></div>
-
-    <div class="actions" style="margin-top: 20px;">
-        <button class="button success" onclick="saveConfig()">Sauvegarder</button>
-        <button class="button" onclick="loadConfig()">Recharger</button>
+<div class="page-shell">
+    <div class="page-header">
+        <h1>Configuration</h1>
+        <p class="page-desc">Paramètres applicatifs organisés par catégories.</p>
     </div>
 
-    <div style="margin-top: 20px;">
-        {{ alert("Recommandation: ajustez les workers selon CPU/RAM en production.", "info") }}
+    <div class="page-section">
+        <div class="section-header">Paramètres</div>
+        <div id="config-form"></div>
     </div>
-</section>
+
+    <div class="page-section page-section--subtle">
+        <div class="section-header">Actions</div>
+        <div class="actions-bar">
+            <button class="btn btn-primary" onclick="saveConfig()">Sauvegarder</button>
+            <button class="btn btn-secondary" onclick="loadConfig()">Recharger</button>
+        </div>
+        <div class="section-note">Recommandation: ajustez les workers selon CPU/RAM en production.</div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
