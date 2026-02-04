@@ -15,6 +15,9 @@
     <h1>Logs & Diagnostics</h1>
     <p class="subtitle">Historique des synchronisations, diagnostics et actions de maintenance.</p>
 
+    <div class="section-state section-state--error" data-role="section-error" hidden></div>
+    <div class="section-state section-state--empty" data-role="section-empty" hidden>Aucun log de synchronisation.</div>
+
     <div class="filter-bar">
         <label class="form-label" for="log-level-filter">Niveau</label>
         <select id="log-level-filter" class="form-select" onchange="loadSystemLogs()">
@@ -37,9 +40,9 @@
                 <th>Erreur</th>
             </tr>
         </thead>
-        <tbody id="logs-table">
+        <tbody id="logs-table" aria-live="polite" aria-busy="true">
             <tr>
-                <td colspan="5">{{ table_state("Chargement...", "loading") }}</td>
+                <td colspan="5" data-role="section-loading">{{ table_state("Chargement...", "loading") }}</td>
             </tr>
         </tbody>
     </table>

@@ -85,7 +85,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # Sinon, continuer la vérification auth normale
 
         # Routes RSS : API key OBLIGATOIRE (même en local)
-        if request.url.path.startswith('/rss') or request.url.path.startswith('/feed'):
+        # Exclure l'UI RSS (page HTML)
+        if (request.url.path.startswith('/rss') and not request.url.path.startswith('/rss-ui')) or request.url.path.startswith('/feed'):
             # Si auth désactivée, accès libre aux RSS
             if not is_auth_enabled():
                 return await call_next(request)

@@ -15,6 +15,9 @@
     <h1>Torrents</h1>
     <p class="subtitle">Gestion des fichiers torrents et actions groupées.</p>
 
+    <div class="section-state section-state--error" data-role="section-error" hidden></div>
+    <div class="section-state section-state--empty" data-role="section-empty" hidden>Aucun fichier torrent disponible.</div>
+
     <div class="grid" style="margin-bottom: 20px;">
         <div class="ui-card">
             <div class="ui-card__title">Total fichiers</div>
@@ -55,9 +58,9 @@
                 <th>Actions</th>
             </tr>
         </thead>
-        <tbody id="torrents-table">
+        <tbody id="torrents-table" aria-live="polite" aria-busy="true">
             <tr>
-                <td colspan="8">
+                <td colspan="8" data-role="section-loading">
                     {{ table_state("Chargement...", "loading") }}
                 </td>
             </tr>

@@ -45,9 +45,26 @@ function showNotification(message, type = 'info') {
     }, 3000);
 }
 
+function showPageError(message) {
+    const errorBox = document.querySelector('[data-role="page-error"]');
+    if (!errorBox) return;
+    errorBox.textContent = message;
+    errorBox.classList.add('is-visible');
+    errorBox.hidden = false;
+}
+
+function clearPageError() {
+    const errorBox = document.querySelector('[data-role="page-error"]');
+    if (!errorBox) return;
+    errorBox.textContent = '';
+    errorBox.classList.remove('is-visible');
+    errorBox.hidden = true;
+}
+
 function warnMissing(feature, selector) {
     console.warn(`UI: élément manquant pour ${feature}: ${selector}`);
-    showNotification(`UI incomplète: ${feature} (${selector})`, 'warning');
+    showPageError(`UI incomplète: ${feature}. Élément(s) manquant(s): ${selector}`);
+    showNotification(`UI incomplète: ${feature}`, 'warning');
 }
 
 function ensureElements(feature, selectors) {
@@ -1094,6 +1111,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const page = document.querySelector('.app-content')?.dataset.page;
     setActiveNav(page);
+    clearPageError();
 
     // Dashboard initialization
     try {
@@ -1147,7 +1165,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log("✅ Application initialisée");
     } catch (error) {
         console.error("❌ Erreur initialisation:", error);
-        alert("Erreur lors du chargement de l'application. Vérifiez la console (F12).");
+        showPageError("Erreur lors du chargement. Certaines sections peuvent être indisponibles.");
     }
 });
 

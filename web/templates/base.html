@@ -13,6 +13,7 @@
         <div class="app-main">
             {% include "partials/topbar.html" %}
             <main class="app-content" data-page="{% block page_id %}{% endblock %}">
+                <div class="page-error" data-role="page-error" hidden></div>
                 {% block content %}{% endblock %}
             </main>
         </div>

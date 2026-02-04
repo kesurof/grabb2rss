@@ -15,6 +15,9 @@
     <h1>Grabs</h1>
     <p class="subtitle">Derniers grabs enregistrés avec filtre tracker.</p>
 
+    <div class="section-state section-state--error" data-role="section-error" hidden></div>
+    <div class="section-state section-state--empty" data-role="section-empty" hidden>Aucun grab disponible.</div>
+
     <div class="filter-bar">
         <label class="form-label" for="tracker-filter-grabs">Filtrer par tracker</label>
         <select id="tracker-filter-grabs" class="form-select" onchange="filterGrabs()">
@@ -31,9 +34,9 @@
                 <th>Fichier</th>
             </tr>
         </thead>
-        <tbody id="grabs-table">
+        <tbody id="grabs-table" aria-live="polite" aria-busy="true">
             <tr>
-                <td colspan="4">
+                <td colspan="4" data-role="section-loading">
                     {{ table_state("Chargement...", "loading") }}
                 </td>
             </tr>

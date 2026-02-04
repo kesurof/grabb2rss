@@ -290,6 +290,34 @@ body.auth-page {
     color: #9ca3af;
 }
 
+/* Table state polish */
+.ui-table td[colspan] {
+    text-align: center;
+    color: #94a3b8 !important;
+    padding: 18px;
+    font-size: 13px;
+}
+
+.section-state {
+    display: none;
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 13px;
+}
+
+.section-state--error {
+    background: rgba(220, 38, 38, 0.12);
+    border: 1px solid rgba(220, 38, 38, 0.35);
+    color: #fecaca;
+}
+
+.section-state--empty {
+    background: rgba(148, 163, 184, 0.08);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    color: #cbd5f5;
+}
+
 /* Shared layout helpers for migrated pages */
 .page {
     max-width: 1200px;
@@ -342,6 +370,22 @@ body.auth-page {
     border: 1px solid #1f2937;
     border-radius: 10px;
     margin-bottom: 16px;
+}
+
+/* Page error banner */
+.page-error {
+    display: none;
+    margin-bottom: 16px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: rgba(220, 38, 38, 0.12);
+    border: 1px solid rgba(220, 38, 38, 0.35);
+    color: #fecaca;
+    font-size: 13px;
+}
+
+.page-error.is-visible {
+    display: block;
 }
 
 /* Setup page helpers (no legacy css) */
