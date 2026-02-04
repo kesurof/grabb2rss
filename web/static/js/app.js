@@ -1110,7 +1110,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     initDrawer();
 
     const page = document.querySelector('.app-content')?.dataset.page;
-    setActiveNav(page);
+    if (page) {
+        setActiveNav(page);
+    }
     clearPageError();
 
     // Dashboard initialization
@@ -1160,6 +1162,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             await loadApiKeys();
         } else if (page === 'setup') {
             initSetupPage();
+        } else {
+            // Fallback for pages that don't render the shell (e.g. setup)
+            if (document.querySelector('.page-shell[data-first-run][data-config-exists]')) {
+                initSetupPage();
+            }
         }
 
         console.log("✅ Application initialisée");
