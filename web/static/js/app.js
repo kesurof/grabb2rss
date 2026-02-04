@@ -8,6 +8,27 @@ let trackerChartInstance = null;
 let grabsByDayChartInstance = null;
 let topTorrentsChartInstance = null;
 
+// ==================== DOM HELPERS ====================
+
+function byId(id) {
+    return document.getElementById(id);
+}
+
+function setText(id, value) {
+    const el = byId(id);
+    if (el) el.textContent = value;
+}
+
+function setClass(id, value) {
+    const el = byId(id);
+    if (el) el.className = value;
+}
+
+function setHtml(id, value) {
+    const el = byId(id);
+    if (el) el.innerHTML = value;
+}
+
 // ==================== NOTIFICATIONS ====================
 
 function showNotification(message, type = 'info') {
@@ -24,75 +45,28 @@ function showNotification(message, type = 'info') {
     }, 3000);
 }
 
+function warnMissing(feature, selector) {
+    console.warn(`UI: élément manquant pour ${feature}: ${selector}`);
+    showNotification(`UI incomplète: ${feature} (${selector})`, 'warning');
+}
+
+function ensureElements(feature, selectors) {
+    const missing = selectors.filter(selector => !document.querySelector(selector));
+    if (missing.length) {
+        warnMissing(feature, missing.join(', '));
+        return false;
+    }
+    return true;
+}
+
+function setActiveNav(page) {
+    if (!page) return;
+    document.querySelectorAll('.app-sidebar__link').forEach(link => {
+        link.classList.toggle('is-active', link.dataset.page === page);
+    });
+}
+
 // ==================== UTILITY FUNCTIONS ====================
-
-function getRssBaseUrl() {
-    return window.location.origin;
-}
-
-// ==================== TAB MANAGEMENT ====================
-
-function switchTab(tab) {
-    // Remove active class from all tabs and buttons
-    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-    document.querySelectorAll('.tab-button').forEach(el => el.classList.remove('active'));
-
-    // Add active class to selected tab
-    const tabElement = document.getElementById(tab);
-    if (tabElement) {
-        tabElement.classList.add('active');
-    }
-
-    // Find and activate the corresponding button by searching for onclick with the tab name
-    const buttons = document.querySelectorAll('.tab-button');
-    buttons.forEach(btn => {
-        const onclick = btn.getAttribute('onclick');
-        if (onclick && onclick.includes(`'${tab}'`)) {
-            btn.classList.add('active');
-        }
-    });
-
-    // Load tab content
-    if (tab === 'config') loadConfig();
-    if (tab === 'logs') loadLogs();
-    if (tab === 'grabs') loadGrabs();
-    if (tab === 'torrents') loadTorrents();
-    if (tab === 'stats') loadStats();
-    if (tab === 'rss') loadRssUrls();
-    if (tab === 'admin') loadAdminTab();
-    if (tab === 'security') loadApiKeys();
-}
-
-// ==================== RSS FEEDS ====================
-
-function loadRssUrls() {
-    const baseUrl = getRssBaseUrl();
-    document.getElementById('rss-global-xml').textContent = baseUrl + '/rss';
-    document.getElementById('rss-global-json').textContent = baseUrl + '/rss/torrent.json';
-    updateTrackerRssUrls();
-}
-
-function updateTrackerRssUrls() {
-    const tracker = document.getElementById('tracker-filter-rss').value;
-    const baseUrl = getRssBaseUrl();
-
-    if (tracker === 'all') {
-        document.getElementById('rss-tracker-xml').textContent = baseUrl + '/rss';
-        document.getElementById('rss-tracker-json').textContent = baseUrl + '/rss/torrent.json';
-    } else {
-        document.getElementById('rss-tracker-xml').textContent = baseUrl + '/rss/tracker/' + encodeURIComponent(tracker);
-        document.getElementById('rss-tracker-json').textContent = baseUrl + '/rss/tracker/' + encodeURIComponent(tracker) + '/json';
-    }
-}
-
-function copyToClipboard(elementId) {
-    const text = document.getElementById(elementId).textContent;
-    navigator.clipboard.writeText(text).then(() => {
-        alert('✅ Copié dans le presse-papiers!');
-    }).catch(() => {
-        alert('❌ Erreur lors de la copie');
-    });
-}
 
 // ==================== TRACKERS ====================
 
@@ -104,7 +78,7 @@ async function loadTrackers() {
         const data = await res.json();
         allTrackers = data.trackers;
 
-        [document.getElementById('tracker-filter-grabs'), document.getElementById('tracker-filter-rss')].forEach(select => {
+        [byId('tracker-filter-grabs'), byId('tracker-filter-rss')].forEach(select => {
             if (!select) return;
             select.innerHTML = '<option value="all">Tous les trackers</option>';
             allTrackers.forEach(tracker => {
@@ -122,12 +96,14 @@ async function loadTrackers() {
 // ==================== GRABS ====================
 
 async function filterGrabs() {
-    const tracker = document.getElementById('tracker-filter-grabs').value;
+    const trackerSelect = byId('tracker-filter-grabs');
+    const tbody = byId('grabs-table');
+    if (!trackerSelect || !tbody) return;
+    const tracker = trackerSelect.value;
     const url = API_BASE + '/grabs?limit=100&tracker=' + encodeURIComponent(tracker);
 
     try {
         const grabs = await fetch(url).then(r => r.json());
-        const tbody = document.getElementById("grabs-table");
         tbody.innerHTML = grabs.length ? grabs.map(g =>
             '<tr>' +
             '<td class="date">' + new Date(g.grabbed_at).toLocaleString('fr-FR') + '</td>' +
@@ -282,32 +258,32 @@ async function refreshData() {
         ]);
 
         // Statistiques principales
-        document.getElementById("total-grabs").textContent = stats.total_grabs;
-        document.getElementById("storage-size").textContent = stats.storage_size_mb;
-        document.getElementById("latest-grab").textContent = stats.latest_grab ? new Date(stats.latest_grab).toLocaleString('fr-FR') : "-";
+        setText("total-grabs", stats.total_grabs);
+        setText("storage-size", stats.storage_size_mb);
+        setText("latest-grab", stats.latest_grab ? new Date(stats.latest_grab).toLocaleString('fr-FR') : "-");
 
         // Nouvelles statistiques dashboard
-        document.getElementById("dashboard-torrent-count").textContent = torrentsData.total;
+        setText("dashboard-torrent-count", torrentsData.total);
         const totalSize = torrentsData.torrents.reduce((acc, t) => acc + t.size_mb, 0);
-        document.getElementById("dashboard-torrent-size").textContent = totalSize.toFixed(2);
+        setText("dashboard-torrent-size", totalSize.toFixed(2));
 
         // Nombre de trackers différents
         const uniqueTrackers = new Set(stats.tracker_stats.map(t => t.tracker)).size;
-        document.getElementById("dashboard-trackers-count").textContent = uniqueTrackers;
+        setText("dashboard-trackers-count", uniqueTrackers);
 
         // Grabs aujourd'hui (dernières 24h)
         const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
         const grabsToday = stats.grabs_by_day[0]?.count || 0;
-        document.getElementById("dashboard-grabs-today").textContent = grabsToday;
+        setText("dashboard-grabs-today", grabsToday);
 
         // Uptime
         const uptime = detailedStats.system.uptime_seconds;
         const hours = Math.floor(uptime / 3600);
         const minutes = Math.floor((uptime % 3600) / 60);
-        document.getElementById("dashboard-uptime").textContent = hours + 'h ' + minutes + 'm';
+        setText("dashboard-uptime", hours + 'h ' + minutes + 'm');
 
         // Statut sync
-        const statusEl = document.getElementById("sync-status");
+        const statusEl = byId("sync-status");
 
         let statusClass = "status offline";
         let statusText = "Inactif";
@@ -326,10 +302,12 @@ async function refreshData() {
             statusText = "En attente";
         }
 
-        statusEl.className = statusClass;
-        statusEl.textContent = statusText;
+        if (statusEl) {
+            statusEl.className = statusClass;
+            statusEl.textContent = statusText;
+        }
 
-        document.getElementById("next-sync").textContent = sync.next_sync ? 'Prochain: ' + new Date(sync.next_sync).toLocaleString('fr-FR') : "-";
+        setText("next-sync", sync.next_sync ? 'Prochain: ' + new Date(sync.next_sync).toLocaleString('fr-FR') : "-");
     } catch (e) {
         console.error("❌ Erreur refreshData:", e);
     }
@@ -340,7 +318,8 @@ async function refreshData() {
 async function loadLogs() {
     try {
         const logs = await fetch(API_BASE + '/sync/logs?limit=50').then(r => r.json());
-        const tbody = document.getElementById("logs-table");
+        const tbody = byId("logs-table");
+        if (!tbody) return;
         tbody.innerHTML = logs.length ? logs.map(l =>
             '<tr>' +
             '<td class="date">' + new Date(l.sync_at).toLocaleString('fr-FR') + '</td>' +
@@ -403,7 +382,8 @@ async function loadConfig() {
         });
 
         // Générer le HTML avec layout en grille
-        const form = document.getElementById("config-form");
+        const form = byId("config-form");
+        if (!form) return;
         let html = '<div class="apps-grid">';
 
         Object.entries(categories).forEach(([catKey, category]) => {
@@ -475,7 +455,8 @@ async function saveConfig() {
 // ==================== SYNC ====================
 
 async function syncNow() {
-    const btn = document.getElementById("sync-btn");
+    const btn = byId("sync-btn");
+    if (!btn) return;
     btn.disabled = true;
     btn.textContent = "⏳ Sync en cours...";
 
@@ -525,13 +506,6 @@ async function syncNow() {
     }
 }
 
-// ==================== ADMIN ====================
-
-async function loadAdminTab() {
-    await loadAdminStats();
-    await loadSystemLogs();
-}
-
 async function loadAdminStats() {
     try {
         const [detailedStats, torrentsData] = await Promise.all([
@@ -539,25 +513,25 @@ async function loadAdminStats() {
             fetch(API_BASE + '/torrents').then(r => r.json())
         ]);
 
-        document.getElementById('admin-db-size').textContent = detailedStats.database.size_mb;
-        document.getElementById('admin-db-grabs').textContent = detailedStats.database.grabs;
-        document.getElementById('admin-db-logs').textContent = detailedStats.database.sync_logs;
+        setText('admin-db-size', detailedStats.database.size_mb);
+        setText('admin-db-grabs', detailedStats.database.grabs);
+        setText('admin-db-logs', detailedStats.database.sync_logs);
 
-        document.getElementById('admin-torrent-count').textContent = torrentsData.total;
+        setText('admin-torrent-count', torrentsData.total);
         const totalSize = torrentsData.torrents.reduce((acc, t) => acc + t.size_mb, 0);
-        document.getElementById('admin-torrent-size').textContent = totalSize.toFixed(2);
+        setText('admin-torrent-size', totalSize.toFixed(2));
 
         // Compter les orphelins
         const orphans = torrentsData.torrents.filter(t => !t.has_grab).length;
-        document.getElementById('admin-torrent-orphans').textContent = orphans;
+        setText('admin-torrent-orphans', orphans);
 
-        document.getElementById('admin-memory').textContent = detailedStats.system.memory_mb;
-        document.getElementById('admin-cpu').textContent = detailedStats.system.cpu_percent;
+        setText('admin-memory', detailedStats.system.memory_mb);
+        setText('admin-cpu', detailedStats.system.cpu_percent);
 
         const uptime = detailedStats.system.uptime_seconds;
         const hours = Math.floor(uptime / 3600);
         const minutes = Math.floor((uptime % 3600) / 60);
-        document.getElementById('admin-uptime').textContent = hours + 'h ' + minutes + 'm';
+        setText('admin-uptime', hours + 'h ' + minutes + 'm');
 
     } catch (e) {
         console.error("Erreur loadAdminStats:", e);
@@ -566,14 +540,17 @@ async function loadAdminStats() {
 }
 
 async function loadSystemLogs() {
-    const level = document.getElementById('log-level-filter').value;
+    const levelSelect = byId('log-level-filter');
+    if (!levelSelect) return;
+    const level = levelSelect.value;
 
     try {
         // Récupérer tous les logs de sync
         const res = await fetch(API_BASE + '/sync/logs?limit=100');
         const logs = await res.json();
 
-        const container = document.getElementById('system-logs-container');
+        const container = byId('system-logs-container');
+        if (!container) return;
 
         if (logs.length === 0) {
             container.innerHTML = '<p style="text-align: center; color: #888; padding: 20px;">Aucun log trouvé</p>';
@@ -625,56 +602,6 @@ async function loadSystemLogs() {
     }
 }
 
-async function clearCache() {
-    if (confirm("Vider tous les caches (trackers + imports Radarr/Sonarr) ?")) {
-        try {
-            const res = await fetch(API_BASE + '/cache/clear', { method: "POST" });
-            const data = await res.json();
-            alert("✅ " + data.message);
-            await loadAdminStats();
-        } catch (e) {
-            alert("❌ Erreur: " + e);
-        }
-    }
-}
-
-async function vacuumDatabase() {
-    if (confirm("Optimiser la base de données (VACUUM) ? Cela peut prendre quelques secondes.")) {
-        try {
-            const res = await fetch(API_BASE + '/db/vacuum', { method: "POST" });
-            const data = await res.json();
-            alert("✅ " + data.message + "\nEspace libéré: " + data.saved_mb + " MB");
-            await loadAdminStats();
-        } catch (e) {
-            alert("❌ Erreur: " + e);
-        }
-    }
-}
-
-async function purgeOldGrabs() {
-    const hours = prompt("Supprimer les grabs plus anciens que combien d'heures ?\n(168 = 7 jours, 336 = 14 jours, 720 = 30 jours)", "168");
-
-    if (hours === null) return;
-
-    const hoursInt = parseInt(hours);
-    if (isNaN(hoursInt) || hoursInt < 1) {
-        alert("❌ Valeur invalide");
-        return;
-    }
-
-    if (confirm("Supprimer tous les grabs > " + hoursInt + "h ?")) {
-        try {
-            const res = await fetch(API_BASE + '/purge/retention?hours=' + hoursInt, { method: "POST" });
-            const data = await res.json();
-            alert("✅ " + data.message);
-            await refreshData();
-            await loadAdminStats();
-        } catch (e) {
-            alert("❌ Erreur: " + e);
-        }
-    }
-}
-
 // ==================== TORRENTS MANAGEMENT ====================
 
 async function loadTorrents() {
@@ -683,19 +610,20 @@ async function loadTorrents() {
         const data = await res.json();
 
         // Mettre à jour les statistiques
-        document.getElementById('torrents-total').textContent = data.total;
+        setText('torrents-total', data.total);
 
         const totalSize = data.torrents.reduce((acc, t) => acc + t.size_mb, 0);
-        document.getElementById('torrents-size').textContent = totalSize.toFixed(2);
+        setText('torrents-size', totalSize.toFixed(2));
 
         const withGrab = data.torrents.filter(t => t.has_grab).length;
-        document.getElementById('torrents-with-grab').textContent = withGrab;
+        setText('torrents-with-grab', withGrab);
 
         const orphans = data.torrents.filter(t => !t.has_grab).length;
-        document.getElementById('torrents-orphans').textContent = orphans;
+        setText('torrents-orphans', orphans);
 
         // Remplir le tableau
-        const tbody = document.getElementById('torrents-table');
+        const tbody = byId('torrents-table');
+        if (!tbody) return;
         if (data.torrents.length === 0) {
             tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #888;">Aucun fichier torrent</td></tr>';
             return;
@@ -733,7 +661,8 @@ async function loadTorrents() {
 }
 
 function toggleAllTorrents() {
-    const selectAll = document.getElementById('select-all-torrents');
+    const selectAll = byId('select-all-torrents');
+    if (!selectAll) return;
     const checkboxes = document.querySelectorAll('.torrent-checkbox');
     checkboxes.forEach(cb => cb.checked = selectAll.checked);
     updateBulkActionsVisibility();
@@ -741,7 +670,8 @@ function toggleAllTorrents() {
 
 function updateBulkActionsVisibility() {
     const checkboxes = document.querySelectorAll('.torrent-checkbox:checked');
-    const bulkActions = document.getElementById('bulk-actions');
+    const bulkActions = byId('bulk-actions');
+    if (!bulkActions) return;
     if (checkboxes.length > 0) {
         bulkActions.style.display = 'flex';
     } else {
@@ -830,132 +760,6 @@ async function purgeAllTorrents() {
     }
 }
 
-// ==================== HISTORY LIMITS TEST ====================
-
-async function testHistoryLimits() {
-    const btn = event.target;
-    const originalText = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = "⏳ Test en cours...";
-
-    try {
-        const res = await fetch(API_BASE + '/test-history-limits', { method: "POST" });
-
-        if (!res.ok) {
-            throw new Error("Erreur HTTP " + res.status);
-        }
-
-        const data = await res.json();
-
-        // Afficher les résultats
-        const resultsDiv = document.getElementById('history-test-results');
-        resultsDiv.style.display = 'block';
-
-        // Timestamp
-        const timestamp = new Date(data.results.timestamp).toLocaleString('fr-FR');
-        document.getElementById('history-test-timestamp').textContent =
-            "Test effectué le " + timestamp;
-
-        // Formater les résultats de manière lisible
-        const results = data.results;
-        let output = "=".repeat(80) + "\n";
-        output += "TEST DES LIMITES D'HISTORIQUE\n";
-        output += "=".repeat(80) + "\n\n";
-
-        // Configuration
-        output += "📋 CONFIGURATION\n";
-        output += "-".repeat(80) + "\n";
-        output += "Prowlarr URL:      " + results.configuration.prowlarr_url + "\n";
-        output += "Prowlarr pageSize: " + results.configuration.prowlarr_page_size + "\n";
-        output += "Radarr activé:     " + results.configuration.radarr_enabled + "\n";
-        output += "Sonarr activé:     " + results.configuration.sonarr_enabled + "\n";
-        output += "Sync interval:     " + results.configuration.sync_interval_seconds + "s\n";
-        output += "Rétention:         " + results.configuration.retention_hours + "h\n\n";
-
-        // Prowlarr
-        output += "📡 PROWLARR\n";
-        output += "-".repeat(80) + "\n";
-        results.prowlarr.tested_page_sizes.forEach(test => {
-            const d = test.data;
-            if (d.error) {
-                output += "pageSize=" + test.page_size + " → ❌ " + d.error + "\n";
-            } else {
-                output += "pageSize=" + test.page_size + " → ";
-                output += d.total + " enregistrements, ";
-                output += d.successful_grabs + " grabs réussis\n";
-                if (d.oldest_grab) {
-                    output += "  Plus ancien: " + new Date(d.oldest_grab).toLocaleString('fr-FR') + "\n";
-                }
-            }
-        });
-
-        output += "\n🔍 ANALYSE\n";
-        output += "-".repeat(80) + "\n";
-        output += "Type de limitation: " + results.prowlarr.analysis.limitation_type + "\n";
-        output += results.prowlarr.analysis.details + "\n";
-        output += "\n💡 Recommandation:\n";
-        output += results.prowlarr.analysis.recommendation + "\n\n";
-
-        // Radarr
-        output += "🎬 RADARR\n";
-        output += "-".repeat(80) + "\n";
-        if (results.radarr.error) {
-            output += "⚠️  " + results.radarr.error + "\n\n";
-        } else {
-            output += "Total: " + results.radarr.total + " | Grabs: " + results.radarr.grabs + "\n";
-            if (results.radarr.oldest_grab) {
-                output += "Plus ancien: " + new Date(results.radarr.oldest_grab).toLocaleString('fr-FR') + "\n";
-            }
-            output += "\n";
-        }
-
-        // Sonarr
-        output += "📺 SONARR\n";
-        output += "-".repeat(80) + "\n";
-        if (results.sonarr.error) {
-            output += "⚠️  " + results.sonarr.error + "\n\n";
-        } else {
-            output += "Total: " + results.sonarr.total + " | Grabs: " + results.sonarr.grabs + "\n";
-            if (results.sonarr.oldest_grab) {
-                output += "Plus ancien: " + new Date(results.sonarr.oldest_grab).toLocaleString('fr-FR') + "\n";
-            }
-            output += "\n";
-        }
-
-        // Comparaison
-        output += "🔄 COMPARAISON DES PÉRIODES\n";
-        output += "-".repeat(80) + "\n";
-        if (results.comparison.prowlarr_oldest) {
-            output += "Prowlarr: " + new Date(results.comparison.prowlarr_oldest).toLocaleString('fr-FR') + "\n";
-        }
-        if (results.comparison.radarr_oldest) {
-            output += "Radarr:   " + new Date(results.comparison.radarr_oldest).toLocaleString('fr-FR') + "\n";
-        }
-        if (results.comparison.sonarr_oldest) {
-            output += "Sonarr:   " + new Date(results.comparison.sonarr_oldest).toLocaleString('fr-FR') + "\n";
-        }
-
-        document.getElementById('history-test-content').textContent = output;
-
-        // Lien de téléchargement
-        const blob = new Blob([JSON.stringify(results, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        document.getElementById('history-test-download').href = url;
-
-        // Scroll vers les résultats
-        resultsDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
-
-        alert("✅ Test terminé !\n\nRésultats sauvegardés dans:\n" + data.output_file);
-
-    } catch (e) {
-        console.error("Erreur testHistoryLimits:", e);
-        alert("❌ Erreur lors du test: " + e);
-    } finally {
-        btn.disabled = false;
-        btn.textContent = originalText;
-    }
-}
-
 // ==================== AUTHENTICATION & SECURITY ====================
 
 async function checkSetupStatus() {
@@ -989,10 +793,12 @@ async function checkAuthStatus() {
             }
 
             // Auth activée et utilisateur connecté - afficher les éléments d'auth
-            document.getElementById('security-tab').style.display = 'block';
-            document.getElementById('auth-info').style.display = 'block';
-            document.getElementById('username-display').textContent = initialState.username || 'Utilisateur';
-            document.getElementById('security-username').textContent = initialState.username || 'Utilisateur';
+            const securityTab = byId('security-tab');
+            const authInfo = byId('auth-info');
+            if (securityTab) securityTab.style.display = 'block';
+            if (authInfo) authInfo.style.display = 'block';
+            setText('username-display', initialState.username || 'Utilisateur');
+            setText('security-username', initialState.username || 'Utilisateur');
         }
 
         return true; // Continuer
@@ -1019,18 +825,25 @@ async function logout() {
 }
 
 function showChangePasswordForm() {
-    document.getElementById('change-password-form').style.display = 'block';
+    const form = byId('change-password-form');
+    if (form) form.style.display = 'block';
 }
 
 function hideChangePasswordForm() {
-    document.getElementById('change-password-form').style.display = 'none';
-    document.getElementById('old-password').value = '';
-    document.getElementById('new-password').value = '';
+    const form = byId('change-password-form');
+    if (form) form.style.display = 'none';
+    const oldPassword = byId('old-password');
+    const newPassword = byId('new-password');
+    if (oldPassword) oldPassword.value = '';
+    if (newPassword) newPassword.value = '';
 }
 
 async function changePassword() {
-    const oldPassword = document.getElementById('old-password').value;
-    const newPassword = document.getElementById('new-password').value;
+    const oldPasswordInput = byId('old-password');
+    const newPasswordInput = byId('new-password');
+    if (!oldPasswordInput || !newPasswordInput) return;
+    const oldPassword = oldPasswordInput.value;
+    const newPassword = newPasswordInput.value;
 
     if (!oldPassword || !newPassword) {
         alert('Veuillez remplir tous les champs');
@@ -1070,7 +883,8 @@ async function loadApiKeys() {
         const res = await fetch('/api/auth/api-keys');
         const data = await res.json();
 
-        const list = document.getElementById('api-keys-list');
+        const list = byId('api-keys-list');
+        if (!list) return;
 
         if (!data.api_keys || data.api_keys.length === 0) {
             list.innerHTML = '<p style="color: #888; text-align: center;">Aucune API Key configurée</p>';
@@ -1112,7 +926,9 @@ async function loadApiKeys() {
 }
 
 async function createApiKey() {
-    const name = document.getElementById('api-key-name').value.trim();
+    const nameInput = byId('api-key-name');
+    if (!nameInput) return;
+    const name = nameInput.value.trim();
 
     if (!name) {
         alert("Veuillez donner un nom à l'API Key");
@@ -1130,7 +946,7 @@ async function createApiKey() {
 
         if (data.key) {
             alert(`✅ API Key créée avec succès !\n\nClé: ${data.key}\n\nCopiez-la maintenant, elle ne sera plus affichée en entier.`);
-            document.getElementById('api-key-name').value = '';
+            nameInput.value = '';
             await loadApiKeys();
         } else {
             alert("❌ Erreur lors de la création de l'API Key");
@@ -1197,10 +1013,10 @@ async function toggleApiKey(key, enabled) {
 // This section is only used on the /login page
 
 function initLoginPage() {
-    const form = document.getElementById('login-form');
-    const errorMessage = document.getElementById('error-message');
-    const loginBtn = document.getElementById('login-btn');
-    const loading = document.getElementById('loading');
+    const form = byId('login-form');
+    const errorMessage = byId('error-message');
+    const loginBtn = byId('login-btn');
+    const loading = byId('loading');
 
     if (!form) return; // Not on login page
 
@@ -1208,8 +1024,11 @@ function initLoginPage() {
         e.preventDefault();
 
         // Récupérer les valeurs
-        const username = document.getElementById('username').value;
-        const password = document.getElementById('password').value;
+        const usernameInput = byId('username');
+        const passwordInput = byId('password');
+        if (!usernameInput || !passwordInput) return;
+        const username = usernameInput.value;
+        const password = passwordInput.value;
 
         // Désactiver le formulaire
         loginBtn.disabled = true;
@@ -1242,8 +1061,8 @@ function initLoginPage() {
                 loading.style.display = 'none';
 
                 // Réinitialiser le mot de passe
-                document.getElementById('password').value = '';
-                document.getElementById('password').focus();
+                passwordInput.value = '';
+                passwordInput.focus();
             }
         } catch (error) {
             errorMessage.textContent = 'Erreur de connexion au serveur';
@@ -1256,7 +1075,8 @@ function initLoginPage() {
     });
 
     // Focus sur le champ username au chargement
-    document.getElementById('username').focus();
+    const userInput = byId('username');
+    if (userInput) userInput.focus();
 }
 
 // ==================== INITIALIZATION ====================
@@ -1265,12 +1085,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.log("🚀 Initialisation Grab2RSS...");
 
     // Check if we're on the login page
-    if (document.getElementById('login-form')) {
+    if (byId('login-form')) {
         initLoginPage();
         return;
     }
 
     initDrawer();
+
+    const page = document.querySelector('.app-content')?.dataset.page;
+    setActiveNav(page);
 
     // Dashboard initialization
     try {
@@ -1286,13 +1109,40 @@ document.addEventListener('DOMContentLoaded', async () => {
             return; // Redirection vers /login en cours
         }
 
-        // 3. Initialiser le dashboard
-        await loadTrackers();
-        await refreshData();
-        await loadGrabs();
-
-        // Refresh data every 30 seconds
-        setInterval(refreshData, 30000);
+        // 3. Initialiser par page
+        if (page === 'overview') {
+            ensureElements('overview', [
+                '#total-grabs',
+                '#dashboard-torrent-count',
+                '#storage-size',
+                '#sync-status'
+            ]);
+            await loadTrackers();
+            await refreshData();
+            if (typeof Chart !== 'undefined') {
+                await loadStats();
+            }
+            setInterval(refreshData, 30000);
+        } else if (page === 'grabs') {
+            ensureElements('grabs', ['#tracker-filter-grabs', '#grabs-table']);
+            await loadTrackers();
+            await loadGrabs();
+        } else if (page === 'torrents') {
+            ensureElements('torrents', ['#torrents-table', '#torrents-total']);
+            await loadTorrents();
+        } else if (page === 'logs') {
+            ensureElements('logs', ['#logs-table', '#log-level-filter', '#system-logs-container']);
+            await loadLogs();
+            await loadSystemLogs();
+        } else if (page === 'configuration') {
+            ensureElements('configuration', ['#config-form']);
+            await loadConfig();
+        } else if (page === 'security') {
+            ensureElements('security', ['#api-keys-list']);
+            await loadApiKeys();
+        } else if (page === 'setup') {
+            initSetupPage();
+        }
 
         console.log("✅ Application initialisée");
     } catch (error) {
@@ -1364,6 +1214,203 @@ function initDrawer() {
             setTimeout(() => closeDrawer(), 0);
         });
     });
+}
+
+// ==================== SETUP PAGE ====================
+
+function initSetupPage() {
+    const container = document.querySelector('.container[data-first-run][data-config-exists]');
+    if (!container) return;
+
+    const firstRun = container.dataset.firstRun === 'true';
+    const configExists = container.dataset.configExists === 'true';
+    if (!firstRun && configExists) {
+        window.location.href = '/';
+        return;
+    }
+
+    const form = byId('setupForm');
+    const alertEl = byId('alert');
+    const loadingEl = byId('loading');
+    const authToggle = byId('auth_enabled');
+    const authFields = byId('auth_fields');
+
+    if (!form || !alertEl || !loadingEl || !authToggle || !authFields) {
+        warnMissing('setup', '#setupForm, #alert, #loading, #auth_enabled, #auth_fields');
+        return;
+    }
+
+    const showAlert = (message, type) => {
+        alertEl.textContent = message;
+        alertEl.className = `alert ${type}`;
+        alertEl.style.display = 'block';
+
+        if (type === 'success' && !message.includes('Test')) {
+            setTimeout(() => {
+                alertEl.style.display = 'none';
+            }, 3000);
+        }
+    };
+
+    const toggleAuthFields = () => {
+        const enabled = authToggle.checked;
+        authFields.style.display = enabled ? 'block' : 'none';
+
+        const usernameField = byId('auth_username');
+        const passwordField = byId('auth_password');
+        if (usernameField && passwordField) {
+            if (enabled) {
+                usernameField.setAttribute('required', 'required');
+                passwordField.setAttribute('required', 'required');
+            } else {
+                usernameField.removeAttribute('required');
+                passwordField.removeAttribute('required');
+            }
+        }
+    };
+
+    let testInFlight = false;
+    let submitInFlight = false;
+
+    const setButtonState = (button, loading, loadingText) => {
+        if (!button) return;
+        if (!button.dataset.originalText) {
+            button.dataset.originalText = button.textContent;
+        }
+        button.disabled = loading;
+        button.textContent = loading ? loadingText : button.dataset.originalText;
+    };
+
+    const testConnection = async () => {
+        if (testInFlight) return;
+        const urlInput = byId('prowlarr_url');
+        const apiKeyInput = byId('prowlarr_api_key');
+        if (!urlInput || !apiKeyInput) {
+            warnMissing('setup', '#prowlarr_url, #prowlarr_api_key');
+            return;
+        }
+
+        const url = urlInput.value;
+        const apiKey = apiKeyInput.value;
+        if (!url || !apiKey) {
+            showAlert("Veuillez remplir l'URL et la clé API Prowlarr", 'error');
+            return;
+        }
+
+        testInFlight = true;
+        const testButton = document.querySelector('[data-action="test-connection"]');
+        setButtonState(testButton, true, 'Test en cours...');
+        showAlert('Test de connexion en cours...', 'info');
+
+        try {
+            const response = await fetch('/api/setup/test-prowlarr', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: url, api_key: apiKey })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                showNotification('Connexion réussie à Prowlarr', 'success');
+                showAlert('Connexion réussie à Prowlarr !', 'success');
+            } else {
+                showAlert('Erreur: ' + (data.error || 'Connexion échouée'), 'error');
+            }
+        } catch (error) {
+            showAlert('Erreur de connexion: ' + error.message, 'error');
+        } finally {
+            testInFlight = false;
+            setButtonState(testButton, false);
+        }
+    };
+
+    const submitSetup = async (event) => {
+        event.preventDefault();
+        if (submitInFlight) return;
+
+        const formData = new FormData(form);
+        const config = {
+            prowlarr_url: formData.get('prowlarr_url'),
+            prowlarr_api_key: formData.get('prowlarr_api_key'),
+            prowlarr_history_page_size: parseInt(formData.get('prowlarr_history_page_size')),
+
+            radarr_enabled: true,
+            radarr_url: formData.get('radarr_url'),
+            radarr_api_key: formData.get('radarr_api_key'),
+
+            sonarr_enabled: true,
+            sonarr_url: formData.get('sonarr_url'),
+            sonarr_api_key: formData.get('sonarr_api_key'),
+
+            sync_interval: parseInt(formData.get('sync_interval')),
+            retention_hours: parseInt(formData.get('retention_hours')),
+            auto_purge: byId('auto_purge')?.checked || false,
+            dedup_hours: 168,
+
+            rss_domain: window.location.hostname,
+            rss_scheme: window.location.protocol.replace(':', ''),
+            rss_title: 'grabb2RSS',
+            rss_description: 'Prowlarr to RSS Feed',
+
+            auth_enabled: authToggle.checked,
+            auth_username: formData.get('auth_username') || '',
+            auth_password: formData.get('auth_password') || ''
+        };
+
+        if (config.auth_enabled) {
+            if (!config.auth_username || !config.auth_password) {
+                showAlert("Veuillez remplir le nom d'utilisateur et le mot de passe pour l'authentification", 'error');
+                return;
+            }
+            if (config.auth_password.length < 8) {
+                showAlert('Le mot de passe doit contenir au moins 8 caractères', 'error');
+                return;
+            }
+        }
+
+        submitInFlight = true;
+        const submitButton = document.querySelector('[data-action="submit-setup"]');
+        setButtonState(submitButton, true, 'Sauvegarde...');
+        form.style.display = 'none';
+        loadingEl.style.display = 'block';
+
+        try {
+            const response = await fetch('/api/setup/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(config)
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                showNotification('Configuration enregistrée', 'success');
+                showAlert('Configuration enregistrée ! Redirection...', 'success');
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 2000);
+            } else {
+                form.style.display = 'block';
+                loadingEl.style.display = 'none';
+                showAlert('Erreur: ' + (data.error || data.message || 'Impossible de sauvegarder'), 'error');
+            }
+        } catch (error) {
+            form.style.display = 'block';
+            loadingEl.style.display = 'none';
+            showAlert('Erreur: ' + error.message, 'error');
+        } finally {
+            submitInFlight = false;
+            setButtonState(submitButton, false);
+        }
+    };
+
+    toggleAuthFields();
+
+    authToggle.addEventListener('change', toggleAuthFields);
+    const testButton = document.querySelector('[data-action="test-connection"]');
+    if (testButton) testButton.addEventListener('click', testConnection);
+    form.addEventListener('submit', submitSetup);
 }
 
 // Event listener for torrent checkboxes

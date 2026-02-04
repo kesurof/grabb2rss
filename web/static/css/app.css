@@ -492,6 +492,11 @@ header {
     background: #0f172a;
 }
 
+.app-sidebar__link.is-active {
+    background: rgba(37, 99, 235, 0.2);
+    color: #bfdbfe;
+}
+
 .app-main {
     flex: 1;
     display: flex;

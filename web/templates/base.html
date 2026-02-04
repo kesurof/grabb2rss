@@ -12,7 +12,7 @@
         {% include "partials/sidebar.html" %}
         <div class="app-main">
             {% include "partials/topbar.html" %}
-            <main class="app-content">
+            <main class="app-content" data-page="{% block page_id %}{% endblock %}">
                 {% block content %}{% endblock %}
             </main>
         </div>
