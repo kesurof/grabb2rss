@@ -15,10 +15,12 @@
 
 {% block content %}
     <div class="page-shell" data-first-run="{{ 'true' if first_run else 'false' }}" data-config-exists="{{ 'true' if config_exists else 'false' }}">
-        <div class="page-header">
-            <div class="section-note">Étape 1 sur 1</div>
-            <h1>Configuration initiale</h1>
-            <p class="page-desc">Connectez vos services externes puis validez vos paramètres de base.</p>
+        <div class="page-header page-header--row">
+            <div>
+                <div class="section-note">Étape 1 sur 1</div>
+                <h1>Configuration initiale</h1>
+                <p class="page-desc">Connectez vos services externes puis validez vos paramètres de base.</p>
+            </div>
         </div>
 
         <div id="alert" class="alert"></div>

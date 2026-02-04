@@ -12,13 +12,11 @@
 
 {% block content %}
 <div class="page-shell">
-    <div class="page-header">
-        <h1>Flux RSS</h1>
-        <p class="page-desc">Gérez vos clés API et URLs RSS pour accéder aux flux.</p>
-    </div>
-
-    <div class="page-section page-section--subtle">
-        {{ alert("Générez une clé API pour activer les URLs RSS externes.", "info") }}
+    <div class="page-header page-header--row">
+        <div>
+            <h1>Flux RSS</h1>
+            <p class="page-desc">Gérez vos clés API et URLs RSS pour accéder aux flux.</p>
+        </div>
     </div>
 
     <div class="page-section">
@@ -34,5 +32,6 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/app.js"></script>
 <script src="/static/js/rss-manager.js"></script>
 {% endblock %}

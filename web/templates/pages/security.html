@@ -12,21 +12,28 @@
 
 {% block content %}
 <div class="page-shell">
-    <div class="page-header">
-        <h1>Sécurité</h1>
-        <p class="page-desc">Protégez l’accès à l’interface et gérez vos clés API.</p>
-    </div>
-
-    <div class="page-section page-section--subtle">
-        <div class="section-header">Authentification</div>
-        <div class="section-note">Recommandée pour protéger l’accès à l’interface.</div>
+    <div class="page-header page-header--row">
+        <div>
+            <h1>Sécurité</h1>
+            <p class="page-desc">Protégez l’accès à l’interface et gérez vos clés API.</p>
+        </div>
     </div>
 
     <div class="page-section">
         <div class="section-header">Mon compte</div>
-        <p>Utilisateur: <strong id="security-username">-</strong></p>
+        <div class="section-note">Informations de connexion et gestion du mot de passe.</div>
+        <div class="info-list">
+            <div class="info-item">
+                <span class="info-label">Utilisateur</span>
+                <span class="info-value" id="security-username">{{ username or '-' }}</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Authentification</span>
+                <span class="info-value">{{ 'Activée (recommandée)' if auth_enabled else 'Désactivée' }}</span>
+            </div>
+        </div>
         <div class="actions-bar">
-            <button class="btn btn-secondary" onclick="showChangePasswordForm()">Changer le mot de passe</button>
+            <button class="btn btn-secondary" type="button" data-action="show-change-password">Changer le mot de passe</button>
         </div>
 
         <div id="change-password-form" style="display: none; margin-top: 15px;">
@@ -39,17 +46,19 @@
                 <input class="form-input" type="password" id="new-password" placeholder="Minimum 8 caractères">
             </div>
             <div class="actions-bar">
-                <button class="btn btn-primary" onclick="changePassword()">Confirmer</button>
-                <button class="btn btn-secondary" onclick="hideChangePasswordForm()">Annuler</button>
+                <button class="btn btn-primary" type="button" data-action="change-password">Confirmer</button>
+                <button class="btn btn-secondary" type="button" data-action="hide-change-password">Annuler</button>
             </div>
         </div>
     </div>
 
-    <div class="page-section">
+    <div class="page-section page-section--subtle">
         <div class="section-header">API Keys</div>
-        <div class="section-note">Accès RSS externe possible via une clé active.</div>
-        <div id="api-keys-list">
-            <p>Chargement...</p>
+        <div class="section-note">Accès RSS externe possible via une clé active. Partagez-les avec précaution.</div>
+        <div class="api-keys-panel">
+            <div id="api-keys-list">
+                <p>Chargement...</p>
+            </div>
         </div>
     </div>
 </div>

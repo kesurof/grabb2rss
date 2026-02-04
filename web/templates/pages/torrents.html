@@ -12,9 +12,11 @@
 
 {% block content %}
 <div class="page-shell">
-    <div class="page-header">
-        <h1>Torrents</h1>
-        <p class="page-desc">Gestion des fichiers torrents et actions groupées.</p>
+    <div class="page-header page-header--row">
+        <div>
+            <h1>Torrents</h1>
+            <p class="page-desc">Gestion des fichiers torrents et actions groupées.</p>
+        </div>
     </div>
 
     <div class="page-section">
@@ -44,9 +46,9 @@
     <div class="page-section">
         <div class="section-header">Actions</div>
         <div class="actions-bar">
-            <button class="btn btn-primary" onclick="loadTorrents()">Actualiser</button>
-            <button class="btn btn-secondary" onclick="cleanupOrphanTorrents()">Nettoyer orphelins</button>
-            <button class="btn btn-secondary" onclick="purgeAllTorrents()">Vider tous les torrents</button>
+            <button class="btn btn-primary" type="button" data-action="load-torrents">Actualiser</button>
+            <button class="btn btn-secondary" type="button" data-action="cleanup-orphans">Nettoyer orphelins</button>
+            <button class="btn btn-secondary" type="button" data-action="purge-torrents">Vider tous les torrents</button>
         </div>
     </div>
 
@@ -56,7 +58,7 @@
             <thead>
                 <tr>
                     <th style="width: 40px;">
-                        <input type="checkbox" id="select-all-torrents" onchange="toggleAllTorrents()">
+                        <input type="checkbox" id="select-all-torrents" data-action="toggle-all-torrents">
                     </th>
                     <th>Fichier</th>
                     <th>Titre</th>
@@ -76,7 +78,7 @@
             </tbody>
         </table>
         <div class="actions-bar" id="bulk-actions">
-            <button class="btn btn-secondary" onclick="deleteBulkTorrents()">Supprimer la sélection</button>
+            <button class="btn btn-secondary" type="button" data-action="delete-bulk-torrents">Supprimer la sélection</button>
         </div>
     </div>
 </div>

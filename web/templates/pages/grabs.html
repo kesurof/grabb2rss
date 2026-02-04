@@ -12,16 +12,18 @@
 
 {% block content %}
 <div class="page-shell">
-    <div class="page-header">
-        <h1>Grabs</h1>
-        <p class="page-desc">Derniers grabs enregistrés avec filtre tracker.</p>
+    <div class="page-header page-header--row">
+        <div>
+            <h1>Grabs</h1>
+            <p class="page-desc">Derniers grabs enregistrés avec filtre tracker.</p>
+        </div>
     </div>
 
     <div class="page-section">
         <div class="section-header">Filtres</div>
         <div class="filter-bar">
             <label class="form-label" for="tracker-filter-grabs">Filtrer par tracker</label>
-            <select id="tracker-filter-grabs" class="form-select" onchange="filterGrabs()">
+            <select id="tracker-filter-grabs" class="form-select" data-action="filter-grabs">
                 <option value="all">Tous les trackers</option>
             </select>
         </div>

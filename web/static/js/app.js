@@ -19,16 +19,6 @@ function setText(id, value) {
     if (el) el.textContent = value;
 }
 
-function setClass(id, value) {
-    const el = byId(id);
-    if (el) el.className = value;
-}
-
-function setHtml(id, value) {
-    const el = byId(id);
-    if (el) el.innerHTML = value;
-}
-
 // ==================== NOTIFICATIONS ====================
 
 function showNotification(message, type = 'info') {
@@ -83,6 +73,39 @@ function setActiveNav(page) {
     });
 }
 
+function bindActionHandlers() {
+    const actionHandlers = {
+        'sync-now': syncNow,
+        'refresh-data': refreshData,
+        'purge-grabs': purgeAllGrabs,
+        'filter-grabs': filterGrabs,
+        'save-config': saveConfig,
+        'load-config': loadConfig,
+        'show-change-password': showChangePasswordForm,
+        'change-password': changePassword,
+        'hide-change-password': hideChangePasswordForm,
+        'load-torrents': loadTorrents,
+        'cleanup-orphans': cleanupOrphanTorrents,
+        'purge-torrents': purgeAllTorrents,
+        'delete-bulk-torrents': deleteBulkTorrents,
+        'purge-logs': purgeAllLogs,
+        'toggle-all-torrents': toggleAllTorrents
+    };
+
+    document.querySelectorAll('[data-action]').forEach(element => {
+        const action = element.dataset.action;
+        const handler = actionHandlers[action];
+        if (!handler) return;
+        if (element.dataset.boundAction === 'true') return;
+        const eventName = ['filter-grabs', 'toggle-all-torrents'].includes(action) ? 'change' : 'click';
+        element.addEventListener(eventName, event => {
+            event.preventDefault();
+            handler();
+        });
+        element.dataset.boundAction = 'true';
+    });
+}
+
 // ==================== UTILITY FUNCTIONS ====================
 
 // ==================== TRACKERS ====================
@@ -125,8 +148,8 @@ async function filterGrabs() {
             '<tr>' +
             '<td class="date">' + new Date(g.grabbed_at).toLocaleString('fr-FR') + '</td>' +
             '<td>' + g.title + '</td>' +
-            '<td><strong style="color: #1e90ff;">' + (g.tracker || 'N/A') + '</strong></td>' +
-            '<td><a href="/torrents/' + encodeURIComponent(g.torrent_file) + '" target="_blank" style="color: #1e90ff; text-decoration: none;">📥 Download</a></td>' +
+            '<td><strong class="inline-link">' + (g.tracker || 'N/A') + '</strong></td>' +
+            '<td><a href="/torrents/' + encodeURIComponent(g.torrent_file) + '" target="_blank" class="inline-link">📥 Télécharger</a></td>' +
             '</tr>'
         ).join("") : '<tr><td colspan="4" style="text-align: center; color: #888;">Aucun grab</td></tr>';
     } catch (e) {
@@ -555,101 +578,6 @@ async function syncNow() {
     }
 }
 
-async function loadAdminStats() {
-    try {
-        const [detailedStats, torrentsData] = await Promise.all([
-            fetch(API_BASE + '/stats/detailed').then(r => r.json()),
-            fetch(API_BASE + '/torrents').then(r => r.json())
-        ]);
-
-        setText('admin-db-size', detailedStats.database.size_mb);
-        setText('admin-db-grabs', detailedStats.database.grabs);
-        setText('admin-db-logs', detailedStats.database.sync_logs);
-
-        setText('admin-torrent-count', torrentsData.total);
-        const totalSize = torrentsData.torrents.reduce((acc, t) => acc + t.size_mb, 0);
-        setText('admin-torrent-size', totalSize.toFixed(2));
-
-        // Compter les orphelins
-        const orphans = torrentsData.torrents.filter(t => !t.has_grab).length;
-        setText('admin-torrent-orphans', orphans);
-
-        setText('admin-memory', detailedStats.system.memory_mb);
-        setText('admin-cpu', detailedStats.system.cpu_percent);
-
-        const uptime = detailedStats.system.uptime_seconds;
-        const hours = Math.floor(uptime / 3600);
-        const minutes = Math.floor((uptime % 3600) / 60);
-        setText('admin-uptime', hours + 'h ' + minutes + 'm');
-
-    } catch (e) {
-        console.error("Erreur loadAdminStats:", e);
-        alert("❌ Erreur lors du chargement des stats: " + e);
-    }
-}
-
-async function loadSystemLogs() {
-    const levelSelect = byId('log-level-filter');
-    if (!levelSelect) return;
-    const level = levelSelect.value;
-
-    try {
-        // Récupérer tous les logs de sync
-        const res = await fetch(API_BASE + '/sync/logs?limit=100');
-        const logs = await res.json();
-
-        const container = byId('system-logs-container');
-        if (!container) return;
-
-        if (logs.length === 0) {
-            container.innerHTML = '<p style="text-align: center; color: #888; padding: 20px;">Aucun log trouvé</p>';
-            return;
-        }
-
-        // Filtrer par niveau
-        let filteredLogs = logs;
-        if (level === 'success') {
-            filteredLogs = logs.filter(l => l.status === 'success');
-        } else if (level === 'error') {
-            filteredLogs = logs.filter(l => l.status !== 'success');
-        }
-
-        if (filteredLogs.length === 0) {
-            container.innerHTML = '<p style="text-align: center; color: #888; padding: 20px;">Aucun log trouvé pour ce niveau</p>';
-            return;
-        }
-
-        const logIcons = {
-            'success': '✅',
-            'error': '❌'
-        };
-
-        container.innerHTML = filteredLogs.map(log => {
-            const logLevel = log.status === 'success' ? 'success' : 'error';
-            const icon = logIcons[logLevel] || '•';
-            const timestamp = new Date(log.sync_at).toLocaleString('fr-FR');
-            const message = `Sync: ${log.grabs_count} grabs récupérés, ${log.deduplicated_count || 0} doublons ignorés`;
-            const details = log.error ? `Erreur: ${log.error}` : '';
-
-            return `
-                <div class="log-item ${logLevel}" style="position: relative;">
-                    <div class="log-header">
-                        <span class="log-level ${logLevel}">
-                            ${icon} ${logLevel.toUpperCase()}
-                        </span>
-                        <span class="log-time">${timestamp}</span>
-                    </div>
-                    <div class="log-message">${message}</div>
-                    ${details ? '<div class="log-details">' + details + '</div>' : ''}
-                </div>
-            `;
-        }).join('');
-
-    } catch (e) {
-        console.error("Erreur loadSystemLogs:", e);
-        alert("❌ Erreur lors du chargement des logs: " + e);
-    }
-}
 
 // ==================== TORRENTS MANAGEMENT ====================
 
@@ -688,17 +616,28 @@ async function loadTorrents() {
                     <td><input type="checkbox" class="torrent-checkbox" value="${t.filename}"></td>
                     <td style="font-family: monospace; font-size: 11px; word-break: break-all;">${t.filename}</td>
                     <td>${t.title}</td>
-                    <td><strong style="color: #1e90ff;">${t.tracker}</strong></td>
+                    <td><strong class="inline-link">${t.tracker}</strong></td>
                     <td class="date">${grabDate}</td>
                     <td>${t.size_mb} MB</td>
                     <td><span style="color: ${statusColor}; font-weight: bold;">${statusText}</span></td>
-                    <td>
-                        <a href="/torrents/${encodeURIComponent(t.filename)}" target="_blank" class="button" style="text-decoration: none; padding: 5px 10px; font-size: 12px; display: inline-block;">📥 DL</a>
-                        <button class="button danger" onclick="deleteSingleTorrent('${t.filename}')" style="padding: 5px 10px; font-size: 12px; margin-left: 5px;">🗑️</button>
+                    <td class="table-actions-cell">
+                        <div class="table-actions">
+                            <a href="/torrents/${encodeURIComponent(t.filename)}" target="_blank" class="btn btn-sm btn-secondary">Télécharger</a>
+                            <button class="btn btn-sm btn-danger" type="button" data-action="delete-torrent" data-filename="${t.filename}">Supprimer</button>
+                        </div>
                     </td>
                 </tr>
             `;
         }).join('');
+
+        document.querySelectorAll('[data-action="delete-torrent"]').forEach(button => {
+            button.addEventListener('click', () => {
+                const filename = button.getAttribute('data-filename');
+                if (filename) {
+                    deleteSingleTorrent(filename);
+                }
+            });
+        });
 
         // Gérer l'affichage du bouton d'actions groupées
         updateBulkActionsVisibility();
@@ -803,7 +742,6 @@ async function purgeAllTorrents() {
         const data = await res.json();
         alert('✅ ' + data.message);
         await loadTorrents();
-        await loadAdminStats(); // Rafraîchir les stats admin
     } catch (e) {
         alert('❌ Erreur: ' + e);
     }
@@ -951,16 +889,18 @@ async function loadApiKeys() {
                 <tr>
                     <td><strong>${key.name}</strong></td>
                     <td>
-                        <code style="background: #0f0f0f; padding: 4px 8px; border-radius: 4px; font-size: 11px;">${key.key_masked || key.key}</code>
-                        <button class="copy-btn" onclick="copyApiKey('${key.key}')" style="margin-left: 10px;">📋 Copier</button>
+                        <code class="api-key-chip">${key.key_masked || key.key}</code>
+                        <button class="btn btn-secondary btn-sm" onclick="copyApiKey('${key.key}')">Copier</button>
                     </td>
                     <td style="color: ${statusColor};">${statusText}</td>
                     <td style="color: #888; font-size: 12px;">${createdAt}</td>
                     <td>
-                        <button class="button" style="font-size: 12px; padding: 5px 10px;" onclick="toggleApiKey('${key.key}', ${!key.enabled})">
-                            ${key.enabled ? '⏸️ Désactiver' : '▶️ Activer'}
-                        </button>
-                        <button class="button danger" style="font-size: 12px; padding: 5px 10px;" onclick="deleteApiKey('${key.key}')">🗑️</button>
+                        <div class="api-key-actions">
+                            <button class="btn btn-secondary btn-sm" onclick="toggleApiKey('${key.key}', ${!key.enabled})">
+                                ${key.enabled ? 'Désactiver' : 'Activer'}
+                            </button>
+                            <button class="btn btn-danger btn-sm" onclick="deleteApiKey('${key.key}')">Supprimer</button>
+                        </div>
                     </td>
                 </tr>
             `;
@@ -971,38 +911,6 @@ async function loadApiKeys() {
     } catch (error) {
         console.error("Erreur chargement API keys:", error);
         document.getElementById('api-keys-list').innerHTML = '<p style="color: #ff4444;">Erreur lors du chargement des API keys</p>';
-    }
-}
-
-async function createApiKey() {
-    const nameInput = byId('api-key-name');
-    if (!nameInput) return;
-    const name = nameInput.value.trim();
-
-    if (!name) {
-        alert("Veuillez donner un nom à l'API Key");
-        return;
-    }
-
-    try {
-        const res = await fetch('/api/auth/api-keys', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: name, enabled: true })
-        });
-
-        const data = await res.json();
-
-        if (data.key) {
-            alert(`✅ API Key créée avec succès !\n\nClé: ${data.key}\n\nCopiez-la maintenant, elle ne sera plus affichée en entier.`);
-            nameInput.value = '';
-            await loadApiKeys();
-        } else {
-            alert("❌ Erreur lors de la création de l'API Key");
-        }
-    } catch (error) {
-        alert("❌ Erreur lors de la création de l'API Key");
-        console.error(error);
     }
 }
 
@@ -1145,14 +1053,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (page) {
         setActiveNav(page);
     }
-    const syncButton = document.querySelector('[data-action="sync-now"]');
-    if (syncButton) {
-        syncButton.addEventListener('click', () => {
-            if (typeof syncNow === 'function') {
-                syncNow();
-            }
-        });
-    }
+    bindActionHandlers();
     clearPageError();
 
     // Dashboard initialization
@@ -1191,9 +1092,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             ensureElements('torrents', ['#torrents-table', '#torrents-total']);
             await loadTorrents();
         } else if (page === 'logs') {
-            ensureElements('logs', ['#logs-table', '#log-level-filter', '#system-logs-container']);
+            ensureElements('logs', ['#logs-table']);
             await loadLogs();
-            await loadSystemLogs();
         } else if (page === 'configuration') {
             ensureElements('configuration', ['#config-form']);
             await loadConfig();

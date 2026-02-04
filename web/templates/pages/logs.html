@@ -12,31 +12,20 @@
 
 {% block content %}
 <div class="page-shell">
-    <div class="page-header">
-        <h1>Logs & Diagnostics</h1>
-        <p class="page-desc">Historique des synchronisations, diagnostics et actions de maintenance.</p>
-    </div>
-
-    <div class="page-section">
-        <div class="section-header">Filtres</div>
-        <div class="filter-bar">
-            <label class="form-label" for="log-level-filter">Niveau</label>
-            <select id="log-level-filter" class="form-select" onchange="loadSystemLogs()">
-                <option value="all">Tous</option>
-                <option value="success">Succès</option>
-                <option value="error">Erreurs</option>
-                <option value="warning">Avertissements</option>
-                <option value="info">Informations</option>
-            </select>
-            <button class="btn btn-secondary" onclick="purgeAllLogs()" style="margin-left: auto;">Vider tous les logs</button>
+    <div class="page-header page-header--row">
+        <div>
+            <h1>Logs & Diagnostics</h1>
+            <p class="page-desc">Historique des synchronisations, diagnostics et actions de maintenance.</p>
         </div>
-        <div class="section-state section-state--error" data-role="section-error" hidden></div>
-        <div class="section-state section-state--empty" data-role="section-empty" hidden>Aucun log de synchronisation.</div>
+        <div class="page-actions">
+            <button class="btn btn-secondary" type="button" data-action="purge-logs">Vider tous les logs</button>
+        </div>
     </div>
 
     <div class="page-section">
         <div class="section-header">Logs de synchronisation</div>
-        <table class="ui-table">
+        <div class="section-note">Historique détaillé des synchronisations récentes.</div>
+        <table class="ui-table logs-table">
             <thead>
                 <tr>
                     <th>Date</th>
@@ -55,12 +44,6 @@
         <div class="section-note">Filtrez ou purgez l’historique selon vos besoins.</div>
     </div>
 
-    <div class="page-section">
-        <div class="section-header">Logs système</div>
-        <div id="system-logs-container">
-            <p>Chargement des logs...</p>
-        </div>
-    </div>
 </div>
 {% endblock %}
 

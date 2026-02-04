@@ -12,13 +12,11 @@
 
 {% block content %}
 <div class="page-shell">
-    <div class="page-header">
-        <h1>Overview</h1>
-        <p class="page-desc">Synthèse de l'activité et actions rapides.</p>
-    </div>
-
-    <div class="page-section page-section--subtle">
-        {{ alert("Votre convertisseur Prowlarr → RSS est opérationnel.", "info") }}
+    <div class="page-header page-header--row">
+        <div>
+            <h1>Overview</h1>
+            <p class="page-desc">Synthèse de l'activité et actions rapides.</p>
+        </div>
     </div>
 
     <div class="page-section">
@@ -43,9 +41,9 @@
         </div>
 
         <div class="actions-bar">
-            <button class="btn btn-primary" id="sync-btn" onclick="syncNow()">Synchroniser</button>
-            <button class="btn btn-secondary" onclick="refreshData()">Actualiser</button>
-            <button class="btn btn-secondary" onclick="purgeAllGrabs()">Vider tous les grabs</button>
+            <button class="btn btn-primary" id="sync-btn" type="button" data-action="sync-now">Synchroniser</button>
+            <button class="btn btn-secondary" type="button" data-action="refresh-data">Actualiser</button>
+            <button class="btn btn-secondary" type="button" data-action="purge-grabs">Vider tous les grabs</button>
         </div>
     </div>
 

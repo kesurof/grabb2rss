@@ -132,8 +132,8 @@ class RSSManager {
             <div class="api-keys-section">
                 <div class="section-header">
                     <h3>🔑 Clés API</h3>
-                    <button class="btn btn-primary" onclick="rssManager.handleGenerateKey()">
-                        ➕ Générer une clé
+                    <button class="btn btn-primary" type="button" data-action="generate-key">
+                        Générer une clé
                     </button>
                 </div>`;
 
@@ -144,36 +144,49 @@ class RSSManager {
                     <p>Générez une clé pour accéder aux flux RSS.</p>
                 </div>`;
         } else {
-            html += `<div class="api-keys-list">`;
+            html += `
+                <div class="api-keys-panel">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Nom</th>
+                                <th>Clé</th>
+                                <th>Statut</th>
+                                <th>Créée le</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+
             this.apiKeys.forEach(key => {
                 const statusClass = key.enabled ? 'active' : 'inactive';
                 const statusText = key.enabled ? 'Active' : 'Inactive';
+                const createdAt = new Date(key.created_at).toLocaleDateString();
 
                 html += `
-                    <div class="api-key-item ${statusClass}">
-                        <div class="key-info">
-                            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
-                                <strong style="font-size: 16px;">${key.name || 'API Key'}</strong>
-                                <span class="key-status ${statusClass}">${statusText}</span>
-                            </div>
-                            <code class="api-key-value">${key.key}</code>
-                            <small style="color: #888;">Créée le ${new Date(key.created_at).toLocaleDateString()}</small>
-                        </div>
-                        <div class="key-actions">
-                            <button class="btn btn-sm btn-secondary" onclick="rssManager.copyKey('${key.key}', this)" title="Copier la clé">
-                                📋 Copier
-                            </button>
-                            <button class="btn btn-sm btn-danger" onclick="rssManager.handleDeleteKey('${key.key}')" title="Supprimer la clé">
-                                🗑️ Supprimer
-                            </button>
-                        </div>
-                    </div>`;
+                            <tr>
+                                <td><strong>${key.name || 'API Key'}</strong></td>
+                                <td><code class="api-key-chip">${key.key}</code></td>
+                                <td><span class="key-status ${statusClass}">${statusText}</span></td>
+                                <td>${createdAt}</td>
+                                <td>
+                                    <div class="api-key-actions">
+                                        <button class="btn btn-sm btn-secondary" type="button" data-action="copy-key" data-key="${key.key}">Copier</button>
+                                        <button class="btn btn-sm btn-danger" type="button" data-action="delete-key" data-key="${key.key}">Supprimer</button>
+                                    </div>
+                                </td>
+                            </tr>`;
             });
-            html += `</div>`;
+
+            html += `
+                        </tbody>
+                    </table>
+                </div>`;
         }
 
         html += `</div>`;
         container.innerHTML = html;
+        this.bindContainerHandlers(container);
     }
 
     // Render l'interface URLs RSS
@@ -181,7 +194,7 @@ class RSSManager {
         const container = document.getElementById(containerId);
         if (!container) return;
 
-        let html = `<div class="rss-urls-section">`;
+        let html = `<div class="rss-urls-section config-grid">`;
 
         if (this.rssUrls.length === 0) {
             html += `
@@ -194,17 +207,36 @@ class RSSManager {
                 const xApiKey = this.authInfo.x_api_key || '';
                 const bearer = this.authInfo.authorization || '';
                 html += `
-                    <div class="info-box" style="margin-bottom: 20px;">
-                        <p><strong>Authentification via headers (recommandé)</strong></p>
-                        <p>Ajoutez un header à votre client torrent :</p>
-                        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                            <code style="background: #0f0f0f; padding: 4px 8px; border-radius: 4px;">X-API-Key: ${xApiKey}</code>
-                            <button class="btn btn-sm btn-secondary" onclick="rssManager.copyToClipboard('X-API-Key: ${xApiKey}', this)">📋 Copier</button>
+                    <div class="config-card">
+                        <div class="config-card__header">
+                            <div class="config-card__title">Authentification via headers</div>
+                            <div class="config-card__subtitle">Recommandé pour sécuriser l'accès</div>
                         </div>
-                        <p style="margin-top: 10px; color: #aaa;">Alternative :</p>
-                        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                            <code style="background: #0f0f0f; padding: 4px 8px; border-radius: 4px;">Authorization: ${bearer}</code>
-                            <button class="btn btn-sm btn-secondary" onclick="rssManager.copyToClipboard('Authorization: ${bearer}', this)">📋 Copier</button>
+                        <div class="config-card__body">
+                            <div class="config-field">
+                                <div class="config-field__meta">
+                                    <label class="config-field__label">Header principal</label>
+                                    <div class="config-field__help">À ajouter dans votre client torrent</div>
+                                </div>
+                                <div class="config-field__control">
+                                    <div class="config-inline">
+                                        <input type="text" class="config-input" value="X-API-Key: ${xApiKey}" readonly data-select="all" title="Cliquez pour sélectionner">
+                                        <button class="btn btn-sm btn-secondary" type="button" data-action="copy-text" data-text="X-API-Key: ${xApiKey}">Copier</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="config-field">
+                                <div class="config-field__meta">
+                                    <label class="config-field__label">Alternative</label>
+                                    <div class="config-field__help">Utilisez si votre client n'accepte pas X-API-Key</div>
+                                </div>
+                                <div class="config-field__control">
+                                    <div class="config-inline">
+                                        <input type="text" class="config-input" value="Authorization: ${bearer}" readonly data-select="all" title="Cliquez pour sélectionner">
+                                        <button class="btn btn-sm btn-secondary" type="button" data-action="copy-text" data-text="Authorization: ${bearer}">Copier</button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>`;
             }
@@ -215,12 +247,15 @@ class RSSManager {
 
             if (principal.length > 0) {
                 html += `
-                    <div class="url-category">
-                        <h4>📡 Flux principaux</h4>
-                        <div class="urls-list">`;
+                    <div class="config-card">
+                        <div class="config-card__header">
+                            <div class="config-card__title">Flux principaux</div>
+                            <div class="config-card__subtitle">Tous les torrents récents</div>
+                        </div>
+                        <div class="config-card__body">`;
 
                 principal.forEach(url => {
-                    html += this.renderUrlCard(url);
+                    html += this.renderUrlRow(url);
                 });
 
                 html += `</div></div>`;
@@ -228,12 +263,15 @@ class RSSManager {
 
             if (trackers.length > 0) {
                 html += `
-                    <div class="url-category">
-                        <h4>🎯 Flux par tracker</h4>
-                        <div class="urls-list">`;
+                    <div class="config-card">
+                        <div class="config-card__header">
+                            <div class="config-card__title">Flux par tracker</div>
+                            <div class="config-card__subtitle">Sources filtrées par tracker</div>
+                        </div>
+                        <div class="config-card__body">`;
 
                 trackers.forEach(url => {
-                    html += this.renderUrlCard(url);
+                    html += this.renderUrlRow(url);
                 });
 
                 html += `</div></div>`;
@@ -242,20 +280,25 @@ class RSSManager {
 
         html += `</div>`;
         container.innerHTML = html;
+        this.bindContainerHandlers(container);
     }
 
     // Render une carte URL
-    renderUrlCard(url) {
+    renderUrlRow(url) {
         return `
-            <div class="url-card">
-                <div class="url-info">
-                    <strong style="font-size: 16px; color: #fff;">${url.name}</strong>
-                    <p class="url-description">${url.description}</p>
-                    <input type="text" class="url-value" value="${url.url}" readonly onclick="this.select()" title="Cliquez pour sélectionner">
+            <div class="config-field">
+                <div class="config-field__meta">
+                    <label class="config-field__label">${url.name}</label>
+                    <div class="config-field__help">${url.description}</div>
                 </div>
-                <button class="btn btn-primary btn-copy" onclick="rssManager.copyUrl('${url.url.replace(/'/g, "\\'")}', this)" title="Copier l'URL dans le presse-papiers">
-                    📋 Copier l'URL
-                </button>
+                <div class="config-field__control">
+                    <div class="config-inline">
+                        <input type="text" class="config-input" value="${url.url}" readonly data-select="all" title="Cliquez pour sélectionner">
+                        <button class="btn btn-sm btn-secondary" type="button" data-action="copy-url" data-url="${url.url.replace(/'/g, "\\'")}">
+                            Copier
+                        </button>
+                    </div>
+                </div>
             </div>`;
     }
 
@@ -295,6 +338,40 @@ class RSSManager {
 
     async copyUrl(url, button) {
         await this.copyToClipboard(url, button);
+    }
+
+    bindContainerHandlers(container) {
+        if (!container || container.dataset.boundActions === 'true') return;
+        container.addEventListener('click', event => {
+            const target = event.target;
+            if (!target) return;
+
+            if (target.matches('[data-select="all"]')) {
+                target.select();
+                return;
+            }
+
+            const actionEl = target.closest('[data-action]');
+            if (!actionEl) return;
+
+            const action = actionEl.dataset.action;
+            if (action === 'generate-key') {
+                this.handleGenerateKey();
+            } else if (action === 'copy-key') {
+                const key = actionEl.dataset.key;
+                if (key) this.copyKey(key, actionEl);
+            } else if (action === 'delete-key') {
+                const key = actionEl.dataset.key;
+                if (key) this.handleDeleteKey(key);
+            } else if (action === 'copy-text') {
+                const text = actionEl.dataset.text;
+                if (text) this.copyToClipboard(text, actionEl);
+            } else if (action === 'copy-url') {
+                const url = actionEl.dataset.url;
+                if (url) this.copyUrl(url, actionEl);
+            }
+        });
+        container.dataset.boundActions = 'true';
     }
 
     // Initialiser l'interface
