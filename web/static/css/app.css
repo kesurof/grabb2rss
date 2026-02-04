@@ -388,21 +388,35 @@ body.auth-page {
     gap: 6px;
 }
 
+.page-header--row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.page-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
 .page-header h1 {
-    font-size: 28px;
+    font-size: 30px;
     font-weight: 700;
-    color: #e5e7eb;
+    color: #f8fafc;
     letter-spacing: -0.01em;
 }
 
 .page-desc {
-    color: #b6c2d4;
-    font-size: 14px;
+    color: #9aa7bf;
+    font-size: 15px;
 }
 
 .page-section {
-    background: #111827;
-    border: 1px solid #1f2937;
+    background: #0f172a;
+    border: 1px solid #1e293b;
     border-radius: 14px;
     padding: 20px;
     display: flex;
@@ -411,7 +425,7 @@ body.auth-page {
 }
 
 .page-section--subtle {
-    background: rgba(15, 23, 42, 0.6);
+    background: rgba(15, 23, 42, 0.45);
 }
 
 .section-header {
@@ -419,13 +433,13 @@ body.auth-page {
     align-items: center;
     gap: 8px;
     font-weight: 700;
-    color: #93c5fd;
-    font-size: 15px;
+    color: #c7d2fe;
+    font-size: 16px;
 }
 
 .section-note {
-    color: #cbd5f5;
-    font-size: 13px;
+    color: #a8b2c7;
+    font-size: 14px;
 }
 
 .section-grid {
@@ -435,8 +449,8 @@ body.auth-page {
 }
 
 .service-card {
-    background: #0f172a;
-    border: 1px solid #1f2937;
+    background: #111827;
+    border: 1px solid #273244;
     border-radius: 12px;
     padding: 16px;
     display: flex;
@@ -477,6 +491,105 @@ body.auth-page {
     min-width: 220px;
 }
 
+/* Config page (Radarr/Sonarr-like) */
+.config-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.config-card {
+    background: #111827;
+    border: 1px solid #273244;
+    border-radius: 14px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.config-card__header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: rgba(30, 41, 59, 0.7);
+    border: 1px solid rgba(71, 85, 105, 0.35);
+}
+
+.config-card__title {
+    font-weight: 800;
+    color: #f8fafc;
+    font-size: 18px;
+}
+
+.config-card__subtitle {
+    color: #cbd5f5;
+    font-size: 14px;
+}
+
+.config-card__body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.config-field {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 360px);
+    gap: 12px;
+    align-items: center;
+    padding: 10px 0;
+    border-top: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.config-field:first-child {
+    border-top: none;
+    padding-top: 0;
+}
+
+.config-field__label {
+    font-weight: 600;
+    color: #d2dcf0;
+    font-size: 13px;
+}
+
+.config-field__help {
+    color: #8fa0b7;
+    font-size: 13px;
+    margin-top: 4px;
+}
+
+.config-input {
+    width: 100%;
+    max-width: 100%;
+    padding: 10px 12px;
+    background: #0b1220;
+    border: 1px solid #1f2937;
+    color: #e5e7eb;
+    border-radius: 8px;
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
+@media (min-width: 1200px) {
+    .config-field {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
+    }
+}
+
+.config-input:focus {
+    outline: none;
+    border-color: #60a5fa;
+    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.15);
+}
+
+@media (max-width: 900px) {
+    .config-field {
+        grid-template-columns: 1fr;
+    }
+}
 /* Global typography */
 body {
     font-family: "Manrope", "Segoe UI", sans-serif;
@@ -486,9 +599,9 @@ body {
 
 /* Form refinement */
 .form-label {
-    color: #b7c7e6;
+    color: #d2dcf0;
     font-weight: 600;
-    font-size: 13px;
+    font-size: 14px;
 }
 
 .form-input,
@@ -505,7 +618,8 @@ body {
 }
 
 .form-help {
-    color: #a8b7cc;
+    color: #8fa0b7;
+    font-size: 13px;
 }
 
 /* Page error banner */
@@ -652,6 +766,9 @@ header {
     background: #111827;
     border-right: 1px solid #1f2937;
     padding: 20px 16px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    box-sizing: border-box;
 }
 
 .app-sidebar__title {
@@ -665,6 +782,7 @@ header {
     display: flex;
     flex-direction: column;
     gap: 6px;
+    box-sizing: border-box;
 }
 
 .app-sidebar__link {
@@ -673,6 +791,9 @@ header {
     padding: 8px 10px;
     border-radius: 8px;
     font-size: 14px;
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .app-sidebar__link:hover {
@@ -744,12 +865,14 @@ header {
     z-index: 50;
     transform: translateX(-100%);
     transition: transform 0.2s ease-out;
+    padding-top: 64px;
 }
 
 .app-drawer .app-sidebar {
     display: block;
     width: 100%;
     border-right: none;
+    padding-top: 0;
 }
 
 .drawer-open {

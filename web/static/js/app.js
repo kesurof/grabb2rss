@@ -373,66 +373,98 @@ async function loadConfig() {
 
         // Grouper les configurations par catégorie
         const categories = {
-            prowlarr: { title: '🔍 Prowlarr', icon: '🔍', fields: {} },
-            radarr: { title: '🎬 Radarr', icon: '🎬', fields: {} },
-            sonarr: { title: '📺 Sonarr', icon: '📺', fields: {} },
-            rss: { title: '📡 RSS & Domaine', icon: '📡', fields: {} },
-            sync: { title: '🔄 Synchronisation', icon: '🔄', fields: {} },
-            other: { title: '⚙️ Autres Paramètres', icon: '⚙️', fields: {} }
+            prowlarr: { title: 'Prowlarr', icon: '🔍', fields: {} },
+            radarr: { title: 'Radarr', icon: '🎬', fields: {} },
+            sonarr: { title: 'Sonarr', icon: '📺', fields: {} },
+            rss: { title: 'RSS & Domaine', icon: '📡', fields: {} },
+            sync: { title: 'Synchronisation', icon: '🔄', fields: {} },
+            other: { title: 'Paramètres avancés', icon: '⚙️', fields: {} }
         };
 
         // Classer les champs par catégorie
         Object.entries(configData).forEach(([key, data]) => {
-            if (key.startsWith('PROWLARR_')) {
+            const upperKey = key.toUpperCase();
+            if (upperKey.startsWith('PROWLARR_') || key.startsWith('prowlarr_')) {
                 categories.prowlarr.fields[key] = data;
-            } else if (key.startsWith('RADARR_')) {
+            } else if (upperKey.startsWith('RADARR_') || key.startsWith('radarr_')) {
                 categories.radarr.fields[key] = data;
-            } else if (key.startsWith('SONARR_')) {
+            } else if (upperKey.startsWith('SONARR_') || key.startsWith('sonarr_')) {
                 categories.sonarr.fields[key] = data;
-            } else if (key.startsWith('RSS_')) {
+            } else if (upperKey.startsWith('RSS_') || key.startsWith('rss_')) {
                 categories.rss.fields[key] = data;
-            } else if (key.includes('SYNC') || key.includes('RETENTION') || key.includes('PURGE') || key.includes('DEDUP')) {
+            } else if (upperKey.includes('SYNC') || upperKey.includes('RETENTION') || upperKey.includes('PURGE') || upperKey.includes('DEDUP')
+                       || key.startsWith('sync_') || key.startsWith('retention_') || key.startsWith('auto_purge') || key.startsWith('dedup_')) {
                 categories.sync.fields[key] = data;
             } else {
                 categories.other.fields[key] = data;
             }
         });
 
-        // Générer le HTML avec layout en grille
+        // Générer le HTML avec layout en cartes type Radarr/Sonarr
         const form = byId("config-form");
         if (!form) return;
-        let html = '<div class="apps-grid">';
+        let html = '';
 
-        Object.entries(categories).forEach(([catKey, category]) => {
-            // Ignorer les catégories vides
-            if (Object.keys(category.fields).length === 0) return;
+        const titleOverrides = {
+            other: 'Paramètres avancés'
+        };
+        const subtitleOverrides = {
+            prowlarr: 'Gestion des indexeurs et grabs',
+            radarr: 'Films et imports associés',
+            sonarr: 'Séries et imports associés',
+            rss: 'Génération des flux RSS',
+            sync: 'Fréquence et rétention',
+            other: 'Paramètres globaux divers'
+        };
+        const order = ['prowlarr', 'radarr', 'sonarr', 'rss', 'sync', 'other'];
+
+        order.forEach(key => {
+            const category = categories[key];
+            if (!category || Object.keys(category.fields).length === 0) return;
+            const title = titleOverrides[key] || category.title;
+            const subtitle = subtitleOverrides[key] || '';
+
+            if (html === '') {
+                html = '<div class="config-grid">';
+            }
 
             html += `
-                <div class="section">
-                    <div class="section-title">${category.title}</div>`;
+                <div class="config-card">
+                    <div class="config-card__header">
+                        <div class="config-card__title">${title}</div>
+                        ${subtitle ? `<div class="config-card__subtitle">${subtitle}</div>` : ''}
+                    </div>
+                    <div class="config-card__body">`;
 
-            Object.entries(category.fields).forEach(([key, data]) => {
-                const displayName = key.replace(/_/g, ' ').toLowerCase()
-                    .split(' ')
-                    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-                    .join(' ');
+                Object.entries(category.fields).forEach(([fieldKey, data]) => {
+                    const displayName = fieldKey.replace(/_/g, ' ').toLowerCase()
+                        .split(' ')
+                        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                        .join(' ');
 
-                html += `
-                    <div class="form-group">
-                        <label for="${key}">${displayName}</label>
-                        <input type="text"
-                               id="${key}"
-                               name="${key}"
-                               value="${data.value || ''}"
-                               placeholder="${data.description}">
-                        <div class="help-text">${data.description}</div>
-                    </div>`;
-            });
+                    html += `
+                        <div class="config-field">
+                            <div class="config-field__meta">
+                                <label class="config-field__label" for="${fieldKey}">${displayName}</label>
+                                <div class="config-field__help">${data.description}</div>
+                            </div>
+                            <div class="config-field__control">
+                                <input class="config-input" type="text"
+                                       id="${fieldKey}"
+                                       name="${fieldKey}"
+                                       value="${data.value || ''}"
+                                       placeholder="${data.description}">
+                            </div>
+                        </div>`;
+                });
 
-            html += `</div>`;
+                html += `</div></div>`;
         });
-
-        html += '</div>';
+        if (html === '') {
+            html = '<div class="config-grid"></div>';
+        } else {
+            html += '</div>';
+        }
         form.innerHTML = html;
     } catch (e) {
         alert("Erreur lors du chargement de la config: " + e);
@@ -1112,6 +1144,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     const page = document.querySelector('.app-content')?.dataset.page;
     if (page) {
         setActiveNav(page);
+    }
+    const syncButton = document.querySelector('[data-action="sync-now"]');
+    if (syncButton) {
+        syncButton.addEventListener('click', () => {
+            if (typeof syncNow === 'function') {
+                syncNow();
+            }
+        });
     }
     clearPageError();
 
