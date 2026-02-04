@@ -1,10 +1,14 @@
-# 📡 grabb2rss
+<div align="center">
+  <img src="web/static/medias/logo-grabb2rss.webp" alt="Grabb2RSS" width="220">
+
+  <h1>Grabb2RSS</h1>
+  <p>Convertisseur Prowlarr vers RSS avec support multi-tracker, filtrage intelligent et interface web moderne.</p>
+  <p><strong>Version</strong> : <!-- version:start -->v2.9.1<!-- version:end --></p>
+</div>
 
 [![Docker](https://img.shields.io/badge/docker-ghcr.io-blue)](https://ghcr.io/kesurof/grabb2rss)
 [![Python](https://img.shields.io/badge/python-3.11+-green)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
-
-**Convertisseur Prowlarr vers RSS** avec support multi-tracker, filtrage intelligent et interface web moderne.
 
 Transformez vos grabs Prowlarr en flux RSS pour le seeding automatique avec vos clients torrent préférés.
 
@@ -40,7 +44,7 @@ Transformez vos grabs Prowlarr en flux RSS pour le seeding automatique avec vos 
 
 ```bash
 mkdir grabb2rss && cd grabb2rss
-curl -o docker-compose.yml https://raw.githubusercontent.com/kesurof/grabb2rss/main/docker-compose.example.yml
+curl -o docker-compose.yml https://raw.githubusercontent.com/kesurof/grabb2rss/main/docker/docker-compose.example.yml
 ```
 
 Ou créez manuellement le fichier `docker-compose.yml` :
@@ -68,6 +72,12 @@ services:
 
 ```bash
 docker-compose up -d
+```
+
+Alternative avec Docker Compose v2 :
+
+```bash
+docker compose up -d
 ```
 
 3. **Configurer via le Setup Wizard**
@@ -112,11 +122,20 @@ Ajoutez un header HTTP dans votre client torrent :
 - `X-API-Key: VOTRE_CLE`
 - ou `Authorization: Bearer VOTRE_CLE`
 
-### Configuration
+### Interface Web (UI)
 
 La configuration peut être modifiée :
-- ✅ Via l'interface web : http://localhost:8000 (onglet Configuration)
+- ✅ Via l'interface web : http://localhost:8000/config
 - ✅ En éditant directement `/config/settings.yml`
+
+Pages principales :
+- `/overview` (synthèse)
+- `/grabs` (historique)
+- `/torrents` (fichiers)
+- `/rss-ui` (clés API & URLs)
+- `/config` (configuration)
+- `/security` (sécurité)
+- `/logs` (logs)
 
 ### Valeurs par défaut
 
@@ -285,12 +304,19 @@ docker-compose down
 docker-compose up -d
 ```
 
+Alternative avec Docker Compose v2 :
+
+```bash
+docker compose down
+docker compose up -d
+```
+
 ### Aucun torrent n'apparaît
 
 1. Vérifiez que la clé API Prowlarr est correcte
 2. Vérifiez que Prowlarr a des grabs récents (page Historique)
 3. Déclenchez une synchronisation manuelle dans l'interface web
-4. Consultez les logs dans l'onglet Admin
+4. Consultez les logs dans /logs
 
 ### Reconfigurer l'application
 
@@ -300,6 +326,14 @@ Si vous souhaitez revenir au Setup Wizard :
 docker-compose down
 rm config/settings.yml
 docker-compose up -d
+```
+
+Alternative avec Docker Compose v2 :
+
+```bash
+docker compose down
+rm config/settings.yml
+docker compose up -d
 ```
 
 ---
@@ -313,6 +347,13 @@ docker-compose pull
 docker-compose up -d
 ```
 
+Alternative avec Docker Compose v2 :
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
 Votre configuration dans `/config` sera préservée.
 
 ---
@@ -320,6 +361,7 @@ Votre configuration dans `/config` sera préservée.
 ## 📚 Documentation
 
 - [Processus de Release](docs/release-process.md)
+- [Synchronisation version README](scripts/sync_readme_version.py)
 
 ### Versionnement
 
@@ -331,7 +373,7 @@ Toutes les expositions (API, UI, Docker, headers, logs) en dépendent automatiqu
 Pour un déploiement prod, utilisez un runner ASGI type Gunicorn + Uvicorn :
 
 ```bash
-WEB_CONCURRENCY=2 gunicorn api:app \
+WEB_CONCURRENCY=2 gunicorn src.api:app \
   --worker-class uvicorn.workers.UvicornWorker \
   --bind 0.0.0.0:8000 \
   --timeout 60
@@ -361,7 +403,7 @@ services:
       sh -c 'WORKERS=${WEB_CONCURRENCY:-$((2 * $(nproc)))}; \
       if [ "$WORKERS" -lt 2 ]; then WORKERS=2; fi; \
       if [ "$WORKERS" -gt 4 ]; then WORKERS=4; fi; \
-      gunicorn api:app --worker-class uvicorn.workers.UvicornWorker --workers "$WORKERS" --bind 0.0.0.0:8000 --timeout 60'
+      gunicorn src.api:app --worker-class uvicorn.workers.UvicornWorker --workers "$WORKERS" --bind 0.0.0.0:8000 --timeout 60'
 ```
 
 - [Installation Détaillée](docs/INSTALLATION.md)
@@ -387,7 +429,7 @@ Si vous souhaitez builder localement pour le développement :
 ```bash
 git clone https://github.com/kesurof/grabb2rss.git
 cd grabb2rss
-docker-compose -f docker-compose.dev.yml up --build
+docker-compose -f docker/docker-compose.dev.yml up --build
 ```
 
 ---

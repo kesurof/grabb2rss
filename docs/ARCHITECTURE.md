@@ -4,20 +4,20 @@
 
 ```
 grabb2rss/
-├── templates/              # Templates Jinja2
+├── web/templates/          # Templates Jinja2
 │   ├── base.html          # Template de base (layout commun)
 │   └── pages/             # Pages de l'application
 │       ├── dashboard.html # Interface principale
 │       ├── login.html     # Page de connexion
 │       └── setup.html     # Assistant de configuration
-├── static/                # Fichiers statiques
+├── web/static/             # Fichiers statiques
 │   ├── css/
 │   │   └── style.css     # Tous les styles CSS (11 KB)
 │   └── js/
 │       └── app.js        # Tout le JavaScript (44 KB)
-├── api.py                 # API FastAPI principale (743 lignes)
-├── setup_routes.py        # Routes du setup wizard
-├── auth_routes.py         # Routes d'authentification
+├── src/api.py              # API FastAPI principale
+├── src/setup_routes.py     # Routes du setup wizard
+├── src/auth_routes.py      # Routes d'authentification
 └── ...
 ```
 
@@ -56,7 +56,7 @@ Les templates utilisent le système de blocks:
 
 **Validation**: Les templates peuvent être validés avec:
 ```bash
-python3 -c "from jinja2 import Environment, FileSystemLoader; env = Environment(loader=FileSystemLoader('templates')); env.get_template('pages/dashboard.html')"
+python3 -c "from jinja2 import Environment, FileSystemLoader; env = Environment(loader=FileSystemLoader('web/templates')); env.get_template('pages/dashboard.html')"
 ```
 
 ### 4. JavaScript
@@ -68,7 +68,7 @@ Le fichier `app.js` contient toute la logique JavaScript:
 
 **Validation**: Le JavaScript peut être validé avec:
 ```bash
-node --check static/js/app.js
+node --check web/static/js/app.js
 ```
 
 ### 5. CSS
@@ -109,8 +109,8 @@ Si l'interface affiche une page blanche:
 
 ## Checklist de déploiement
 
-- [ ] Les fichiers dans `static/` existent
-- [ ] Les templates dans `templates/pages/` existent
+- [ ] Les fichiers dans `web/static/` existent
+- [ ] Les templates dans `web/templates/pages/` existent
 - [ ] `/static` est dans les routes publiques des middlewares
 - [ ] Le serveur démarre sans erreur
 - [ ] Les fichiers statiques sont accessibles (200 OK)

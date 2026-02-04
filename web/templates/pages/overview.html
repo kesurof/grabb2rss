@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% from "partials/ui_components.html" import alert %}
+
+{% block title %}Overview - Grabb2RSS{% endblock %}
+{% block page_id %}overview{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/app.css?v={{ version }}">
+{% endblock %}
+
+{% block legacy_css %}{% endblock %}
+
+{% block content %}
+<div class="page-shell">
+    <div class="page-header page-header--row">
+        <div>
+            <h1>Overview</h1>
+            <p class="page-desc">Synthèse de l'activité et actions rapides.</p>
+        </div>
+    </div>
+
+    <div class="page-section">
+        <div class="section-header">Indicateurs clés</div>
+        <div class="section-grid">
+            <div class="ui-card">
+                <div class="ui-card__title">Total Grabs</div>
+                <div class="ui-card__value" id="total-grabs">-</div>
+            </div>
+            <div class="ui-card">
+                <div class="ui-card__title">Fichiers Torrents</div>
+                <div class="ui-card__value" id="dashboard-torrent-count">-</div>
+            </div>
+            <div class="ui-card">
+                <div class="ui-card__title">Stockage Total</div>
+                <div class="ui-card__value"><span id="storage-size">-</span> MB</div>
+            </div>
+            <div class="ui-card">
+                <div class="ui-card__title">Statut Sync</div>
+                <div class="ui-card__value" id="sync-status">-</div>
+            </div>
+        </div>
+
+        <div class="actions-bar">
+            <button class="btn btn-primary" id="sync-btn" type="button" data-action="sync-now">Synchroniser</button>
+            <button class="btn btn-secondary" type="button" data-action="refresh-data">Actualiser</button>
+            <button class="btn btn-secondary" type="button" data-action="purge-grabs">Vider tous les grabs</button>
+        </div>
+    </div>
+
+    <div class="page-section">
+        <div class="section-header">Statistiques</div>
+        <div class="section-grid">
+            <div class="ui-card">
+                <div class="ui-card__title">Trackers Actifs</div>
+                <div class="ui-card__value" id="dashboard-trackers-count">-</div>
+            </div>
+            <div class="ui-card">
+                <div class="ui-card__title">Grabs Aujourd'hui</div>
+                <div class="ui-card__value" id="dashboard-grabs-today">-</div>
+            </div>
+            <div class="ui-card">
+                <div class="ui-card__title">Uptime</div>
+                <div class="ui-card__value" id="dashboard-uptime">-</div>
+            </div>
+            <div class="ui-card">
+                <div class="ui-card__title">Prochaine Sync</div>
+                <div class="ui-card__value" id="next-sync">-</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="page-section">
+        <div class="section-header">Charts</div>
+        <div style="height: 260px;">
+            <canvas id="trackerChart"></canvas>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+<script src="/static/js/app.js"></script>
+{% endblock %}

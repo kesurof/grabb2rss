@@ -9,9 +9,11 @@ import json
 from datetime import datetime
 from typing import Dict, List, Optional
 import sys
+from pathlib import Path
 
 # Import de la config du projet
 try:
+    sys.path.append(str(Path(__file__).resolve().parent / "src"))
     import config
     print("✅ Configuration chargée depuis config.py\n")
 except Exception as e:

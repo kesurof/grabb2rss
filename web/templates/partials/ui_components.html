@@ -1,0 +1,15 @@
+{% macro card(title='', value='', body='') -%}
+<div class="ui-card">
+    {% if title %}<div class="ui-card__title">{{ title }}</div>{% endif %}
+    {% if value %}<div class="ui-card__value">{{ value }}</div>{% endif %}
+    {% if body %}<div class="ui-card__body">{{ body }}</div>{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro alert(message, tone='info') -%}
+<div class="ui-alert ui-alert--{{ tone }}">{{ message }}</div>
+{%- endmacro %}
+
+{% macro table_state(message, state='empty') -%}
+<div class="ui-table__state ui-table__state--{{ state }}">{{ message }}</div>
+{%- endmacro %}

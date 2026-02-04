@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% block title %}Configuration Initiale - Grabb2RSS{% endblock %}
+{% block page_id %}setup{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/app.css?v={{ version }}">
+{% endblock %}
+
+{% block legacy_css %}{% endblock %}
+
+{% block shell %}
+    {{ self.content() }}
+{% endblock %}
+
+{% block content %}
+    <div class="page-shell" data-first-run="{{ 'true' if first_run else 'false' }}" data-config-exists="{{ 'true' if config_exists else 'false' }}">
+        <div class="page-header page-header--row">
+            <div>
+                <h1>Configuration initiale</h1>
+                <p class="page-desc">Connectez vos services externes puis validez vos paramètres de base.</p>
+            </div>
+        </div>
+
+        <div id="alert" class="alert"></div>
+        <div id="loading" class="loading" data-role="loading">
+            <div class="spinner"></div>
+            <p class="section-note">Validation et sauvegarde en cours...</p>
+        </div>
+
+        <form id="setupForm">
+            <div class="setup-wizard" data-step-total="4">
+                <div class="setup-wizard__steps" aria-hidden="true">
+                    <div class="setup-wizard__step" data-step-index="0">Services</div>
+                    <div class="setup-wizard__step" data-step-index="1">Paramètres</div>
+                    <div class="setup-wizard__step" data-step-index="2">Sécurité</div>
+                    <div class="setup-wizard__step" data-step-index="3">Finalisation</div>
+                </div>
+                <div class="setup-wizard__progress">
+                    <div class="setup-wizard__progress-bar" data-role="setup-progress"></div>
+                </div>
+                <div class="setup-wizard__meta" aria-hidden="true"></div>
+            </div>
+
+            <div class="page-section setup-step" data-setup-step="0">
+                <div class="section-header">Services externes</div>
+                <div class="section-note">Ajoutez les URL et clés API. Les champs obligatoires sont marqués.</div>
+
+                <div class="section-grid">
+                    <div class="service-card">
+                        <div class="service-title"><span class="service-badge">PR</span>Prowlarr</div>
+                        <div class="form-field">
+                            <label class="form-label">URL <span class="required">*</span></label>
+                            <input class="form-input" type="url" id="prowlarr_url" name="prowlarr_url"
+                                   value="http://prowlarr:9696" placeholder="http://prowlarr:9696" required>
+                            <div class="form-help">URL complète de l’instance (avec port).</div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Clé API <span class="required">*</span></label>
+                            <input class="form-input" type="text" id="prowlarr_api_key" name="prowlarr_api_key"
+                                   placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" required>
+                            <div class="form-help">Prowlarr → Paramètres → Sécurité.</div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Historique</label>
+                            <input class="form-input" type="number" id="prowlarr_history_page_size"
+                                   name="prowlarr_history_page_size" value="500" min="100" max="1000">
+                            <div class="form-help">Grabs récupérés par sync (défaut 500).</div>
+                        </div>
+                    </div>
+
+                    <div class="service-card">
+                        <div class="service-title"><span class="service-badge">RA</span>Radarr</div>
+                        <div class="form-field">
+                            <label class="form-label">URL <span class="required">*</span></label>
+                            <input class="form-input" type="url" id="radarr_url" name="radarr_url"
+                                   value="http://radarr:7878" placeholder="http://radarr:7878" required>
+                            <div class="form-help">URL complète de l’instance.</div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Clé API <span class="required">*</span></label>
+                            <input class="form-input" type="text" id="radarr_api_key" name="radarr_api_key"
+                                   placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" required>
+                            <div class="form-help">Radarr → Paramètres → Sécurité.</div>
+                        </div>
+                    </div>
+
+                    <div class="service-card">
+                        <div class="service-title"><span class="service-badge">SO</span>Sonarr</div>
+                        <div class="form-field">
+                            <label class="form-label">URL <span class="required">*</span></label>
+                            <input class="form-input" type="url" id="sonarr_url" name="sonarr_url"
+                                   value="http://sonarr:8989" placeholder="http://sonarr:8989" required>
+                            <div class="form-help">URL complète de l’instance.</div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Clé API <span class="required">*</span></label>
+                            <input class="form-input" type="text" id="sonarr_api_key" name="sonarr_api_key"
+                                   placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" required>
+                            <div class="form-help">Sonarr → Paramètres → Sécurité.</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="actions-bar">
+                    <button type="button" class="btn btn-secondary" data-action="test-connection">
+                        Tester la connexion
+                    </button>
+                </div>
+            </div>
+
+            <div class="page-section setup-step" data-setup-step="1">
+                <div class="section-header">Paramètres</div>
+                <div class="section-grid">
+                    <div class="service-card">
+                        <div class="form-field">
+                            <label class="form-label">Intervalle de synchronisation</label>
+                            <input class="form-input" type="number" id="sync_interval" name="sync_interval" value="3600">
+                            <div class="form-help">Secondes entre chaque sync (3600 = 1h).</div>
+                        </div>
+                        <div class="form-field">
+                            <label class="form-label">Rétention torrents</label>
+                            <input class="form-input" type="number" id="retention_hours" name="retention_hours" value="168">
+                            <div class="form-help">Durée de conservation (168 = 7 jours).</div>
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="auto_purge" name="auto_purge" checked>
+                            <label for="auto_purge" class="form-label" style="margin: 0;">Purge automatique des anciens torrents</label>
+                        </div>
+                        <details class="advanced-block">
+                            <summary>Paramètres avancés (optionnel)</summary>
+                            <div class="advanced-block__content">
+                                <div class="form-field">
+                                    <label class="form-label">Déduplication (heures)</label>
+                                    <input class="form-input" type="number" id="dedup_hours" name="dedup_hours" value="168" min="1">
+                                    <div class="form-help">Empêche les doublons sur la période définie.</div>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+                </div>
+            </div>
+
+            <div class="page-section page-section--subtle setup-step" data-setup-step="2">
+                <div class="section-header">Sécurité (recommandée)</div>
+                <div class="section-note">Ajoutez une authentification pour protéger l’accès à l’interface.</div>
+
+                <div class="auth-toggle">
+                    <div class="auth-toggle__label">
+                        <span class="auth-toggle__title">Activer l'authentification</span>
+                        <span class="auth-toggle__note">Recommandée pour protéger l’accès</span>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="auth_enabled" name="auth_enabled" data-action="toggle-auth">
+                        <span class="switch__track" aria-hidden="true"></span>
+                        <span class="switch__thumb" aria-hidden="true"></span>
+                    </label>
+                </div>
+                <div id="auth_fields" style="display: none;">
+                    <div class="form-field">
+                        <label class="form-label">Nom d'utilisateur <span class="required">*</span></label>
+                        <input class="form-input" type="text" id="auth_username" name="auth_username"
+                               placeholder="admin" autocomplete="username">
+                        <div class="form-help">Identifiant de connexion.</div>
+                    </div>
+                    <div class="form-field">
+                        <label class="form-label">Mot de passe <span class="required">*</span></label>
+                        <input class="form-input" type="password" id="auth_password" name="auth_password"
+                               placeholder="Mot de passe sécurisé" autocomplete="new-password">
+                        <div class="form-help">Minimum 8 caractères.</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="page-section setup-step" data-setup-step="3">
+                <div class="section-header">Finalisation</div>
+                <div class="section-note">Validez la configuration et lancez la première synchronisation.</div>
+                <div class="actions-bar">
+                    <button type="button" class="btn btn-secondary" data-action="go-fix">
+                        Corriger
+                    </button>
+                    <button type="submit" class="btn btn-primary" data-action="submit-setup">
+                        Enregistrer et démarrer
+                    </button>
+                </div>
+            </div>
+
+            <div class="setup-wizard__actions" data-role="setup-wizard-actions">
+                <button type="button" class="btn btn-secondary" data-action="prev-step">Retour</button>
+                <button type="button" class="btn btn-primary" data-action="next-step">Continuer</button>
+            </div>
+        </form>
+
+        <div class="section-note" style="text-align: center;">
+            Version {{ version }}
+        </div>
+    </div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/app.js"></script>
+{% endblock %}

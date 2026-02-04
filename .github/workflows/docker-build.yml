@@ -47,6 +47,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: docker/Dockerfile
           platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: false
           # On conserve APP_VERSION=VERSION pour que la build dev reflète la source de vérité.
@@ -61,7 +62,11 @@ jobs:
         run: |
           python -m pip install -r requirements.txt
           python -m compileall .
+          mkdir -p .ci/config
           python - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.append(str(Path('.').resolve() / 'src'))
           import api, auth, config, db, scheduler, version
           print("Imports OK")
           PY
@@ -106,6 +111,7 @@ jobs:
         id: build
         with:
           context: .
+          file: docker/Dockerfile
           platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: true
           tags: |

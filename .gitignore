@@ -16,6 +16,7 @@ venv/
 .env
 # Project data
 data/
+config/
 *.db
 *.sqlite
 *.sqlite3

@@ -1,0 +1,24 @@
+{% macro text_field(id, label, type='text', placeholder='', value='', required=false, help_text='', autocomplete='') -%}
+<div class="form-field">
+    <label class="form-label" for="{{ id }}">{{ label }}{% if required %} <span class="required">*</span>{% endif %}</label>
+    <input
+        class="form-input"
+        type="{{ type }}"
+        id="{{ id }}"
+        name="{{ id }}"
+        {% if placeholder %}placeholder="{{ placeholder }}"{% endif %}
+        {% if value %}value="{{ value }}"{% endif %}
+        {% if autocomplete %}autocomplete="{{ autocomplete }}"{% endif %}
+        {% if required %}required{% endif %}
+    >
+    {% if help_text %}<div class="form-help">{{ help_text }}</div>{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro checkbox_field(id, label, checked=false, help_text='') -%}
+<div class="form-checkbox">
+    <input type="checkbox" id="{{ id }}" name="{{ id }}" {% if checked %}checked{% endif %}>
+    <label for="{{ id }}">{{ label }}</label>
+    {% if help_text %}<div class="form-help">{{ help_text }}</div>{% endif %}
+</div>
+{%- endmacro %}

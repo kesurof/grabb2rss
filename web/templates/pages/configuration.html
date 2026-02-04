@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "partials/ui_components.html" import alert %}
+
+{% block title %}Configuration - Grabb2RSS{% endblock %}
+{% block page_id %}configuration{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/app.css?v={{ version }}">
+{% endblock %}
+
+{% block legacy_css %}{% endblock %}
+
+{% block content %}
+<div class="page-shell">
+    <div class="page-header page-header--row">
+        <div>
+            <h1>Configuration</h1>
+            <p class="page-desc">Ajustez les paramètres applicatifs par catégorie, sans surcharge.</p>
+        </div>
+        <div class="page-actions">
+            <button class="btn btn-primary" type="button" data-action="save-config">Sauvegarder</button>
+            <button class="btn btn-secondary" type="button" data-action="load-config">Recharger</button>
+        </div>
+    </div>
+
+    <div class="page-section">
+        <div class="section-header">Paramètres</div>
+        <div id="config-form"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/app.js"></script>
+{% endblock %}
