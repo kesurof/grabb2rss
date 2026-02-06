@@ -18,7 +18,7 @@ from db import (
     init_db, get_grabs, get_stats, purge_all, purge_by_retention,
     get_config, set_config, get_all_config, get_sync_logs, get_trackers, get_db,
     vacuum_database, get_db_stats, get_torrent_files_with_info, cleanup_orphan_torrents,
-    delete_torrent_file, purge_all_torrents, delete_log, purge_all_logs
+    delete_torrent_file, purge_all_torrents, delete_log, purge_all_logs, resolve_torrent_path
 )
 from rss import generate_rss, generate_torrent_json
 from models import GrabOut, GrabStats, SyncStatus
@@ -58,6 +58,18 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Si auth désactivée, tout est public
         if not is_auth_enabled():
+            if not setup.is_first_run():
+                admin_blocked_routes = {
+                    ("POST", "/api/config"),
+                    ("POST", "/api/setup/save"),
+                    ("POST", "/api/torrents/purge-all"),
+                    ("POST", "/api/logs/purge-all"),
+                }
+                if (request.method, request.url.path) in admin_blocked_routes:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Action admin désactivée quand l'auth est inactive"
+                    )
             return await call_next(request)
 
         # Routes toujours publiques même si auth activée
@@ -212,32 +224,6 @@ async def info():
         "version": APP_VERSION,
         "uptime_seconds": int(time.time() - start_time),
         "started_at": datetime.utcfromtimestamp(start_time).isoformat() + "Z"
-    }
-
-@app.get("/debug")
-async def debug_info(request: Request):
-    """Informations de debug - Protégé"""
-    from fastapi.responses import RedirectResponse
-
-    # Vérifier auth si activée
-    if is_auth_enabled():
-        session_token = request.cookies.get('session_token')
-        if not verify_session(session_token):
-            raise HTTPException(status_code=401, detail="Non authentifié")
-
-    return {
-        "status": "running",
-        "timestamp": datetime.utcnow().isoformat(),
-        "endpoints": [
-            "/",
-            "/test",
-            "/health",
-            "/debug",
-            "/api/stats",
-            "/api/grabs",
-            "/rss"
-        ],
-        "message": "Si vous voyez ceci, l'API fonctionne correctement"
     }
 
 # ==================== GRABS ====================
@@ -738,6 +724,8 @@ async def cleanup_torrents():
 async def delete_torrent(filename: str):
     """Supprime un fichier torrent spécifique"""
     try:
+        if resolve_torrent_path(filename) is None:
+            raise HTTPException(status_code=400, detail="Nom de fichier torrent invalide")
         success = delete_torrent_file(filename)
         if success:
             return {
@@ -802,59 +790,6 @@ async def purge_logs():
         raise HTTPException(status_code=500, detail=str(e))
 
 # ==================== WEB UI ====================
-
-@app.get("/test", response_class=HTMLResponse)
-async def test_ui(request: Request):
-    """Interface de test simple - Protégée"""
-    from fastapi.responses import RedirectResponse
-
-    # Vérifier auth si activée
-    if is_auth_enabled():
-        session_token = request.cookies.get('session_token')
-        if not verify_session(session_token):
-            return RedirectResponse(url='/login', status_code=302)
-
-    return """<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Test</title></head>
-<body style="font-family: Arial; max-width: 800px; margin: 50px auto; padding: 20px; background: #0f0f0f; color: #fff;">
-<h1 style="color: #1e90ff;">🧪 Grab2RSS - Test</h1>
-<p>✅ L'API fonctionne !</p>
-<ul>
-<li><a href="/api/stats" style="color: #1e90ff;">Voir les stats (JSON)</a></li>
-<li><a href="/api/grabs" style="color: #1e90ff;">Voir les grabs (JSON)</a></li>
-<li><a href="/rss" style="color: #1e90ff;">Voir le flux RSS</a></li>
-<li><a href="/" style="color: #1e90ff;">Interface complète</a></li>
-</ul>
-</body></html>"""
-
-@app.get("/minimal", response_class=HTMLResponse)
-async def minimal_ui(request: Request):
-    """Interface ultra-minimaliste - Protégée"""
-    from fastapi.responses import RedirectResponse
-
-    # Vérifier auth si activée
-    if is_auth_enabled():
-        session_token = request.cookies.get('session_token')
-        if not verify_session(session_token):
-            return RedirectResponse(url='/login', status_code=302)
-
-    return f"""<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <title>Grab2RSS - Test Minimal</title>
-</head>
-<body style="font-family: Arial; max-width: 800px; margin: 50px auto; padding: 20px; background: #0f0f0f; color: #fff;">
-    <h1 style="color: #1e90ff;">🧪 Grab2RSS v{APP_VERSION} - Test Minimal</h1>
-    <p style="color: #00ff00;">✅ Si vous voyez cette page, le serveur fonctionne !</p>
-    <h2>📋 Liens de Test</h2>
-    <a href="/api/stats" target="_blank" style="color: #1e90ff; display: block; padding: 10px; margin: 10px 0; background: #1a1a1a; border-radius: 4px; text-decoration: none;">📊 Stats (JSON)</a>
-    <a href="/api/grabs" target="_blank" style="color: #1e90ff; display: block; padding: 10px; margin: 10px 0; background: #1a1a1a; border-radius: 4px; text-decoration: none;">📋 Grabs (JSON)</a>
-    <a href="/rss" target="_blank" style="color: #1e90ff; display: block; padding: 10px; margin: 10px 0; background: #1a1a1a; border-radius: 4px; text-decoration: none;">📡 Flux RSS (XML)</a>
-    <a href="/health" target="_blank" style="color: #1e90ff; display: block; padding: 10px; margin: 10px 0; background: #1a1a1a; border-radius: 4px; text-decoration: none;">💚 Health Check</a>
-    <a href="/" target="_blank" style="color: #1e90ff; display: block; padding: 10px; margin: 10px 0; background: #1a1a1a; border-radius: 4px; text-decoration: none;">🏠 Interface Complète</a>
-</body>
-</html>"""
 
 # ==================== HTML PAGES ====================
 

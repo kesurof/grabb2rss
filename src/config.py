@@ -55,7 +55,8 @@ def create_default_settings():
             "domain": "localhost:8000",
             "scheme": "http",
             "title": "Grabb2RSS",
-            "description": "Prowlarr to RSS Feed"
+            "description": "Prowlarr to RSS Feed",
+            "allowed_hosts": []
         },
         "cors": {
             "allow_origins": [
@@ -165,6 +166,7 @@ def load_configuration():
                 config["RSS_SCHEME"] = rss.get("scheme", "http")
                 config["RSS_TITLE"] = rss.get("title", "Grabb2RSS")
                 config["RSS_DESCRIPTION"] = rss.get("description", "Prowlarr to RSS Feed")
+                config["RSS_ALLOWED_HOSTS"] = rss.get("allowed_hosts", [])
 
                 cors = yaml_config.get("cors", {})
                 config["CORS_ALLOW_ORIGINS"] = cors.get("allow_origins", [])
@@ -189,8 +191,8 @@ def load_configuration():
 
     return config
 
-# Charger la configuration
-_loaded_config = load_configuration()
+# Charger la configuration (initialisé vide, rempli par reload_config)
+_loaded_config: dict = {}
 
 # Helper pour récupérer une valeur avec fallback
 def _get_config(key: str, default: any, convert_type: type = str):
@@ -254,7 +256,7 @@ def reload_config():
     global RADARR_URL, RADARR_API_KEY, RADARR_ENABLED
     global SONARR_URL, SONARR_API_KEY, SONARR_ENABLED
     global RETENTION_HOURS, AUTO_PURGE, DEDUP_HOURS, SYNC_INTERVAL
-    global RSS_DOMAIN, RSS_SCHEME, RSS_INTERNAL_URL
+    global RSS_DOMAIN, RSS_SCHEME, RSS_INTERNAL_URL, RSS_ALLOWED_HOSTS
     global RSS_TITLE, RSS_DESCRIPTION
     global CORS_ALLOW_ORIGINS
     global TORRENTS_EXPOSE_STATIC
@@ -288,6 +290,11 @@ def reload_config():
     RSS_DOMAIN = _get_config("RSS_DOMAIN", "localhost:8000", str)
     RSS_SCHEME = _get_config("RSS_SCHEME", "http", str)
     RSS_INTERNAL_URL = _get_config("RSS_INTERNAL_URL", "http://grabb2rss:8000", str)
+    env_rss_allowed = _get_env_list("RSS_ALLOWED_HOSTS")
+    RSS_ALLOWED_HOSTS = env_rss_allowed if env_rss_allowed is not None else _get_list_config(
+        "RSS_ALLOWED_HOSTS",
+        []
+    )
 
     RSS_TITLE = _get_config("RSS_TITLE", "grabb2rss", str)
     RSS_DESCRIPTION = _get_config("RSS_DESCRIPTION", "Derniers torrents grabbés via Prowlarr", str)
@@ -350,7 +357,7 @@ TORRENT_DIR = DATA_DIR / "torrents"
 try:
     DATA_DIR.mkdir(mode=0o755, exist_ok=True, parents=True)
     DB_PATH.parent.mkdir(mode=0o755, exist_ok=True, parents=True)
-    TORRENT_DIR.mkdir(mode=0o777, exist_ok=True, parents=True)
+    TORRENT_DIR.mkdir(mode=0o755, exist_ok=True, parents=True)
     logger.info("Répertoires créés/vérifiés")
     logger.info("DATA_DIR: %s (exists: %s)", DATA_DIR, DATA_DIR.exists())
     logger.info("TORRENT_DIR: %s (exists: %s)", TORRENT_DIR, TORRENT_DIR.exists())
@@ -358,87 +365,11 @@ except Exception as e:
     logger.warning("Erreur lors de la création des répertoires: %s", e)
     logger.info("Vérifiez les permissions sur %s", DATA_DIR.parent)
 
-
-# Prowlarr
-PROWLARR_URL = _get_config("PROWLARR_URL", "http://localhost:9696", str)
-PROWLARR_API_KEY = _get_config("PROWLARR_API_KEY", "", str)
-PROWLARR_HISTORY_PAGE_SIZE = _get_config("PROWLARR_HISTORY_PAGE_SIZE", 100, int)
-
-# Radarr (optionnel)
-RADARR_URL = _get_config("RADARR_URL", "", str)
-RADARR_API_KEY = _get_config("RADARR_API_KEY", "", str)
-RADARR_ENABLED = _get_config("RADARR_ENABLED", False, bool)
-
-# Sonarr (optionnel)
-SONARR_URL = _get_config("SONARR_URL", "", str)
-SONARR_API_KEY = _get_config("SONARR_API_KEY", "", str)
-SONARR_ENABLED = _get_config("SONARR_ENABLED", False, bool)
-
-# Rétention et purge
-RETENTION_HOURS = _get_config("RETENTION_HOURS", 168, int) or None
-AUTO_PURGE = _get_config("AUTO_PURGE", True, bool)
-
-# Déduplication
-DEDUP_HOURS = _get_config("DEDUP_HOURS", 168, int)
-
-# Scheduler
-SYNC_INTERVAL = _get_config("SYNC_INTERVAL", 3600, int)
-
 # Web
 APP_HOST = os.getenv("APP_HOST", "0.0.0.0")
 APP_PORT = int(os.getenv("APP_PORT", "8000"))
 
-# Multi-domaine
-RSS_DOMAIN = _get_config("RSS_DOMAIN", "localhost:8000", str)
-RSS_SCHEME = _get_config("RSS_SCHEME", "http", str)
-
-# URL interne Docker (pour accès depuis d'autres conteneurs)
-RSS_INTERNAL_URL = _get_config("RSS_INTERNAL_URL", "http://grabb2rss:8000", str)
-
-# API
-RSS_TITLE = _get_config("RSS_TITLE", "grabb2rss", str)
-RSS_DESCRIPTION = _get_config("RSS_DESCRIPTION", "Derniers torrents grabbés via Prowlarr", str)
-
-_env_cors = _get_env_list("CORS_ALLOW_ORIGINS")
-CORS_ALLOW_ORIGINS = _env_cors if _env_cors is not None else _get_list_config(
-    "CORS_ALLOW_ORIGINS",
-    ["http://localhost:8000", "http://127.0.0.1:8000"]
-)
-
-_env_torrents_expose = _get_env_bool("TORRENTS_EXPOSE_STATIC")
-TORRENTS_EXPOSE_STATIC = _env_torrents_expose if _env_torrents_expose is not None else _get_config(
-    "TORRENTS_EXPOSE_STATIC",
-    False,
-    bool
-)
-
-_env_network_retries = _get_env_int("NETWORK_RETRIES")
-NETWORK_RETRIES = _env_network_retries if _env_network_retries is not None else _get_config(
-    "NETWORK_RETRIES",
-    3,
-    int
-)
-_env_network_backoff = _get_env_float("NETWORK_BACKOFF_SECONDS")
-NETWORK_BACKOFF_SECONDS = _env_network_backoff if _env_network_backoff is not None else _get_config(
-    "NETWORK_BACKOFF_SECONDS",
-    1.0,
-    float
-)
-_env_network_timeout = _get_env_float("NETWORK_TIMEOUT_SECONDS")
-NETWORK_TIMEOUT_SECONDS = _env_network_timeout if _env_network_timeout is not None else _get_config(
-    "NETWORK_TIMEOUT_SECONDS",
-    10,
-    float
-)
-
-_env_torrents_max_size = _get_env_int("TORRENTS_MAX_SIZE_MB")
-TORRENTS_MAX_SIZE_MB = _env_torrents_max_size if _env_torrents_max_size is not None else _get_config(
-    "TORRENTS_MAX_SIZE_MB",
-    50,
-    int
-)
-
-LOG_LEVEL = os.getenv("LOG_LEVEL") or _get_config("LOG_LEVEL", "INFO", str)
+reload_config()
 
 # Descriptions pour l'UI
 DESCRIPTIONS = {
@@ -452,6 +383,7 @@ DESCRIPTIONS = {
     "RSS_DOMAIN": "Domaine pour les URLs RSS publiques (ex: grabb2rss.example.com)",
     "RSS_SCHEME": "Protocole pour les URLs RSS (http ou https)",
     "RSS_INTERNAL_URL": "URL interne complète pour accès Docker (ex: http://grabb2rss:8000)",
+    "RSS_ALLOWED_HOSTS": "Liste blanche d'hôtes autorisés pour les URLs RSS (séparés par virgules)",
     "NETWORK_RETRIES": "Nombre de tentatives réseau en cas d'échec",
     "NETWORK_BACKOFF_SECONDS": "Backoff initial en secondes (exponentiel)",
     "NETWORK_TIMEOUT_SECONDS": "Timeout réseau en secondes",

@@ -40,6 +40,7 @@ class RssConfig(BaseModel):
     scheme: str = "http"
     title: str = "Grabb2RSS"
     description: str = "Prowlarr to RSS Feed"
+    allowed_hosts: List[str] = Field(default_factory=list)
 
     @field_validator("scheme")
     @classmethod

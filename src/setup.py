@@ -219,7 +219,8 @@ def get_config_for_ui() -> Dict[str, Any]:
         "rss_domain": "Domaine pour les URLs RSS (ex: grabb2rss.example.com)",
         "rss_scheme": "Protocole pour les URLs RSS (http ou https)",
         "rss_title": "Titre du flux RSS",
-        "rss_description": "Description du flux RSS"
+        "rss_description": "Description du flux RSS",
+        "rss_allowed_hosts": "Liste blanche d'hôtes RSS (séparés par virgules, optionnel)"
     }
 
     # Convertir la config YAML en format UI
@@ -307,6 +308,15 @@ def get_config_for_ui() -> Dict[str, Any]:
         "value": rss.get("description", "Prowlarr to RSS Feed"),
         "description": descriptions.get("rss_description", "")
     }
+    allowed_hosts = rss.get("allowed_hosts", [])
+    if isinstance(allowed_hosts, list):
+        allowed_hosts_value = ", ".join([str(v) for v in allowed_hosts if str(v).strip()])
+    else:
+        allowed_hosts_value = str(allowed_hosts or "")
+    ui_config["rss_allowed_hosts"] = {
+        "value": allowed_hosts_value,
+        "description": descriptions.get("rss_allowed_hosts", "")
+    }
 
     return ui_config
 
@@ -340,6 +350,13 @@ def save_config_from_ui(ui_config: Dict[str, Any]) -> bool:
         except:
             return default
 
+    def to_list(value) -> list[str]:
+        if isinstance(value, list):
+            return [str(v).strip() for v in value if str(v).strip()]
+        if isinstance(value, str):
+            return [v.strip() for v in value.split(",") if v.strip()]
+        return []
+
     # Mettre à jour la config
     config["prowlarr"] = {
         "url": get_value("prowlarr_url"),
@@ -370,7 +387,8 @@ def save_config_from_ui(ui_config: Dict[str, Any]) -> bool:
         "domain": get_value("rss_domain", "localhost:8000"),
         "scheme": get_value("rss_scheme", "http"),
         "title": get_value("rss_title", "Grabb2RSS"),
-        "description": get_value("rss_description", "Prowlarr to RSS Feed")
+        "description": get_value("rss_description", "Prowlarr to RSS Feed"),
+        "allowed_hosts": to_list(get_value("rss_allowed_hosts", ""))
     }
 
     # Sauvegarder

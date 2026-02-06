@@ -45,7 +45,7 @@ Les deux middlewares doivent autoriser:
 - `/api` - Routes API
 - `/setup` - Assistant de configuration
 - `/login` - Page de connexion
-- `/health`, `/debug`, `/test` - Routes utilitaires
+- `/health` - Route utilitaire
 
 ### 3. Templates Jinja2
 
@@ -123,6 +123,5 @@ Si l'interface affiche une page blanche:
 - http://localhost:8000/setup - Assistant de configuration
 - http://localhost:8000/login - Page de connexion (si auth activée)
 - http://localhost:8000/health - Health check
-- http://localhost:8000/minimal - Interface de test minimaliste
 - http://localhost:8000/static/css/style.css - Test fichier CSS
 - http://localhost:8000/static/js/app.js - Test fichier JS

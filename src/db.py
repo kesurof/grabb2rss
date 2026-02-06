@@ -587,7 +587,10 @@ def delete_torrent_file(filename: str) -> bool:
     if not TORRENT_DIR.exists():
         return False
 
-    torrent_path = TORRENT_DIR / filename
+    torrent_path = resolve_torrent_path(filename)
+    if torrent_path is None:
+        logger.warning("Nom de torrent invalide: %s", filename)
+        return False
 
     if not torrent_path.exists():
         return False
@@ -598,6 +601,30 @@ def delete_torrent_file(filename: str) -> bool:
     except Exception as e:
         logger.warning("Erreur lors de la suppression de %s: %s", filename, e)
         return False
+
+def resolve_torrent_path(filename: str) -> Optional[Path]:
+    """
+    Valide le nom de fichier torrent et retourne un chemin sûr dans TORRENT_DIR.
+    Refuse les séparateurs de chemin et force l'extension .torrent.
+    """
+    if not filename:
+        return None
+    if "/" in filename or "\\" in filename:
+        return None
+    if not filename.endswith(".torrent"):
+        return None
+    if Path(filename).name != filename:
+        return None
+
+    torrent_dir = TORRENT_DIR.resolve()
+    candidate = (TORRENT_DIR / filename).resolve()
+
+    try:
+        candidate.relative_to(torrent_dir)
+    except ValueError:
+        return None
+
+    return candidate
 
 def purge_all_torrents() -> Tuple[int, float]:
     """
