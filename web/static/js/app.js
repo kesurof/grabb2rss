@@ -2920,8 +2920,8 @@ function initSetupPage() {
     const goFixButton = document.querySelector('[data-action="go-fix"]');
     const progressBar = document.querySelector('[data-role="setup-progress"]');
 
-    if (!form || !alertEl || !loadingEl || !authToggle || !authFields) {
-        warnMissing('setup', '#setupForm, #alert, #loading, #auth_enabled, #auth_fields');
+    if (!form || !authToggle || !authFields) {
+        warnMissing('setup', '#setupForm, #auth_enabled, #auth_fields');
         return;
     }
 
@@ -3031,6 +3031,11 @@ function initSetupPage() {
     });
 
     const showAlert = (message, type) => {
+        if (!alertEl) {
+            const level = type === 'error' ? 'error' : (type === 'success' ? 'success' : 'info');
+            showNotification(message, level);
+            return;
+        }
         alertEl.textContent = message;
         alertEl.className = `alert ${type}`;
         alertEl.style.display = 'block';
@@ -3356,7 +3361,7 @@ function initSetupPage() {
         submitInFlight = true;
         setButtonState(submitButton, true, 'Sauvegarde...');
         form.style.display = 'none';
-        loadingEl.style.display = 'block';
+        if (loadingEl) loadingEl.style.display = 'block';
 
         try {
             const response = await fetch('/api/setup/save', {
@@ -3378,12 +3383,12 @@ function initSetupPage() {
                 }, 2000);
             } else {
                 form.style.display = 'block';
-                loadingEl.style.display = 'none';
+                if (loadingEl) loadingEl.style.display = 'none';
                 showAlert('Erreur: ' + (data.detail || data.error || data.message || `HTTP ${response.status}`), 'error');
             }
         } catch (error) {
             form.style.display = 'block';
-            loadingEl.style.display = 'none';
+            if (loadingEl) loadingEl.style.display = 'none';
             showAlert('Erreur: ' + error.message, 'error');
         } finally {
             submitInFlight = false;
