@@ -32,8 +32,7 @@ def create_default_settings():
     default_config = {
         "prowlarr": {
             "url": "",
-            "api_key": "",
-            "history_page_size": 500
+            "api_key": ""
         },
         "radarr": {
             "url": "",
@@ -46,9 +45,7 @@ def create_default_settings():
             "enabled": True
         },
         "sync": {
-            "interval": 3600,
             "retention_hours": 168,
-            "dedup_hours": 168,
             "auto_purge": True
         },
         "rss": {
@@ -78,12 +75,28 @@ def create_default_settings():
         "logging": {
             "level": "INFO"
         },
+        "history_apps": [],
         "auth": {
             "enabled": False,
             "username": "",
             "password_hash": "",
             "api_keys": [],
             "cookie_secure": False
+        },
+        "webhook": {
+            "enabled": False,
+            "token": "",
+            "min_score": 3,
+            "strict": True,
+            "download": True
+        },
+        "history": {
+            "sync_interval_seconds": 7200,
+            "lookback_days": 7,
+            "download_from_history": True,
+            "min_score": 3,
+            "strict_hash": False,
+            "ingestion_mode": "webhook_plus_history"
         },
         "setup_completed": False
     }
@@ -143,7 +156,6 @@ def load_configuration():
                 prowlarr = yaml_config.get("prowlarr", {})
                 config["PROWLARR_URL"] = prowlarr.get("url", "")
                 config["PROWLARR_API_KEY"] = prowlarr.get("api_key", "")
-                config["PROWLARR_HISTORY_PAGE_SIZE"] = prowlarr.get("history_page_size", 500)
 
                 radarr = yaml_config.get("radarr", {})
                 config["RADARR_URL"] = radarr.get("url", "")
@@ -156,10 +168,8 @@ def load_configuration():
                 config["SONARR_ENABLED"] = sonarr.get("enabled", True)
 
                 sync = yaml_config.get("sync", {})
-                config["SYNC_INTERVAL"] = sync.get("interval", 3600)
                 config["RETENTION_HOURS"] = sync.get("retention_hours", 168)
                 config["AUTO_PURGE"] = sync.get("auto_purge", True)
-                config["DEDUP_HOURS"] = sync.get("dedup_hours", 168)
 
                 rss = yaml_config.get("rss", {})
                 config["RSS_DOMAIN"] = rss.get("domain", "localhost:8000")
@@ -167,6 +177,21 @@ def load_configuration():
                 config["RSS_TITLE"] = rss.get("title", "Grabb2RSS")
                 config["RSS_DESCRIPTION"] = rss.get("description", "Prowlarr to RSS Feed")
                 config["RSS_ALLOWED_HOSTS"] = rss.get("allowed_hosts", [])
+
+                webhook = yaml_config.get("webhook", {})
+                config["WEBHOOK_ENABLED"] = webhook.get("enabled", False)
+                config["WEBHOOK_TOKEN"] = webhook.get("token", "")
+                config["WEBHOOK_MIN_SCORE"] = webhook.get("min_score", 3)
+                config["WEBHOOK_STRICT"] = webhook.get("strict", True)
+                config["WEBHOOK_DOWNLOAD"] = webhook.get("download", True)
+
+                history = yaml_config.get("history", {})
+                config["HISTORY_SYNC_INTERVAL_SECONDS"] = history.get("sync_interval_seconds", 7200)
+                config["HISTORY_LOOKBACK_DAYS"] = history.get("lookback_days", 7)
+                config["HISTORY_DOWNLOAD_FROM_HISTORY"] = history.get("download_from_history", True)
+                config["HISTORY_MIN_SCORE"] = history.get("min_score", 3)
+                config["HISTORY_STRICT_HASH"] = history.get("strict_hash", False)
+                config["HISTORY_INGESTION_MODE"] = history.get("ingestion_mode", "webhook_plus_history")
 
                 cors = yaml_config.get("cors", {})
                 config["CORS_ALLOW_ORIGINS"] = cors.get("allow_origins", [])
@@ -252,11 +277,14 @@ def _get_env_float(env_key: str) -> Optional[float]:
 def reload_config():
     """Recharge la configuration depuis settings.yml et met à jour les variables globales"""
     global _loaded_config
-    global PROWLARR_URL, PROWLARR_API_KEY, PROWLARR_HISTORY_PAGE_SIZE
+    global PROWLARR_URL, PROWLARR_API_KEY
     global RADARR_URL, RADARR_API_KEY, RADARR_ENABLED
     global SONARR_URL, SONARR_API_KEY, SONARR_ENABLED
-    global RETENTION_HOURS, AUTO_PURGE, DEDUP_HOURS, SYNC_INTERVAL
+    global RETENTION_HOURS, AUTO_PURGE
     global RSS_DOMAIN, RSS_SCHEME, RSS_INTERNAL_URL, RSS_ALLOWED_HOSTS
+    global WEBHOOK_ENABLED, WEBHOOK_TOKEN, WEBHOOK_MIN_SCORE, WEBHOOK_STRICT, WEBHOOK_DOWNLOAD
+    global HISTORY_SYNC_INTERVAL_SECONDS, HISTORY_LOOKBACK_DAYS
+    global HISTORY_DOWNLOAD_FROM_HISTORY, HISTORY_MIN_SCORE, HISTORY_STRICT_HASH, HISTORY_INGESTION_MODE
     global RSS_TITLE, RSS_DESCRIPTION
     global CORS_ALLOW_ORIGINS
     global TORRENTS_EXPOSE_STATIC
@@ -272,7 +300,6 @@ def reload_config():
     # Mettre à jour toutes les variables globales
     PROWLARR_URL = _get_config("PROWLARR_URL", "http://localhost:9696", str)
     PROWLARR_API_KEY = _get_config("PROWLARR_API_KEY", "", str)
-    PROWLARR_HISTORY_PAGE_SIZE = _get_config("PROWLARR_HISTORY_PAGE_SIZE", 100, int)
 
     RADARR_URL = _get_config("RADARR_URL", "", str)
     RADARR_API_KEY = _get_config("RADARR_API_KEY", "", str)
@@ -284,8 +311,6 @@ def reload_config():
 
     RETENTION_HOURS = _get_config("RETENTION_HOURS", 168, int) or None
     AUTO_PURGE = _get_config("AUTO_PURGE", True, bool)
-    DEDUP_HOURS = _get_config("DEDUP_HOURS", 168, int)
-    SYNC_INTERVAL = _get_config("SYNC_INTERVAL", 3600, int)
 
     RSS_DOMAIN = _get_config("RSS_DOMAIN", "localhost:8000", str)
     RSS_SCHEME = _get_config("RSS_SCHEME", "http", str)
@@ -298,6 +323,18 @@ def reload_config():
 
     RSS_TITLE = _get_config("RSS_TITLE", "grabb2rss", str)
     RSS_DESCRIPTION = _get_config("RSS_DESCRIPTION", "Derniers torrents grabbés via Prowlarr", str)
+
+    WEBHOOK_ENABLED = _get_config("WEBHOOK_ENABLED", False, bool)
+    WEBHOOK_TOKEN = _get_config("WEBHOOK_TOKEN", "", str)
+    WEBHOOK_MIN_SCORE = _get_config("WEBHOOK_MIN_SCORE", 3, int)
+    WEBHOOK_STRICT = _get_config("WEBHOOK_STRICT", True, bool)
+    WEBHOOK_DOWNLOAD = _get_config("WEBHOOK_DOWNLOAD", True, bool)
+    HISTORY_SYNC_INTERVAL_SECONDS = _get_config("HISTORY_SYNC_INTERVAL_SECONDS", 7200, int)
+    HISTORY_LOOKBACK_DAYS = _get_config("HISTORY_LOOKBACK_DAYS", 7, int)
+    HISTORY_DOWNLOAD_FROM_HISTORY = _get_config("HISTORY_DOWNLOAD_FROM_HISTORY", True, bool)
+    HISTORY_MIN_SCORE = _get_config("HISTORY_MIN_SCORE", 3, int)
+    HISTORY_STRICT_HASH = _get_config("HISTORY_STRICT_HASH", False, bool)
+    HISTORY_INGESTION_MODE = _get_config("HISTORY_INGESTION_MODE", "webhook_plus_history", str)
 
     env_cors = _get_env_list("CORS_ALLOW_ORIGINS")
     CORS_ALLOW_ORIGINS = env_cors if env_cors is not None else _get_list_config(
@@ -343,7 +380,7 @@ def reload_config():
 
     logger.info("Configuration rechargée")
     logger.info("Prowlarr URL: %s", PROWLARR_URL)
-    logger.info("Sync interval: %ss", SYNC_INTERVAL)
+    logger.info("History sync interval: %ss", HISTORY_SYNC_INTERVAL_SECONDS)
     logger.info("RSS domain: %s", RSS_DOMAIN)
 
     return True
@@ -375,15 +412,23 @@ reload_config()
 DESCRIPTIONS = {
     "PROWLARR_URL": "URL de votre serveur Prowlarr (ex: http://localhost:9696)",
     "PROWLARR_API_KEY": "Clé API Prowlarr (obtenue depuis Prowlarr Settings → API)",
-    "PROWLARR_HISTORY_PAGE_SIZE": "Nombre d'enregistrements à récupérer par sync (50-500)",
-    "SYNC_INTERVAL": "Intervalle entre chaque sync en secondes (3600 = 1 heure)",
     "RETENTION_HOURS": "Nombre d'heures avant suppression automatique (168 = 7j, 0 = infini)",
-    "DEDUP_HOURS": "Fenêtre de déduplication en heures (24 = 24h glissant)",
     "AUTO_PURGE": "Activer la suppression automatique des anciens grabs",
     "RSS_DOMAIN": "Domaine pour les URLs RSS publiques (ex: grabb2rss.example.com)",
     "RSS_SCHEME": "Protocole pour les URLs RSS (http ou https)",
     "RSS_INTERNAL_URL": "URL interne complète pour accès Docker (ex: http://grabb2rss:8000)",
     "RSS_ALLOWED_HOSTS": "Liste blanche d'hôtes autorisés pour les URLs RSS (séparés par virgules)",
+    "WEBHOOK_ENABLED": "Activer le webhook Grab (true/false)",
+    "WEBHOOK_TOKEN": "Token de sécurité pour le webhook",
+    "WEBHOOK_MIN_SCORE": "Score minimum de matching pour accepter un grab",
+    "WEBHOOK_STRICT": "Refuser si matching insuffisant ou hash invalide",
+    "WEBHOOK_DOWNLOAD": "Télécharger le .torrent via Prowlarr (true/false)",
+    "HISTORY_SYNC_INTERVAL_SECONDS": "Intervalle de réconciliation history (secondes)",
+    "HISTORY_LOOKBACK_DAYS": "Fenêtre history de rattrapage en jours",
+    "HISTORY_DOWNLOAD_FROM_HISTORY": "Autoriser le téléchargement .torrent depuis les sync history",
+    "HISTORY_MIN_SCORE": "Score minimum de matching pour la sync history",
+    "HISTORY_STRICT_HASH": "Exiger un hash valide en sync history",
+    "HISTORY_INGESTION_MODE": "Mode d'ingestion: webhook_only | webhook_plus_history | history_only",
     "NETWORK_RETRIES": "Nombre de tentatives réseau en cas d'échec",
     "NETWORK_BACKOFF_SECONDS": "Backoff initial en secondes (exponentiel)",
     "NETWORK_TIMEOUT_SECONDS": "Timeout réseau en secondes",

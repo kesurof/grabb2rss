@@ -1,127 +1,113 @@
-# Architecture de Grabb2RSS
+# Architecture de Grabb2RSS (Mode Fusionne)
 
-## Structure des dossiers
+## Vue d'ensemble
 
-```
-grabb2rss/
-├── web/templates/          # Templates Jinja2
-│   ├── base.html          # Template de base (layout commun)
-│   └── pages/             # Pages de l'application
-│       ├── dashboard.html # Interface principale
-│       ├── login.html     # Page de connexion
-│       └── setup.html     # Assistant de configuration
-├── web/static/             # Fichiers statiques
-│   ├── css/
-│   │   └── style.css     # Tous les styles CSS (11 KB)
-│   └── js/
-│       └── app.js        # Tout le JavaScript (44 KB)
-├── src/api.py              # API FastAPI principale
-├── src/setup_routes.py     # Routes du setup wizard
-├── src/auth_routes.py      # Routes d'authentification
-└── ...
-```
+Le backend utilise un pipeline unique d'ingestion des grabs:
 
-## Points importants pour le débogage
+1. Source temps reel: webhook Radarr/Sonarr (`/api/webhook/grab`)
+2. Source de reconciliation: historique Radarr/Sonarr (sync cyclique + manuel)
+3. Ingestion canonique: upsert idempotent en base (`instance + download_id`)
+4. Exposition UI/API: `/grabs` (events unifies) et `/torrents` (fichiers)
 
-### 1. Fichiers statiques
+Le pipeline est pilote par `history.ingestion_mode`:
 
-Les fichiers CSS et JS sont servis depuis `/static/`:
-- CSS: `http://localhost:8000/static/css/style.css`
-- JS: `http://localhost:8000/static/js/app.js`
+- `webhook_only`: webhook actif, sync history desactivee.
+- `webhook_plus_history`: webhook actif + sync history active.
+- `history_only`: webhook ignore, sync history active.
 
-**IMPORTANT**: Les middlewares doivent autoriser `/static` dans les routes publiques !
+## Composants principaux
 
-### 2. Middlewares (ordre d'exécution)
+- Entree application: `src/main.py`
+- API/routes/pages: `src/api.py`, `src/auth_routes.py`, `src/setup_routes.py`
+- Configuration: `src/config.py`, `src/settings_schema.py`
+- Base de donnees/migrations: `src/db.py`
+- Ingestion webhook grab: `src/webhook_grab.py`
+- Reconciliation historique consolide: `src/history_reconcile.py`
+- Integrations Prowlarr/Radarr/Sonarr: `src/prowlarr.py`, `src/radarr_sonarr.py`
+- Gestion torrent: `src/torrent.py`
+- Scheduler: `src/scheduler.py`
+- UI: `web/templates/`, `web/static/`
 
-L'ordre des middlewares dans api.py est CRITIQUE:
+## Flux backend officiel
 
-```python
-app.add_middleware(SetupRedirectMiddleware)  # 1er - Redirige vers /setup si premier lancement
-app.add_middleware(AuthMiddleware)           # 2ème - Gère l'authentification
-```
+1. Webhook Radarr/Sonarr envoie un event grab.
+2. `src/webhook_grab.py` valide token, score/matching, hash et tente recuperation torrent.
+3. Le grab est ingere via le modele canonique en DB.
+4. Le scheduler lance periodiquement la sync de l'historique consolide.
+5. `src/history_reconcile.py` lit l'historique apps configurees et upsert les grabs manquants/synchronises.
+6. L'UI `/grabs` affiche la vue fusionnee; `/torrents` affiche les fichiers physiques.
 
-Les deux middlewares doivent autoriser:
-- `/static` - Fichiers CSS/JS
-- `/api` - Routes API
-- `/setup` - Assistant de configuration
-- `/login` - Page de connexion
-- `/health` - Route utilitaire
+## Parametres runtime (config/settings.yml)
 
-### 3. Templates Jinja2
+### Bloc `history`
 
-Les templates utilisent le système de blocks:
-- `{% block title %}` - Titre de la page
-- `{% block content %}` - Contenu principal
-- `{% block scripts %}` - Scripts JavaScript
+- `history.sync_interval_seconds`: intervalle du job de sync history (900..86400).
+- `history.lookback_days`: fenetre de rattrapage history (1..30).
+- `history.download_from_history`: autorise le telechargement `.torrent` pendant la sync history.
+- `history.min_score`: score minimal de matching Prowlarr en mode history.
+- `history.strict_hash`: exiger hash valide en mode history.
+- `history.ingestion_mode`: mode global d'ingestion (`webhook_only|webhook_plus_history|history_only`).
 
-**Validation**: Les templates peuvent être validés avec:
-```bash
-python3 -c "from jinja2 import Environment, FileSystemLoader; env = Environment(loader=FileSystemLoader('web/templates')); env.get_template('pages/dashboard.html')"
-```
+### Bloc `sync` (maintenance)
 
-### 4. JavaScript
+- `sync.retention_hours`: retention locale des grabs en DB.
+- `sync.auto_purge`: active/desactive la purge automatique.
 
-Le fichier `app.js` contient toute la logique JavaScript:
-- Initialisation automatique au `DOMContentLoaded`
-- Détection de la page (login vs dashboard)
-- Gestion des onglets, charts, API calls, etc.
+## Pages UI cibles
 
-**Validation**: Le JavaScript peut être validé avec:
-```bash
-node --check web/static/js/app.js
-```
+- `/overview`: synthese
+- `/grabs`: historique fusionne webhook + historique consolide
+- `/torrents`: fichiers torrent
+- `/rss-ui`: configuration RSS/API keys
+- `/config`: configuration applicative
+- `/security`: redirection vers `/config?tab=security`
+- `/logs`: redirection vers `/config?tab=maintenance`
 
-### 5. CSS
+`/history-grabb` est maintenu en redirection vers `/grabs` pour compatibilite.
 
-Le fichier `style.css` contient tous les styles:
-- Styles communs (body, buttons, forms)
-- Styles spécifiques login
-- Styles spécifiques dashboard
-- Animations et media queries
+## Donnees et idempotence
 
-## Débogage d'une page blanche
+La table `grabs` est la source canonique et inclut notamment:
 
-Si l'interface affiche une page blanche:
+- `instance`
+- `download_id`
+- `source_first_seen`
+- `source_last_seen`
+- `status`
+- `last_error`
+- `updated_at`
 
-1. **Vérifier les fichiers statiques**:
-   ```bash
-   curl -I http://localhost:8000/static/css/style.css
-   curl -I http://localhost:8000/static/js/app.js
-   ```
-   Devrait retourner `200 OK`
+Contrainte cle: unicite logique `instance + download_id`.
 
-2. **Vérifier la console du navigateur** (F12):
-   - Erreurs JavaScript ?
-   - Fichiers 404 ?
-   - Erreurs réseau ?
+## Scheduler
 
-3. **Vérifier les middlewares**:
-   - `/static` est-il dans les routes publiques ?
-   - Les deux middlewares autorisent-ils `/static` ?
+Le scheduler est recentre sur:
 
-4. **Vérifier les templates**:
-   - Les blocks Jinja2 sont-ils corrects ?
-   - Le fichier base.html charge-t-il le CSS ?
+- Sync historique consolide cyclique
+- Housekeeping (nettoyage, maintenance)
 
-5. **Vérifier les logs du serveur**:
-   - Erreurs 500 ?
-   - Exceptions Python ?
+Le flux polling legacy Prowlarr n'est plus la source principale d'ingestion.
 
-## Checklist de déploiement
+Comportement detaille:
 
-- [ ] Les fichiers dans `web/static/` existent
-- [ ] Les templates dans `web/templates/pages/` existent
-- [ ] `/static` est dans les routes publiques des middlewares
-- [ ] Le serveur démarre sans erreur
-- [ ] Les fichiers statiques sont accessibles (200 OK)
-- [ ] La console du navigateur ne montre pas d'erreur
-- [ ] settings.yml est configuré (sinon redirection vers /setup)
+- Job `sync_grab_history` cree seulement si `history_apps` configurees et `history.ingestion_mode != webhook_only`.
+- `history.ingestion_mode=history_only` neutralise l'ingestion webhook.
+- Housekeeping applique `sync.auto_purge` + `sync.retention_hours`.
 
-## URLs de test
+## Endpoints API cle
 
-- http://localhost:8000/ - Dashboard (redirige vers /setup si non configuré)
-- http://localhost:8000/setup - Assistant de configuration
-- http://localhost:8000/login - Page de connexion (si auth activée)
-- http://localhost:8000/health - Health check
-- http://localhost:8000/static/css/style.css - Test fichier CSS
-- http://localhost:8000/static/js/app.js - Test fichier JS
+- `POST /api/webhook/grab`
+- `GET /api/grabs`
+- `POST /api/grabs/recover`
+- `GET /api/torrents`
+- `GET /api/torrents/download/{filename}`
+- `POST /api/history/reconcile/sync`
+- `GET /api/history/reconcile`
+- `POST /api/history/reconcile/recover`
+
+## Depreciations supprimees
+
+- Ancienne logique de collecte multiple non unifiee
+- Actions UI legacy de comparaison ponctuelle non persistante
+- Dependance au polling Prowlarr comme flux central
+- Parametres supprimes: `sync.interval`, `sync.dedup_hours`, `prowlarr.history_page_size`

@@ -9,7 +9,6 @@ class ProwlarrConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     url: str = ""
     api_key: str = ""
-    history_page_size: int = 500
 
 
 class RadarrConfig(BaseModel):
@@ -28,9 +27,7 @@ class SonarrConfig(BaseModel):
 
 class SyncConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    interval: int = 3600
     retention_hours: int = 168
-    dedup_hours: int = 168
     auto_purge: bool = True
 
 
@@ -104,6 +101,43 @@ class AuthConfig(BaseModel):
     cookie_secure: bool = False
 
 
+class WebhookConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool = False
+    token: str = ""
+    min_score: int = 3
+    strict: bool = True
+    download: bool = True
+
+
+class HistoryConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    sync_interval_seconds: int = Field(default=7200, ge=900, le=86400)
+    lookback_days: int = Field(default=7, ge=1, le=30)
+    download_from_history: bool = True
+    min_score: int = Field(default=3, ge=0, le=10)
+    strict_hash: bool = False
+    ingestion_mode: str = "webhook_plus_history"
+
+    @field_validator("ingestion_mode")
+    @classmethod
+    def validate_ingestion_mode(cls, value: str) -> str:
+        value = (value or "").strip().lower()
+        allowed = {"webhook_only", "webhook_plus_history", "history_only"}
+        if value not in allowed:
+            raise ValueError(f"doit être l'une des valeurs: {', '.join(sorted(allowed))}")
+        return value
+
+
+class HistoryAppConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str
+    url: str
+    api_key: str
+    type: str = "radarr"
+    enabled: bool = True
+
+
 class AppConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     host: str = "0.0.0.0"
@@ -124,4 +158,7 @@ class SettingsConfig(BaseModel):
     torrents_download: TorrentsDownloadConfig = Field(default_factory=TorrentsDownloadConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     auth: AuthConfig = Field(default_factory=AuthConfig)
+    webhook: WebhookConfig = Field(default_factory=WebhookConfig)
+    history: HistoryConfig = Field(default_factory=HistoryConfig)
+    history_apps: List[HistoryAppConfig] = Field(default_factory=list)
     setup_completed: bool = False

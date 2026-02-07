@@ -7,6 +7,10 @@
     </a>
     <div class="app-topbar__actions">
         <span class="app-topbar__version">v{{ version }}</span>
+        {% if auth_enabled %}
+        <span class="app-topbar__user" id="username-display">{{ username or "Utilisateur" }}</span>
+        <button class="app-topbar__button app-topbar__button--secondary" type="button" data-action="logout">Déconnexion</button>
+        {% endif %}
         <button class="app-topbar__button" type="button" data-action="sync-now">Synchroniser</button>
     </div>
 </header>

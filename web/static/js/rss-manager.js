@@ -6,6 +6,18 @@ class RSSManager {
         this.apiKeys = [];
         this.rssUrls = [];
         this.authInfo = null;
+        this.availableTokens = [];
+        this.selectedToken = '';
+        this._filterTimer = null;
+    }
+
+    escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
     // Charger les API keys
@@ -22,10 +34,15 @@ class RSSManager {
     }
 
     // Générer une nouvelle API key
-    async generateApiKey() {
+    async generateApiKey(requestedName = '') {
         try {
+            const payload = requestedName && requestedName.trim()
+                ? { name: requestedName.trim() }
+                : {};
             const response = await fetch('/api/auth/keys/generate', {
-                method: 'POST'
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
             });
 
             if (!response.ok) {
@@ -67,17 +84,24 @@ class RSSManager {
     // Charger les URLs RSS
     async loadRSSUrls() {
         try {
-            const response = await fetch('/api/rss/urls');
+            const token = this.selectedToken ? encodeURIComponent(this.selectedToken) : '';
+            const url = token ? `/api/rss/urls?token=${token}` : '/api/rss/urls';
+            const response = await fetch(url);
             const data = await response.json();
 
             if (data.error) {
                 this.rssUrls = [];
                 this.authInfo = null;
+                this.availableTokens = [];
                 return { error: data.error, message: data.message };
             }
 
             this.rssUrls = data.urls || [];
             this.authInfo = data.auth || null;
+            this.availableTokens = data.api_keys || [];
+            if (data.selected_api_key && data.selected_api_key.key) {
+                this.selectedToken = data.selected_api_key.key;
+            }
             return data;
         } catch (error) {
             console.error('Erreur chargement URLs RSS:', error);
@@ -132,9 +156,12 @@ class RSSManager {
             <div class="api-keys-section">
                 <div class="section-header">
                     <h3>🔑 Clés API</h3>
-                    <button class="btn btn-primary" type="button" data-action="generate-key">
-                        Générer une clé
-                    </button>
+                    <div class="api-keys-generate">
+                        <input id="rss-token-name-input" class="config-input" type="text" placeholder="Nom du token (optionnel)">
+                        <button class="btn btn-primary" type="button" data-action="generate-key">
+                            Générer une clé
+                        </button>
+                    </div>
                 </div>`;
 
         if (this.apiKeys.length === 0) {
@@ -162,17 +189,23 @@ class RSSManager {
                 const statusClass = key.enabled ? 'active' : 'inactive';
                 const statusText = key.enabled ? 'Active' : 'Inactive';
                 const createdAt = new Date(key.created_at).toLocaleDateString();
+                const isSelected = this.selectedToken && this.selectedToken === key.key;
+                const selectLabel = isSelected ? 'Sélectionné' : 'Sélectionner';
+                const selectClass = isSelected ? 'btn-success' : 'btn-secondary';
 
                 html += `
                             <tr>
-                                <td><strong>${key.name || 'API Key'}</strong></td>
-                                <td><code class="api-key-chip">${key.key}</code></td>
+                                <td><strong>${this.escapeHtml(key.name || 'API Key')}</strong></td>
+                                <td><code class="api-key-chip">${this.escapeHtml(key.key)}</code></td>
                                 <td><span class="key-status ${statusClass}">${statusText}</span></td>
                                 <td>${createdAt}</td>
                                 <td>
                                     <div class="api-key-actions">
-                                        <button class="btn btn-sm btn-secondary" type="button" data-action="copy-key" data-key="${key.key}">Copier</button>
-                                        <button class="btn btn-sm btn-danger" type="button" data-action="delete-key" data-key="${key.key}">Supprimer</button>
+                                        <button class="btn btn-sm ${selectClass}" type="button" data-action="select-key" data-key="${this.escapeHtml(key.key)}" ${key.enabled ? '' : 'disabled'}>
+                                            ${selectLabel}
+                                        </button>
+                                        <button class="btn btn-sm btn-secondary" type="button" data-action="copy-key" data-key="${this.escapeHtml(key.key)}">Copier</button>
+                                        <button class="btn btn-sm btn-danger" type="button" data-action="delete-key" data-key="${this.escapeHtml(key.key)}">Supprimer</button>
                                     </div>
                                 </td>
                             </tr>`;
@@ -194,7 +227,8 @@ class RSSManager {
         const container = document.getElementById(containerId);
         if (!container) return;
 
-        let html = `<div class="rss-urls-section config-grid">`;
+        const filteredUrls = this.getFilteredUrls();
+        let html = `<div class="rss-urls-section rss-urls-section--flat">`;
 
         if (this.rssUrls.length === 0) {
             html += `
@@ -202,39 +236,42 @@ class RSSManager {
                     <p>⚠️ Aucune URL RSS disponible.</p>
                     <p>Générez une clé API d'abord.</p>
                 </div>`;
+        } else if (filteredUrls.length === 0) {
+            html += `
+                <div class="info-box warning">
+                    <p>Aucun résultat avec les filtres courants.</p>
+                    <p>Modifiez la catégorie ou la recherche.</p>
+                </div>`;
         } else {
             if (this.authInfo && (this.authInfo.x_api_key || this.authInfo.authorization)) {
                 const xApiKey = this.authInfo.x_api_key || '';
                 const bearer = this.authInfo.authorization || '';
+                const selectedTokenName = this.escapeHtml((this.availableTokens.find(t => t.key === this.selectedToken) || {}).name || 'Auto');
                 html += `
-                    <div class="config-card">
-                        <div class="config-card__header">
-                            <div class="config-card__title">Authentification via headers</div>
-                            <div class="config-card__subtitle">Recommandé pour sécuriser l'accès</div>
-                        </div>
-                        <div class="config-card__body">
-                            <div class="config-field">
-                                <div class="config-field__meta">
-                                    <label class="config-field__label">Header principal</label>
-                                    <div class="config-field__help">À ajouter dans votre client torrent</div>
-                                </div>
-                                <div class="config-field__control">
-                                    <div class="config-inline">
-                                        <input type="text" class="config-input" value="X-API-Key: ${xApiKey}" readonly data-select="all" title="Cliquez pour sélectionner">
-                                        <button class="btn btn-sm btn-secondary" type="button" data-action="copy-text" data-text="X-API-Key: ${xApiKey}">Copier</button>
-                                    </div>
+                    <div class="rss-group-panel">
+                        <div class="rss-group-panel__title">Authentification via headers</div>
+                        <div class="rss-group-panel__subtitle">Token sélectionné: ${selectedTokenName}</div>
+                        <div class="rss-url-row">
+                            <div class="rss-url-row__meta">
+                                <div class="rss-url-row__name">Header principal</div>
+                                <div class="rss-url-row__desc">À ajouter dans votre client torrent</div>
+                            </div>
+                            <div class="rss-url-row__control">
+                                <div class="copy-field">
+                                    <input type="text" class="config-input" value="X-API-Key: ${xApiKey}" readonly data-select="all" title="Cliquez pour sélectionner">
+                                    <button class="btn btn-sm btn-secondary" type="button" data-action="copy-text" data-text="X-API-Key: ${xApiKey}">Copier</button>
                                 </div>
                             </div>
-                            <div class="config-field">
-                                <div class="config-field__meta">
-                                    <label class="config-field__label">Alternative</label>
-                                    <div class="config-field__help">Utilisez si votre client n'accepte pas X-API-Key</div>
-                                </div>
-                                <div class="config-field__control">
-                                    <div class="config-inline">
-                                        <input type="text" class="config-input" value="Authorization: ${bearer}" readonly data-select="all" title="Cliquez pour sélectionner">
-                                        <button class="btn btn-sm btn-secondary" type="button" data-action="copy-text" data-text="Authorization: ${bearer}">Copier</button>
-                                    </div>
+                        </div>
+                        <div class="rss-url-row">
+                            <div class="rss-url-row__meta">
+                                <div class="rss-url-row__name">Alternative</div>
+                                <div class="rss-url-row__desc">Utilisez si votre client n'accepte pas X-API-Key</div>
+                            </div>
+                            <div class="rss-url-row__control">
+                                <div class="copy-field">
+                                    <input type="text" class="config-input" value="Authorization: ${bearer}" readonly data-select="all" title="Cliquez pour sélectionner">
+                                    <button class="btn btn-sm btn-secondary" type="button" data-action="copy-text" data-text="Authorization: ${bearer}">Copier</button>
                                 </div>
                             </div>
                         </div>
@@ -242,39 +279,33 @@ class RSSManager {
             }
 
             // Grouper par catégorie
-            const principal = this.rssUrls.filter(u => u.category === 'principal');
-            const trackers = this.rssUrls.filter(u => u.category === 'tracker');
+            const principal = filteredUrls.filter(u => u.category === 'principal');
+            const trackers = filteredUrls.filter(u => u.category === 'tracker');
 
             if (principal.length > 0) {
                 html += `
-                    <div class="config-card">
-                        <div class="config-card__header">
-                            <div class="config-card__title">Flux principaux</div>
-                            <div class="config-card__subtitle">Tous les torrents récents</div>
-                        </div>
-                        <div class="config-card__body">`;
+                    <div class="rss-group-panel">
+                        <div class="rss-group-panel__title">Flux principaux</div>
+                        <div class="rss-group-panel__subtitle">Tous les torrents récents</div>`;
 
                 principal.forEach(url => {
                     html += this.renderUrlRow(url);
                 });
 
-                html += `</div></div>`;
+                html += `</div>`;
             }
 
             if (trackers.length > 0) {
                 html += `
-                    <div class="config-card">
-                        <div class="config-card__header">
-                            <div class="config-card__title">Flux par tracker</div>
-                            <div class="config-card__subtitle">Sources filtrées par tracker</div>
-                        </div>
-                        <div class="config-card__body">`;
+                    <div class="rss-group-panel">
+                        <div class="rss-group-panel__title">Flux par tracker</div>
+                        <div class="rss-group-panel__subtitle">Sources filtrées par tracker</div>`;
 
                 trackers.forEach(url => {
                     html += this.renderUrlRow(url);
                 });
 
-                html += `</div></div>`;
+                html += `</div>`;
             }
         }
 
@@ -283,16 +314,104 @@ class RSSManager {
         this.bindContainerHandlers(container);
     }
 
+    updateSummary() {
+        const totalKeys = this.apiKeys.length;
+        const activeKeys = this.apiKeys.filter(key => !!key.enabled).length;
+        const totalUrls = this.rssUrls.length;
+        const trackerUrls = this.rssUrls.filter(url => url.category === 'tracker').length;
+
+        const setText = (id, value) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = String(value);
+        };
+
+        setText('rss-summary-keys-total', totalKeys);
+        setText('rss-summary-keys-active', activeKeys);
+        setText('rss-summary-urls-total', totalUrls);
+        setText('rss-summary-urls-trackers', trackerUrls);
+    }
+
+    getFilters() {
+        const categoryEl = document.getElementById('rss-url-category-filter');
+        const searchEl = document.getElementById('rss-url-search');
+        return {
+            category: categoryEl ? categoryEl.value : '',
+            search: searchEl ? searchEl.value.trim().toLowerCase() : ''
+        };
+    }
+
+    getFilteredUrls() {
+        const { category, search } = this.getFilters();
+        let rows = this.rssUrls.slice();
+
+        if (category) {
+            rows = rows.filter(url => url.category === category);
+        }
+        if (search) {
+            rows = rows.filter(url => {
+                const name = String(url.name || '').toLowerCase();
+                const desc = String(url.description || '').toLowerCase();
+                const link = String(url.url || '').toLowerCase();
+                return name.includes(search) || desc.includes(search) || link.includes(search);
+            });
+        }
+
+        return rows;
+    }
+
+    bindPageFilters() {
+        const tokenEl = document.getElementById('rss-token-filter');
+        const categoryEl = document.getElementById('rss-url-category-filter');
+        const searchEl = document.getElementById('rss-url-search');
+        if (tokenEl && tokenEl.dataset.bound !== 'true') {
+            tokenEl.addEventListener('change', async () => {
+                this.selectedToken = tokenEl.value || '';
+                await this.loadRSSUrls();
+                this.updateSummary();
+                this.renderRSSUrlsSection('rss-urls-container');
+                this.renderTokenFilter();
+            });
+            tokenEl.dataset.bound = 'true';
+        }
+        if (categoryEl && categoryEl.dataset.bound !== 'true') {
+            categoryEl.addEventListener('change', () => this.renderRSSUrlsSection('rss-urls-container'));
+            categoryEl.dataset.bound = 'true';
+        }
+        if (searchEl && searchEl.dataset.bound !== 'true') {
+            searchEl.addEventListener('input', () => {
+                if (this._filterTimer) clearTimeout(this._filterTimer);
+                this._filterTimer = setTimeout(() => this.renderRSSUrlsSection('rss-urls-container'), 220);
+            });
+            searchEl.dataset.bound = 'true';
+        }
+    }
+
+    renderTokenFilter() {
+        const tokenEl = document.getElementById('rss-token-filter');
+        if (!tokenEl) return;
+        const prev = tokenEl.value || '';
+        const options = ['<option value="">Auto</option>'].concat(
+            this.availableTokens.map(t => {
+                const name = this.escapeHtml(t.name || 'API Key');
+                const value = this.escapeHtml(t.key || '');
+                return `<option value="${value}">${name}</option>`;
+            })
+        );
+        tokenEl.innerHTML = options.join('');
+        const nextValue = this.selectedToken || prev || '';
+        tokenEl.value = nextValue;
+    }
+
     // Render une carte URL
     renderUrlRow(url) {
         return `
-            <div class="config-field">
-                <div class="config-field__meta">
-                    <label class="config-field__label">${url.name}</label>
-                    <div class="config-field__help">${url.description}</div>
+            <div class="rss-url-row">
+                <div class="rss-url-row__meta">
+                    <div class="rss-url-row__name">${url.name}</div>
+                    <div class="rss-url-row__desc">${url.description}</div>
                 </div>
-                <div class="config-field__control">
-                    <div class="config-inline">
+                <div class="rss-url-row__control">
+                    <div class="copy-field">
                         <input type="text" class="config-input" value="${url.url}" readonly data-select="all" title="Cliquez pour sélectionner">
                         <button class="btn btn-sm btn-secondary" type="button" data-action="copy-url" data-url="${url.url.replace(/'/g, "\\'")}">
                             Copier
@@ -305,9 +424,13 @@ class RSSManager {
     // Handlers
     async handleGenerateKey() {
         try {
-            const data = await this.generateApiKey();
+            const input = document.getElementById('rss-token-name-input');
+            const requestedName = input ? input.value.trim() : '';
+            const data = await this.generateApiKey(requestedName);
+            this.updateSummary();
             this.renderApiKeysSection('api-keys-container');
             this.renderRSSUrlsSection('rss-urls-container');
+            this.renderTokenFilter();
 
             // Afficher message succès
             showNotification('✅ API key générée avec succès !', 'success');
@@ -316,19 +439,24 @@ class RSSManager {
         }
     }
 
-    async handleDeleteKey(key) {
-        if (!confirm('Supprimer cette clé API ? Les URLs utilisant cette clé cesseront de fonctionner.')) {
-            return;
-        }
-
+    async handleDeleteKey(key, buttonElement = null) {
         try {
             await this.deleteApiKey(key);
+            this.updateSummary();
             this.renderApiKeysSection('api-keys-container');
             this.renderRSSUrlsSection('rss-urls-container');
+            this.renderTokenFilter();
 
-            showNotification('✅ API key supprimée', 'success');
+            showNotification('API key supprimée', 'success');
         } catch (error) {
-            showNotification('❌ Erreur suppression API key', 'error');
+            showNotification('Erreur suppression API key', 'error');
+            if (buttonElement) {
+                buttonElement.disabled = false;
+                buttonElement.dataset.confirming = 'false';
+                buttonElement.classList.remove('btn-warning');
+                buttonElement.classList.add('btn-danger');
+                buttonElement.textContent = 'Supprimer';
+            }
         }
     }
 
@@ -357,12 +485,46 @@ class RSSManager {
             const action = actionEl.dataset.action;
             if (action === 'generate-key') {
                 this.handleGenerateKey();
+            } else if (action === 'select-key') {
+                const key = actionEl.dataset.key;
+                if (!key) return;
+                this.selectedToken = key;
+                this.loadRSSUrls().then(() => {
+                    this.updateSummary();
+                    this.renderTokenFilter();
+                    this.renderApiKeysSection('api-keys-container');
+                    this.renderRSSUrlsSection('rss-urls-container');
+                    showNotification('Token RSS sélectionné', 'success');
+                }).catch(() => {
+                    showNotification('Erreur sélection token', 'error');
+                });
             } else if (action === 'copy-key') {
                 const key = actionEl.dataset.key;
                 if (key) this.copyKey(key, actionEl);
             } else if (action === 'delete-key') {
                 const key = actionEl.dataset.key;
-                if (key) this.handleDeleteKey(key);
+                if (!key) return;
+                if (actionEl.dataset.confirming !== 'true') {
+                    actionEl.dataset.confirming = 'true';
+                    actionEl.classList.remove('btn-danger');
+                    actionEl.classList.add('btn-warning');
+                    actionEl.textContent = 'Confirmer';
+                    if (actionEl._confirmTimer) clearTimeout(actionEl._confirmTimer);
+                    actionEl._confirmTimer = setTimeout(() => {
+                        actionEl.dataset.confirming = 'false';
+                        actionEl.classList.remove('btn-warning');
+                        actionEl.classList.add('btn-danger');
+                        actionEl.textContent = 'Supprimer';
+                    }, 3200);
+                    return;
+                }
+                if (actionEl._confirmTimer) clearTimeout(actionEl._confirmTimer);
+                actionEl.disabled = true;
+                actionEl.dataset.confirming = 'false';
+                actionEl.classList.remove('btn-warning');
+                actionEl.classList.add('btn-danger');
+                actionEl.textContent = 'Suppression...';
+                this.handleDeleteKey(key, actionEl);
             } else if (action === 'copy-text') {
                 const text = actionEl.dataset.text;
                 if (text) this.copyToClipboard(text, actionEl);
@@ -378,6 +540,9 @@ class RSSManager {
     async init() {
         await this.loadApiKeys();
         await this.loadRSSUrls();
+        this.bindPageFilters();
+        this.renderTokenFilter();
+        this.updateSummary();
         this.renderApiKeysSection('api-keys-container');
         this.renderRSSUrlsSection('rss-urls-container');
     }

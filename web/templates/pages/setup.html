@@ -44,7 +44,12 @@
 
             <div class="page-section setup-step" data-setup-step="0">
                 <div class="section-header">Services externes</div>
-                <div class="section-note">Ajoutez les URL et clés API. Les champs obligatoires sont marqués.</div>
+                <div class="section-note">Ajoutez les URL et clés API. Les valeurs par défaut sont prêtes pour un déploiement Docker.</div>
+
+                <div class="setup-defaults-note">
+                    <span class="setup-defaults-note__badge">Docker</span>
+                    <span>Par défaut: <code>prowlarr</code>, <code>radarr</code>, <code>sonarr</code> en hostname réseau.</span>
+                </div>
 
                 <div class="section-grid">
                     <div class="service-card">
@@ -60,12 +65,6 @@
                             <input class="form-input" type="text" id="prowlarr_api_key" name="prowlarr_api_key"
                                    placeholder="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" required>
                             <div class="form-help">Prowlarr → Paramètres → Sécurité.</div>
-                        </div>
-                        <div class="form-field">
-                            <label class="form-label">Historique</label>
-                            <input class="form-input" type="number" id="prowlarr_history_page_size"
-                                   name="prowlarr_history_page_size" value="500" min="100" max="1000">
-                            <div class="form-help">Grabs récupérés par sync (défaut 500).</div>
                         </div>
                     </div>
 
@@ -113,9 +112,9 @@
                 <div class="section-grid">
                     <div class="service-card">
                         <div class="form-field">
-                            <label class="form-label">Intervalle de synchronisation</label>
-                            <input class="form-input" type="number" id="sync_interval" name="sync_interval" value="3600">
-                            <div class="form-help">Secondes entre chaque sync (3600 = 1h).</div>
+                            <label class="form-label">Fenêtre de rattrapage history</label>
+                            <input class="form-input" type="number" id="history_lookback_days" name="history_lookback_days" value="7" min="1" max="30">
+                            <div class="form-help">Nombre de jours à analyser pour le rattrapage history (1 à 30).</div>
                         </div>
                         <div class="form-field">
                             <label class="form-label">Rétention torrents</label>
@@ -126,16 +125,6 @@
                             <input type="checkbox" id="auto_purge" name="auto_purge" checked>
                             <label for="auto_purge" class="form-label" style="margin: 0;">Purge automatique des anciens torrents</label>
                         </div>
-                        <details class="advanced-block">
-                            <summary>Paramètres avancés (optionnel)</summary>
-                            <div class="advanced-block__content">
-                                <div class="form-field">
-                                    <label class="form-label">Déduplication (heures)</label>
-                                    <input class="form-input" type="number" id="dedup_hours" name="dedup_hours" value="168" min="1">
-                                    <div class="form-help">Empêche les doublons sur la période définie.</div>
-                                </div>
-                            </div>
-                        </details>
                     </div>
                 </div>
             </div>
@@ -169,6 +158,80 @@
                         <div class="form-help">Minimum 8 caractères.</div>
                     </div>
                 </div>
+
+                <div class="section-header" style="margin-top: 32px;">Webhook Grab</div>
+                <div class="section-note">Recommandé pour récupérer uniquement les torrents réellement grab.</div>
+
+                <div class="auth-toggle">
+                    <div class="auth-toggle__label">
+                        <span class="auth-toggle__title">Activer le webhook</span>
+                        <span class="auth-toggle__note">Permet le flux Grab → Prowlarr → .torrent</span>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="webhook_enabled" name="webhook_enabled" checked>
+                        <span class="switch__track" aria-hidden="true"></span>
+                        <span class="switch__thumb" aria-hidden="true"></span>
+                    </label>
+                </div>
+
+                <div class="form-field">
+                    <div class="form-inline">
+                        <label class="form-label" style="margin: 0;">Token webhook</label>
+                        <div class="copy-field">
+                            <input class="form-input" type="text" id="webhook_token" name="webhook_token" readonly>
+                            <button class="btn btn-secondary" type="button" data-action="generate-webhook-token">Générer</button>
+                        </div>
+                    </div>
+                    <div class="form-help">Le token est intégré automatiquement dans l’URL webhook à copier.</div>
+                </div>
+
+                <div class="setup-webhook-guide">
+                    <div class="setup-webhook-guide__title">Guide rapide Radarr / Sonarr</div>
+                    <div class="setup-webhook-guide__note">1) Utilisez d’abord <code>grabb2rss</code>. 2) Si le test échoue, utilisez <code>172.17.0.1</code>.</div>
+                    <div class="setup-webhook-guide__steps">
+                        <div class="setup-webhook-step">Paramètres → Connect → + → Webhook</div>
+                        <div class="setup-webhook-step">Méthode: POST</div>
+                        <div class="setup-webhook-step">Événement: On Grab</div>
+                    </div>
+                </div>
+
+                <div class="form-field">
+                    <div class="form-inline">
+                        <label class="form-label" style="margin: 0;">URL Webhook (Docker: grabb2rss)</label>
+                        <div class="copy-field">
+                            <input class="form-input" type="text" id="webhook_url_primary" name="webhook_url_primary" readonly>
+                            <button class="btn btn-secondary" type="button" data-action="copy-webhook-url-primary">Copier</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-field">
+                    <div class="form-inline">
+                        <label class="form-label" style="margin: 0;">URL Webhook (fallback: 172.17.0.1)</label>
+                        <div class="copy-field">
+                            <input class="form-input" type="text" id="webhook_url_fallback" name="webhook_url_fallback" readonly>
+                            <button class="btn btn-secondary" type="button" data-action="copy-webhook-url-fallback">Copier</button>
+                        </div>
+                    </div>
+                </div>
+
+                <details class="advanced-block">
+                    <summary>Paramètres avancés webhook</summary>
+                    <div class="advanced-block__content">
+                        <div class="form-field">
+                            <label class="form-label">Score minimum</label>
+                            <input class="form-input" type="number" id="webhook_min_score" name="webhook_min_score" value="3" min="1" max="10">
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="webhook_strict" name="webhook_strict" checked>
+                            <label for="webhook_strict" class="form-label" style="margin: 0;">Mode strict (hash obligatoire)</label>
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="webhook_download" name="webhook_download" checked>
+                            <label for="webhook_download" class="form-label" style="margin: 0;">Télécharger le .torrent via Prowlarr</label>
+                        </div>
+                    </div>
+                </details>
             </div>
 
             <div class="page-section setup-step" data-setup-step="3">

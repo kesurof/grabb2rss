@@ -1,8 +1,6 @@
 # torrent.py
-import os
 import requests
 import logging
-from pathlib import Path
 from config import TORRENT_DIR, TORRENTS_MAX_SIZE_MB
 
 def safe_filename(name: str) -> str:
@@ -51,7 +49,7 @@ def download_torrent(title: str, url: str) -> str:
         bytes_written = 0
         first_chunk = b""
 
-        with open(path, "wb") as f:
+        with path.open("wb") as f:
             for chunk in response.iter_content(chunk_size=8192):
                 if not chunk:
                     continue
@@ -79,19 +77,10 @@ def download_torrent(title: str, url: str) -> str:
         
         # Retourner SEULEMENT le nom du fichier (pas le chemin complet)
         return filename
-    except requests.RequestException as e:
+    except (requests.RequestException, ValueError) as e:
         logger.error("Erreur téléchargement torrent %s: %s", title, e)
-        if path.exists():
-            try:
-                os.remove(path)
-            except Exception:
-                pass
-        raise
-    except ValueError as e:
-        logger.error("Fichier torrent invalide %s: %s", title, e)
-        if path.exists():
-            try:
-                os.remove(path)
-            except Exception:
-                pass
+        try:
+            path.unlink(missing_ok=True)
+        except Exception:
+            pass
         raise

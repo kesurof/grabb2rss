@@ -17,8 +17,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_CONFIG = {
     "prowlarr": {
         "url": "",
-        "api_key": "",
-        "history_page_size": 500
+        "api_key": ""
     },
     "radarr": {
         "url": "",
@@ -31,10 +30,8 @@ DEFAULT_CONFIG = {
         "enabled": True
     },
     "sync": {
-        "interval": 3600,
         "auto_purge": True,
-        "retention_hours": 168,
-        "dedup_hours": 168
+        "retention_hours": 168
     },
     "rss": {
         "domain": "localhost:8000",
@@ -67,6 +64,22 @@ DEFAULT_CONFIG = {
         "api_keys": [],
         "cookie_secure": False
     },
+    "webhook": {
+        "enabled": False,
+        "token": "",
+        "min_score": 3,
+        "strict": True,
+        "download": True
+    },
+    "history": {
+        "sync_interval_seconds": 7200,
+        "lookback_days": 7,
+        "download_from_history": True,
+        "min_score": 3,
+        "strict_hash": False,
+        "ingestion_mode": "webhook_plus_history"
+    },
+    "history_apps": [],
     "setup_completed": False
 }
 
@@ -93,31 +106,16 @@ def load_config() -> Dict[str, Any]:
 def save_config(config: Dict[str, Any]) -> bool:
     """Sauvegarde la configuration dans le fichier YAML"""
     try:
-        # Créer le répertoire si nécessaire
-        logger.info("Création du répertoire: %s", CONFIG_DIR)
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-
-        # Vérifier les permissions
-        import os
-        if CONFIG_DIR.exists():
-            logger.info("Répertoire existe: %s", CONFIG_DIR)
-            logger.info("Permissions: %s", oct(os.stat(CONFIG_DIR).st_mode)[-3:])
-            logger.info("User ID: %s, Group ID: %s", os.getuid(), os.getgid())
-
-        logger.info("Sauvegarde dans: %s", CONFIG_FILE)
         with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
             yaml.dump(config, f, default_flow_style=False, allow_unicode=True)
-
         logger.info("Configuration sauvegardée: %s", CONFIG_FILE)
         return True
     except PermissionError as e:
         logger.error("Erreur de permissions: %s", e)
-        logger.info("Vérifiez que l'utilisateur a les droits d'écriture sur %s", CONFIG_DIR)
         return False
     except Exception as e:
         logger.error("Erreur sauvegarde config: %s", e)
-        import traceback
-        traceback.print_exc()
         return False
 
 
@@ -160,6 +158,34 @@ def get_config_value(key_path: str, default: Any = None) -> Any:
             return default
 
     return value
+
+
+def get_history_apps() -> list[dict]:
+    """Retourne la liste normalisée des instances history consolidé depuis settings.yml."""
+    config = load_config()
+    apps = config.get("history_apps", [])
+    if not isinstance(apps, list):
+        return []
+
+    normalized: list[dict] = []
+    for app in apps:
+        if not isinstance(app, dict):
+            continue
+        name = (app.get("name") or "").strip()
+        url = (app.get("url") or "").strip()
+        api_key = (app.get("api_key") or "").strip()
+        app_type = (app.get("type") or name).strip().lower()
+        enabled = bool(app.get("enabled", True))
+        if not (name and url and api_key):
+            continue
+        normalized.append({
+            "name": name.lower(),
+            "url": url.rstrip("/"),
+            "api_key": api_key,
+            "type": app_type,
+            "enabled": enabled,
+        })
+    return normalized
 
 
 def validate_prowlarr_config(url: str, api_key: str) -> tuple[bool, Optional[str]]:
@@ -205,22 +231,32 @@ def get_config_for_ui() -> Dict[str, Any]:
     descriptions = {
         "prowlarr_url": "URL de votre serveur Prowlarr (ex: http://prowlarr:9696)",
         "prowlarr_api_key": "Clé API Prowlarr (obtenue depuis Prowlarr Settings → API)",
-        "prowlarr_history_page_size": "Nombre d'enregistrements à récupérer par sync (50-500)",
         "radarr_url": "URL de Radarr (ex: http://radarr:7878)",
         "radarr_api_key": "Clé API Radarr",
         "radarr_enabled": "Activer l'intégration Radarr (true/false)",
         "sonarr_url": "URL de Sonarr (ex: http://sonarr:8989)",
         "sonarr_api_key": "Clé API Sonarr",
         "sonarr_enabled": "Activer l'intégration Sonarr (true/false)",
-        "sync_interval": "Intervalle entre chaque sync en secondes (3600 = 1 heure)",
         "sync_retention_hours": "Nombre d'heures avant suppression automatique (168 = 7j, 0 = infini)",
-        "sync_dedup_hours": "Fenêtre de déduplication en heures (24 = 24h glissant)",
         "sync_auto_purge": "Activer la suppression automatique des anciens grabs (true/false)",
         "rss_domain": "Domaine pour les URLs RSS (ex: grabb2rss.example.com)",
         "rss_scheme": "Protocole pour les URLs RSS (http ou https)",
         "rss_title": "Titre du flux RSS",
         "rss_description": "Description du flux RSS",
         "rss_allowed_hosts": "Liste blanche d'hôtes RSS (séparés par virgules, optionnel)"
+        ,
+        "webhook_enabled": "Activer le webhook Grab (recommandé)",
+        "webhook_token": "Token de sécurité pour le webhook",
+        "webhook_min_score": "Score minimum de matching (3 recommandé)",
+        "webhook_strict": "Refuser si matching insuffisant ou hash invalide",
+        "webhook_download": "Télécharger le .torrent via Prowlarr",
+        "history_sync_interval_seconds": "Intervalle de sync history en secondes (ex: 7200 = 2h)",
+        "history_lookback_days": "Fenêtre de rattrapage history en jours (ex: 7)",
+        "history_download_from_history": "Télécharger les .torrents pendant la sync history",
+        "history_min_score": "Score minimum de matching en sync history",
+        "history_strict_hash": "Refuser si hash invalide pendant la sync history",
+        "history_ingestion_mode": "Mode d'ingestion: webhook_only | webhook_plus_history | history_only",
+        "history_apps": "Instances Radarr/Sonarr pour l'historique consolidé (JSON)"
     }
 
     # Convertir la config YAML en format UI
@@ -235,10 +271,6 @@ def get_config_for_ui() -> Dict[str, Any]:
     ui_config["prowlarr_api_key"] = {
         "value": prowlarr.get("api_key", ""),
         "description": descriptions.get("prowlarr_api_key", "")
-    }
-    ui_config["prowlarr_history_page_size"] = {
-        "value": str(prowlarr.get("history_page_size", 500)),
-        "description": descriptions.get("prowlarr_history_page_size", "")
     }
 
     # Radarr
@@ -273,17 +305,9 @@ def get_config_for_ui() -> Dict[str, Any]:
 
     # Sync
     sync = config.get("sync", {})
-    ui_config["sync_interval"] = {
-        "value": str(sync.get("interval", 3600)),
-        "description": descriptions.get("sync_interval", "")
-    }
     ui_config["sync_retention_hours"] = {
         "value": str(sync.get("retention_hours", 168)),
         "description": descriptions.get("sync_retention_hours", "")
-    }
-    ui_config["sync_dedup_hours"] = {
-        "value": str(sync.get("dedup_hours", 168)),
-        "description": descriptions.get("sync_dedup_hours", "")
     }
     ui_config["sync_auto_purge"] = {
         "value": str(sync.get("auto_purge", True)).lower(),
@@ -316,6 +340,75 @@ def get_config_for_ui() -> Dict[str, Any]:
     ui_config["rss_allowed_hosts"] = {
         "value": allowed_hosts_value,
         "description": descriptions.get("rss_allowed_hosts", "")
+    }
+
+    # Webhook
+    webhook = config.get("webhook", {})
+    ui_config["webhook_enabled"] = {
+        "value": str(webhook.get("enabled", False)).lower(),
+        "description": descriptions.get("webhook_enabled", "")
+    }
+    ui_config["webhook_token"] = {
+        "value": webhook.get("token", ""),
+        "description": descriptions.get("webhook_token", "")
+    }
+    ui_config["webhook_min_score"] = {
+        "value": str(webhook.get("min_score", 3)),
+        "description": descriptions.get("webhook_min_score", "")
+    }
+    ui_config["webhook_strict"] = {
+        "value": str(webhook.get("strict", True)).lower(),
+        "description": descriptions.get("webhook_strict", "")
+    }
+    ui_config["webhook_download"] = {
+        "value": str(webhook.get("download", True)).lower(),
+        "description": descriptions.get("webhook_download", "")
+    }
+
+    # Auth
+    auth = config.get("auth", {})
+    ui_config["auth_enabled"] = {
+        "value": str(auth.get("enabled", False)).lower(),
+        "description": descriptions.get("auth_enabled", "")
+    }
+    ui_config["auth_cookie_secure"] = {
+        "value": str(auth.get("cookie_secure", False)).lower(),
+        "description": descriptions.get("auth_cookie_secure", "")
+    }
+
+    history_apps = config.get("history_apps", [])
+    try:
+        history_value = json.dumps(history_apps, ensure_ascii=False, indent=2)
+    except Exception:
+        history_value = "[]"
+    history_cfg = config.get("history", {})
+    ui_config["history_sync_interval_seconds"] = {
+        "value": str(history_cfg.get("sync_interval_seconds", 7200)),
+        "description": descriptions.get("history_sync_interval_seconds", "")
+    }
+    ui_config["history_lookback_days"] = {
+        "value": str(history_cfg.get("lookback_days", 7)),
+        "description": descriptions.get("history_lookback_days", "")
+    }
+    ui_config["history_download_from_history"] = {
+        "value": str(history_cfg.get("download_from_history", True)).lower(),
+        "description": descriptions.get("history_download_from_history", "")
+    }
+    ui_config["history_min_score"] = {
+        "value": str(history_cfg.get("min_score", 3)),
+        "description": descriptions.get("history_min_score", "")
+    }
+    ui_config["history_strict_hash"] = {
+        "value": str(history_cfg.get("strict_hash", False)).lower(),
+        "description": descriptions.get("history_strict_hash", "")
+    }
+    ui_config["history_ingestion_mode"] = {
+        "value": str(history_cfg.get("ingestion_mode", "webhook_plus_history")),
+        "description": descriptions.get("history_ingestion_mode", "")
+    }
+    ui_config["history_apps"] = {
+        "value": history_value,
+        "description": descriptions.get("history_apps", "")
     }
 
     return ui_config
@@ -360,8 +453,7 @@ def save_config_from_ui(ui_config: Dict[str, Any]) -> bool:
     # Mettre à jour la config
     config["prowlarr"] = {
         "url": get_value("prowlarr_url"),
-        "api_key": get_value("prowlarr_api_key"),
-        "history_page_size": to_int(get_value("prowlarr_history_page_size"), 500)
+        "api_key": get_value("prowlarr_api_key")
     }
 
     config["radarr"] = {
@@ -377,9 +469,7 @@ def save_config_from_ui(ui_config: Dict[str, Any]) -> bool:
     }
 
     config["sync"] = {
-        "interval": to_int(get_value("sync_interval"), 3600),
         "retention_hours": to_int(get_value("sync_retention_hours"), 168),
-        "dedup_hours": to_int(get_value("sync_dedup_hours"), 168),
         "auto_purge": to_bool(get_value("sync_auto_purge", "true"))
     }
 
@@ -390,6 +480,76 @@ def save_config_from_ui(ui_config: Dict[str, Any]) -> bool:
         "description": get_value("rss_description", "Prowlarr to RSS Feed"),
         "allowed_hosts": to_list(get_value("rss_allowed_hosts", ""))
     }
+
+    config["webhook"] = {
+        "enabled": to_bool(get_value("webhook_enabled", "false")),
+        "token": get_value("webhook_token", ""),
+        "min_score": to_int(get_value("webhook_min_score", 3), 3),
+        "strict": to_bool(get_value("webhook_strict", "true")),
+        "download": to_bool(get_value("webhook_download", "true"))
+    }
+    config["history"] = {
+        "sync_interval_seconds": max(300, to_int(get_value("history_sync_interval_seconds", 7200), 7200)),
+        "lookback_days": max(1, to_int(get_value("history_lookback_days", 7), 7)),
+        "download_from_history": to_bool(get_value("history_download_from_history", "true")),
+        "min_score": max(0, min(10, to_int(get_value("history_min_score", 3), 3))),
+        "strict_hash": to_bool(get_value("history_strict_hash", "false")),
+        "ingestion_mode": str(get_value("history_ingestion_mode", "webhook_plus_history") or "webhook_plus_history").strip().lower()
+    }
+
+    history_raw = get_value("history_apps", "[]")
+    history_apps = []
+    if isinstance(history_raw, list):
+        history_apps = history_raw
+    elif isinstance(history_raw, str):
+        try:
+            parsed = json.loads(history_raw)
+            if isinstance(parsed, list):
+                history_apps = parsed
+        except Exception:
+            history_apps = config.get("history_apps", [])
+
+    # Radarr/Sonarr obligatoires pour l'historique consolidé
+    if not config["radarr"].get("url") or not config["radarr"].get("api_key"):
+        logger.error("Radarr obligatoire pour l'historique consolidé (url + api_key)")
+        return False
+    if not config["sonarr"].get("url") or not config["sonarr"].get("api_key"):
+        logger.error("Sonarr obligatoire pour l'historique consolidé (url + api_key)")
+        return False
+
+    def _upsert_history(apps: list, name: str, url: str, api_key: str, app_type: str) -> list:
+        filtered = [a for a in apps if not (isinstance(a, dict) and a.get("name") == name)]
+        filtered.insert(0, {
+            "name": name,
+            "url": url,
+            "api_key": api_key,
+            "type": app_type,
+            "enabled": True
+        })
+        return filtered
+
+    history_apps = _upsert_history(
+        history_apps,
+        "radarr",
+        config["radarr"].get("url"),
+        config["radarr"].get("api_key"),
+        "radarr"
+    )
+    history_apps = _upsert_history(
+        history_apps,
+        "sonarr",
+        config["sonarr"].get("url"),
+        config["sonarr"].get("api_key"),
+        "sonarr"
+    )
+
+    config["history_apps"] = history_apps
+
+    # Auth (préserver username/password_hash/api_keys existants)
+    auth_cfg = config.get("auth", {}) if isinstance(config.get("auth"), dict) else {}
+    auth_cfg["enabled"] = to_bool(get_value("auth_enabled", str(auth_cfg.get("enabled", False)).lower()))
+    auth_cfg["cookie_secure"] = to_bool(get_value("auth_cookie_secure", str(auth_cfg.get("cookie_secure", False)).lower()))
+    config["auth"] = auth_cfg
 
     # Sauvegarder
     return save_config(config)

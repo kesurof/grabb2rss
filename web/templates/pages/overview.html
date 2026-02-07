@@ -11,7 +11,7 @@
 {% block legacy_css %}{% endblock %}
 
 {% block content %}
-<div class="page-shell">
+<div class="page-shell page-shell--overview">
     <div class="page-header page-header--row">
         <div>
             <h1>Overview</h1>
@@ -19,62 +19,67 @@
         </div>
     </div>
 
-    <div class="page-section">
-        <div class="section-header">Indicateurs clés</div>
-        <div class="section-grid">
-            <div class="ui-card">
+    <section class="page-section page-section--overview" aria-labelledby="overview-kpi-title">
+        <div class="section-header" id="overview-kpi-title">Indicateurs clés</div>
+        <div class="section-grid section-grid--overview section-grid--overview-primary">
+            <div class="ui-card ui-card--kpi ui-card--kpi-critical ui-card--kpi-fusion" data-kpi-target="total-grabs">
                 <div class="ui-card__title">Total Grabs</div>
-                <div class="ui-card__value" id="total-grabs">-</div>
+                <div class="ui-card__value ui-card__value--metric" id="total-grabs">-</div>
             </div>
-            <div class="ui-card">
-                <div class="ui-card__title">Fichiers Torrents</div>
-                <div class="ui-card__value" id="dashboard-torrent-count">-</div>
-            </div>
-            <div class="ui-card">
-                <div class="ui-card__title">Stockage Total</div>
-                <div class="ui-card__value"><span id="storage-size">-</span> MB</div>
-            </div>
-            <div class="ui-card">
+            <div class="ui-card ui-card--kpi ui-card--kpi-critical ui-card--kpi-fusion" data-kpi-target="sync-status">
                 <div class="ui-card__title">Statut Sync</div>
-                <div class="ui-card__value" id="sync-status">-</div>
+                <div class="ui-card__value ui-card__value--status" id="sync-status" aria-live="polite" aria-atomic="true">-</div>
+            </div>
+            <div class="ui-card ui-card--kpi ui-card--kpi-critical ui-card--kpi-fusion" data-kpi-target="dashboard-torrent-count">
+                <div class="ui-card__title">Fichiers Torrents</div>
+                <div class="ui-card__value ui-card__value--metric" id="dashboard-torrent-count">-</div>
+            </div>
+            <div class="ui-card ui-card--kpi ui-card--kpi-critical ui-card--kpi-fusion" data-kpi-target="dashboard-storage-size">
+                <div class="ui-card__title">Stockage Total</div>
+                <div class="ui-card__value ui-card__value--size" id="dashboard-storage-size">-</div>
             </div>
         </div>
+    </section>
 
-        <div class="actions-bar">
-            <button class="btn btn-primary" id="sync-btn" type="button" data-action="sync-now">Synchroniser</button>
-            <button class="btn btn-secondary" type="button" data-action="refresh-data">Actualiser</button>
-            <button class="btn btn-secondary" type="button" data-action="purge-grabs">Vider tous les grabs</button>
-        </div>
-    </div>
-
-    <div class="page-section">
-        <div class="section-header">Statistiques</div>
-        <div class="section-grid">
-            <div class="ui-card">
+    <section class="page-section page-section--overview" aria-labelledby="overview-stats-title">
+        <div class="section-header" id="overview-stats-title">Statistiques</div>
+        <div class="section-grid section-grid--overview section-grid--overview-secondary">
+            <div class="ui-card ui-card--kpi ui-card--kpi-critical ui-card--kpi-fusion" data-kpi-target="dashboard-trackers-count">
                 <div class="ui-card__title">Trackers Actifs</div>
-                <div class="ui-card__value" id="dashboard-trackers-count">-</div>
+                <div class="ui-card__value ui-card__value--metric" id="dashboard-trackers-count">-</div>
             </div>
-            <div class="ui-card">
+            <div class="ui-card ui-card--kpi ui-card--kpi-critical ui-card--kpi-fusion" data-kpi-target="dashboard-grabs-today">
                 <div class="ui-card__title">Grabs Aujourd'hui</div>
-                <div class="ui-card__value" id="dashboard-grabs-today">-</div>
+                <div class="ui-card__value ui-card__value--metric" id="dashboard-grabs-today">-</div>
             </div>
-            <div class="ui-card">
+            <div class="ui-card ui-card--kpi ui-card--kpi-critical ui-card--kpi-fusion" data-kpi-target="dashboard-uptime">
                 <div class="ui-card__title">Uptime</div>
-                <div class="ui-card__value" id="dashboard-uptime">-</div>
+                <div class="ui-card__value ui-card__value--duration" id="dashboard-uptime">-</div>
             </div>
-            <div class="ui-card">
+            <div class="ui-card ui-card--kpi ui-card--kpi-critical ui-card--kpi-fusion" data-kpi-target="next-sync">
                 <div class="ui-card__title">Prochaine Sync</div>
-                <div class="ui-card__value" id="next-sync">-</div>
+                <div class="ui-card__value ui-card__value--datetime" id="next-sync" aria-live="polite" aria-atomic="true">-</div>
             </div>
         </div>
-    </div>
+    </section>
 
-    <div class="page-section">
-        <div class="section-header">Charts</div>
-        <div style="height: 260px;">
-            <canvas id="trackerChart"></canvas>
+    <section class="page-section page-section--overview" aria-labelledby="overview-charts-title">
+        <div class="section-header" id="overview-charts-title">Charts</div>
+        <div class="overview-charts-grid">
+            <article class="ui-card ui-card--kpi ui-card--kpi-critical ui-card--kpi-fusion overview-chart-card">
+                <div class="ui-card__title">Répartition Trackers</div>
+                <div class="overview-chart-wrap">
+                    <canvas id="trackerChart" role="img" aria-label="Répartition des grabs par tracker"></canvas>
+                </div>
+            </article>
+            <article class="ui-card ui-card--kpi ui-card--kpi-critical ui-card--kpi-fusion overview-chart-card">
+                <div class="ui-card__title">Tendance 30 Jours</div>
+                <div class="overview-chart-wrap">
+                    <canvas id="grabsTrendChart" role="img" aria-label="Evolution des grabs sur les 30 derniers jours"></canvas>
+                </div>
+            </article>
         </div>
-    </div>
+    </section>
 </div>
 {% endblock %}
 

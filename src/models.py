@@ -4,11 +4,16 @@ from typing import Optional
 
 class GrabOut(BaseModel):
     id: int
-    prowlarr_id: int
+    prowlarr_id: Optional[int] = None
+    download_id: Optional[str] = None
+    instance: Optional[str] = None
     grabbed_at: str
     title: str
     torrent_file: str
     tracker: Optional[str] = None
+    source_first_seen: Optional[str] = None
+    source_last_seen: Optional[str] = None
+    status: Optional[str] = None
 
     class Config:
         from_attributes = True

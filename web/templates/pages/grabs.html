@@ -11,45 +11,113 @@
 {% block legacy_css %}{% endblock %}
 
 {% block content %}
-<div class="page-shell">
+<div class="page-shell page-shell--overview">
     <div class="page-header page-header--row">
         <div>
             <h1>Grabs</h1>
-            <p class="page-desc">Derniers grabs enregistrés avec filtre tracker.</p>
+            <p class="page-desc">Vue unifiee webhook + historique consolide.</p>
         </div>
     </div>
 
-    <div class="page-section">
+    <section class="page-section page-section--overview">
+        <div class="section-header">Résumé</div>
+        <div class="section-grid section-grid--overview">
+            <div class="ui-card ui-card--kpi ui-card--kpi-critical ui-card--kpi-fusion">
+                <div class="ui-card__title">Total Grabs</div>
+                <div class="ui-card__value ui-card__value--metric" id="grabs-summary-total">-</div>
+            </div>
+            <div class="ui-card ui-card--kpi ui-card--kpi-critical ui-card--kpi-fusion">
+                <div class="ui-card__title">Présents Webhook</div>
+                <div class="ui-card__value ui-card__value--metric" id="grabs-summary-webhook">-</div>
+            </div>
+            <div class="ui-card ui-card--kpi ui-card--kpi-critical ui-card--kpi-fusion">
+                <div class="ui-card__title">À Récupérer</div>
+                <div class="ui-card__value ui-card__value--metric" id="grabs-summary-missing">-</div>
+            </div>
+            <div class="ui-card ui-card--kpi ui-card--kpi-critical ui-card--kpi-fusion">
+                <div class="ui-card__title">Dernier Grab</div>
+                <div class="ui-card__value ui-card__value--datetime" id="grabs-summary-last-sync">-</div>
+            </div>
+        </div>
+    </section>
+
+    <section class="page-section page-section--overview">
         <div class="section-header">Filtres</div>
-        <div class="filter-bar">
-            <label class="form-label" for="tracker-filter-grabs">Filtrer par tracker</label>
-            <select id="tracker-filter-grabs" class="form-select" data-action="filter-grabs">
-                <option value="all">Tous les trackers</option>
-            </select>
+        <div class="filters-bar filters-bar--compact">
+            <div class="filter-pair">
+                <label class="filter-label" for="grab-history-instance-filter">Instance</label>
+                <select id="grab-history-instance-filter" class="config-input">
+                    <option value="">Toutes</option>
+                </select>
+            </div>
+            <div class="filter-pair">
+                <label class="filter-label" for="grab-history-tracker-filter">Tracker</label>
+                <select id="grab-history-tracker-filter" class="config-input">
+                    <option value="">Tous</option>
+                </select>
+            </div>
+            <div class="filter-pair">
+                <label class="filter-label" for="grab-history-source-filter">Source</label>
+                <select id="grab-history-source-filter" class="config-input">
+                    <option value="">Toutes</option>
+                    <option value="webhook">webhook</option>
+                    <option value="history_sync">history_sync</option>
+                    <option value="history_manual">history_manual</option>
+                    <option value="legacy">legacy</option>
+                </select>
+            </div>
+            <div class="filter-pair">
+                <label class="filter-label" for="grab-history-id-search">Recherche ID</label>
+                <input id="grab-history-id-search" class="config-input" type="text" placeholder="Download ID">
+            </div>
+            <div class="filter-pair">
+                <label class="filter-label" for="grab-history-sort">Tri</label>
+                <select id="grab-history-sort" class="config-input">
+                    <option value="date_desc">Date (récent)</option>
+                    <option value="date_asc">Date (ancien)</option>
+                    <option value="instance">Instance (A→Z)</option>
+                    <option value="tracker">Tracker (A→Z)</option>
+                </select>
+            </div>
         </div>
-        <div class="section-state section-state--error" data-role="section-error" hidden></div>
-        <div class="section-state section-state--empty" data-role="section-empty" hidden>Aucun grab disponible.</div>
-    </div>
+    </section>
 
-    <div class="page-section">
-        <div class="section-header">Résultats</div>
-        <table class="ui-table">
-            <thead>
-                <tr>
-                    <th>Date</th>
-                    <th>Titre</th>
-                    <th>Tracker</th>
-                    <th>Fichier</th>
-                </tr>
-            </thead>
-            <tbody id="grabs-table" aria-live="polite" aria-busy="true">
-                <tr>
-                    <td colspan="4" data-role="section-loading">
-                        {{ table_state("Chargement...", "loading") }}
-                    </td>
-                </tr>
-            </tbody>
-        </table>
+    <section class="page-section page-section--overview">
+        <div class="section-header">Tableau des Grabs</div>
+        <div class="section-note">Historique consolide et etat de disponibilite des fichiers.</div>
+        <div class="table-responsive">
+            <table class="ui-table logs-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Instance</th>
+                        <th>Tracker</th>
+                        <th>Titre</th>
+                        <th>Source</th>
+                        <th>Fichier</th>
+                    </tr>
+                </thead>
+                <tbody id="grab-history-table" aria-live="polite" aria-busy="true">
+                    <tr>
+                        <td colspan="6" data-role="section-loading">{{ table_state("Chargement...", "loading") }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+
+<div class="modal" id="grab-history-detail-modal" hidden>
+    <div class="modal-overlay" data-action="grab-history-detail-close"></div>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="grab-history-detail-title">
+        <div class="modal-header">
+            <div>
+                <div class="modal-title" id="grab-history-detail-title">Détail</div>
+                <div class="modal-subtitle">Grab unifié</div>
+            </div>
+            <button class="btn btn-secondary btn-xs" type="button" data-action="grab-history-detail-close">Fermer</button>
+        </div>
+        <div class="modal-body" id="grab-history-detail-body"></div>
     </div>
 </div>
 {% endblock %}

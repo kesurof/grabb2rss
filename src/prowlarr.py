@@ -12,11 +12,11 @@ def fetch_history() -> list:
     """Récupère l'historique Prowlarr avec config depuis config.py"""
     try:
         # Lire la config depuis config.py (qui charge settings.yml)
-        from config import PROWLARR_URL, PROWLARR_API_KEY, PROWLARR_HISTORY_PAGE_SIZE
+        from config import PROWLARR_URL, PROWLARR_API_KEY
 
         prowlarr_url = PROWLARR_URL
         prowlarr_api_key = PROWLARR_API_KEY
-        page_size = PROWLARR_HISTORY_PAGE_SIZE
+        page_size = 500
         
         response = request_with_retries(
             "GET",

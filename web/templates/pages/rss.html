@@ -11,7 +11,7 @@
 {% block legacy_css %}{% endblock %}
 
 {% block content %}
-<div class="page-shell">
+<div class="page-shell page-shell--overview">
     <div class="page-header page-header--row">
         <div>
             <h1>Flux RSS</h1>
@@ -19,15 +19,61 @@
         </div>
     </div>
 
-    <div class="page-section">
+    <section class="page-section page-section--overview">
+        <div class="section-header">Résumé</div>
+        <div class="section-grid section-grid--overview">
+            <div class="ui-card ui-card--kpi ui-card--kpi-critical ui-card--kpi-fusion">
+                <div class="ui-card__title">Clés API</div>
+                <div class="ui-card__value ui-card__value--metric" id="rss-summary-keys-total">-</div>
+            </div>
+            <div class="ui-card ui-card--kpi ui-card--kpi-critical ui-card--kpi-fusion">
+                <div class="ui-card__title">Clés actives</div>
+                <div class="ui-card__value ui-card__value--metric" id="rss-summary-keys-active">-</div>
+            </div>
+            <div class="ui-card ui-card--kpi ui-card--kpi-critical ui-card--kpi-fusion">
+                <div class="ui-card__title">URLs RSS</div>
+                <div class="ui-card__value ui-card__value--metric" id="rss-summary-urls-total">-</div>
+            </div>
+            <div class="ui-card ui-card--kpi ui-card--kpi-critical ui-card--kpi-fusion">
+                <div class="ui-card__title">Flux trackers</div>
+                <div class="ui-card__value ui-card__value--metric" id="rss-summary-urls-trackers">-</div>
+            </div>
+        </div>
+    </section>
+
+    <section class="page-section page-section--overview">
+        <div class="section-header">Filtres</div>
+        <div class="filters-bar filters-bar--compact">
+            <div class="filter-pair">
+                <label class="filter-label" for="rss-token-filter">Token</label>
+                <select id="rss-token-filter" class="config-input">
+                    <option value="">Auto</option>
+                </select>
+            </div>
+            <div class="filter-pair">
+                <label class="filter-label" for="rss-url-category-filter">Catégorie</label>
+                <select id="rss-url-category-filter" class="config-input">
+                    <option value="">Toutes</option>
+                    <option value="principal">Principaux</option>
+                    <option value="tracker">Trackers</option>
+                </select>
+            </div>
+            <div class="filter-pair">
+                <label class="filter-label" for="rss-url-search">Recherche</label>
+                <input id="rss-url-search" class="config-input" type="text" placeholder="Nom, description, URL">
+            </div>
+        </div>
+    </section>
+
+    <section class="page-section page-section--overview">
         <div class="section-header">Clés API</div>
         <div id="api-keys-container"></div>
-    </div>
+    </section>
 
-    <div class="page-section">
+    <section class="page-section page-section--overview">
         <div class="section-header">URLs RSS disponibles</div>
         <div id="rss-urls-container"></div>
-    </div>
+    </section>
 </div>
 {% endblock %}
 

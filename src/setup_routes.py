@@ -24,7 +24,6 @@ class SetupConfigModel(BaseModel):
     """Modèle pour la configuration initiale"""
     prowlarr_url: str
     prowlarr_api_key: str
-    prowlarr_history_page_size: Optional[int] = 500
 
     radarr_url: Optional[str] = ""
     radarr_api_key: Optional[str] = ""
@@ -34,10 +33,8 @@ class SetupConfigModel(BaseModel):
     sonarr_api_key: Optional[str] = ""
     sonarr_enabled: Optional[bool] = False
 
-    sync_interval: Optional[int] = 3600
     retention_hours: Optional[int] = 168
     auto_purge: Optional[bool] = True
-    dedup_hours: Optional[int] = 168
 
     rss_domain: Optional[str] = "localhost:8000"
     rss_scheme: Optional[str] = "http"
@@ -49,6 +46,20 @@ class SetupConfigModel(BaseModel):
     auth_username: Optional[str] = ""
     auth_password: Optional[str] = ""
     auth_cookie_secure: Optional[bool] = False
+
+    # Webhook
+    webhook_enabled: Optional[bool] = False
+    webhook_token: Optional[str] = ""
+    webhook_min_score: Optional[int] = 3
+    webhook_strict: Optional[bool] = True
+    webhook_download: Optional[bool] = True
+
+    history_sync_interval_seconds: Optional[int] = 7200
+    history_lookback_days: Optional[int] = 7
+    history_download_from_history: Optional[bool] = True
+    history_min_score: Optional[int] = 3
+    history_strict_hash: Optional[bool] = False
+    history_ingestion_mode: Optional[str] = "webhook_plus_history"
 
 
 @router.get("/setup", response_class=HTMLResponse)
@@ -102,8 +113,7 @@ async def save_setup(config: SetupConfigModel):
         new_config = {
             "prowlarr": {
                 "url": config.prowlarr_url,
-                "api_key": config.prowlarr_api_key,
-                "history_page_size": config.prowlarr_history_page_size
+                "api_key": config.prowlarr_api_key
             },
             "radarr": {
                 "url": config.radarr_url,
@@ -116,10 +126,8 @@ async def save_setup(config: SetupConfigModel):
                 "enabled": config.sonarr_enabled
             },
             "sync": {
-                "interval": config.sync_interval,
                 "auto_purge": config.auto_purge,
-                "retention_hours": config.retention_hours,
-                "dedup_hours": config.dedup_hours
+                "retention_hours": config.retention_hours
             },
             "rss": {
                 "domain": config.rss_domain,
@@ -150,6 +158,22 @@ async def save_setup(config: SetupConfigModel):
                 "api_keys": [],
                 "cookie_secure": config.auth_cookie_secure
             }
+
+        new_config["webhook"] = {
+            "enabled": config.webhook_enabled,
+            "token": config.webhook_token,
+            "min_score": config.webhook_min_score,
+            "strict": config.webhook_strict,
+            "download": config.webhook_download
+        }
+        new_config["history"] = {
+            "sync_interval_seconds": config.history_sync_interval_seconds,
+            "lookback_days": config.history_lookback_days,
+            "download_from_history": config.history_download_from_history,
+            "min_score": config.history_min_score,
+            "strict_hash": config.history_strict_hash,
+            "ingestion_mode": config.history_ingestion_mode
+        }
 
         # Sauvegarder
         success = setup.save_config(new_config)

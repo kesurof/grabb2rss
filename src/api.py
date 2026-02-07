@@ -1,6 +1,6 @@
 # api.py
 from fastapi import FastAPI, HTTPException, Query, Request, Cookie
-from fastapi.responses import Response, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import Response, HTMLResponse, JSONResponse, RedirectResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,15 +10,24 @@ import psutil
 import time
 from datetime import datetime
 from typing import Optional
+import re
+from urllib.parse import quote
 
 from logging_config import setup_logging
 from version import APP_VERSION
-from config import TORRENT_DIR, DB_PATH, DEDUP_HOURS, DESCRIPTIONS, PROWLARR_URL, PROWLARR_API_KEY, CORS_ALLOW_ORIGINS, TORRENTS_EXPOSE_STATIC
+from config import (
+    TORRENT_DIR, DB_PATH, DESCRIPTIONS, PROWLARR_URL, PROWLARR_API_KEY,
+    CORS_ALLOW_ORIGINS, TORRENTS_EXPOSE_STATIC, WEBHOOK_ENABLED, WEBHOOK_TOKEN,
+    WEBHOOK_MIN_SCORE, WEBHOOK_STRICT, WEBHOOK_DOWNLOAD,
+    HISTORY_LOOKBACK_DAYS, HISTORY_DOWNLOAD_FROM_HISTORY, HISTORY_MIN_SCORE,
+    HISTORY_STRICT_HASH, HISTORY_INGESTION_MODE
+)
 from db import (
     init_db, get_grabs, get_stats, purge_all, purge_by_retention,
     get_config, set_config, get_all_config, get_sync_logs, get_trackers, get_db,
     vacuum_database, get_db_stats, get_torrent_files_with_info, cleanup_orphan_torrents,
-    delete_torrent_file, purge_all_torrents, delete_log, purge_all_logs, resolve_torrent_path
+    delete_torrent_file, purge_all_torrents, delete_log, purge_all_logs, purge_all_db, resolve_torrent_path,
+    get_grab_history_list, get_grab_history_record
 )
 from rss import generate_rss, generate_torrent_json
 from models import GrabOut, GrabStats, SyncStatus
@@ -27,6 +36,9 @@ import setup
 from setup_routes import router as setup_router
 from auth_routes import router as auth_router
 from auth import is_auth_enabled, verify_session, verify_api_key, is_local_request, get_username_from_session
+from auth import get_auth_config, save_auth_config, hash_password, create_session, get_auth_cookie_secure
+from webhook_grab import handle_webhook_grab, generate_webhook_token, recover_from_history
+from history_reconcile import sync_grab_history
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -42,7 +54,7 @@ app = FastAPI(
 
 # Configuration des templates et fichiers statiques
 # Utiliser un chemin absolu pour éviter les problèmes de résolution de chemin
-from paths import TEMPLATES_DIR, STATIC_DIR, SETTINGS_FILE, CONFIG_DIR
+from paths import TEMPLATES_DIR, STATIC_DIR, SETTINGS_FILE
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
@@ -62,14 +74,30 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 admin_blocked_routes = {
                     ("POST", "/api/config"),
                     ("POST", "/api/setup/save"),
+                    ("POST", "/api/purge/all"),
+                    ("POST", "/api/purge/retention"),
+                    ("POST", "/api/sync/trigger"),
+                    ("POST", "/api/cache/clear"),
+                    ("POST", "/api/db/vacuum"),
                     ("POST", "/api/torrents/purge-all"),
                     ("POST", "/api/logs/purge-all"),
+                    ("POST", "/api/db/purge-all"),
+                    ("POST", "/api/history/reconcile/sync"),
+                    ("POST", "/api/auth/keys/generate"),
+                    ("POST", "/api/auth/configure"),
+                    ("DELETE", "/api/auth/keys/{key}"),
                 }
-                if (request.method, request.url.path) in admin_blocked_routes:
-                    raise HTTPException(
-                        status_code=403,
-                        detail="Action admin désactivée quand l'auth est inactive"
-                    )
+                current_route = (request.method, request.url.path)
+                is_admin_route = current_route in admin_blocked_routes
+                if not is_admin_route and request.method == "DELETE" and request.url.path.startswith("/api/auth/keys/"):
+                    is_admin_route = True
+                if is_admin_route:
+                    client_host = request.client.host if request.client else None
+                    if not is_local_request(client_host):
+                        raise HTTPException(
+                            status_code=403,
+                            detail="Action admin désactivée quand l'auth est inactive"
+                        )
             return await call_next(request)
 
         # Routes toujours publiques même si auth activée
@@ -78,7 +106,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             '/login',               # Page de login
             '/api/auth/login',      # API login
             '/api/auth/status',     # Statut auth
-            '/api/info'             # Infos version/uptime
+            '/api/webhook/grab',    # Webhook Grab (protégé par token)
         ]
 
         # Vérifier si route publique
@@ -113,6 +141,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
             if not api_key:
                 api_key = request.headers.get('X-API-Key')
+            if not api_key:
+                api_key = request.query_params.get('apikey')
 
             if api_key and verify_api_key(api_key):
                 return await call_next(request)
@@ -233,7 +263,7 @@ async def list_grabs(limit: int = Query(50, ge=1, le=1000), tracker: str = Query
     """Liste les derniers grabs avec filtre tracker"""
     try:
         tracker_filter = None if tracker == "all" else tracker
-        return get_grabs(limit, dedup_hours=DEDUP_HOURS, tracker_filter=tracker_filter)
+        return get_grabs(limit, tracker_filter=tracker_filter)
     except Exception as e:
         logger.error(f"Erreur list_grabs: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -258,6 +288,38 @@ async def get_grabs_stats():
         raise HTTPException(status_code=500, detail=str(e))
 
 # ==================== RSS ====================
+
+def _slugify_tracker_name(name: str) -> str:
+    raw = str(name or "").strip().lower()
+    raw = re.sub(r"[^a-z0-9]+", "-", raw)
+    raw = re.sub(r"-{2,}", "-", raw).strip("-")
+    return raw or "tracker"
+
+
+def _resolve_tracker_name(tracker_input: str) -> str:
+    from db import get_trackers
+
+    trackers = get_trackers()
+    if not trackers:
+        raise HTTPException(status_code=404, detail="Aucun tracker disponible")
+
+    # 1) Compatibilité: nom exact
+    for tracker in trackers:
+        if tracker == tracker_input:
+            return tracker
+
+    # 2) Nom slugifié (plus stable pour trackers personnalisés)
+    slug_map = {}
+    for tracker in trackers:
+        slug = _slugify_tracker_name(tracker)
+        if slug not in slug_map:
+            slug_map[slug] = tracker
+
+    resolved = slug_map.get(_slugify_tracker_name(tracker_input))
+    if resolved:
+        return resolved
+
+    raise HTTPException(status_code=404, detail="Tracker introuvable")
 
 @app.get("/rss")
 async def rss_feed(request: Request, tracker: str = Query("all")):
@@ -291,7 +353,8 @@ async def rss_tracker(request: Request, tracker_name: str):
     """Flux RSS pour un tracker spécifique"""
     try:
         request_host = request.headers.get("host")
-        rss_xml = generate_rss(request_host=request_host, tracker_filter=tracker_name, limit=100)
+        tracker_filter = _resolve_tracker_name(tracker_name)
+        rss_xml = generate_rss(request_host=request_host, tracker_filter=tracker_filter, limit=100)
         return Response(
             content=rss_xml,
             media_type="application/rss+xml; charset=utf-8"
@@ -305,7 +368,8 @@ async def rss_tracker_json(request: Request, tracker_name: str):
     """Flux JSON pour un tracker spécifique"""
     try:
         request_host = request.headers.get("host")
-        json_data = generate_torrent_json(request_host=request_host, tracker_filter=tracker_name, limit=100)
+        tracker_filter = _resolve_tracker_name(tracker_name)
+        json_data = generate_torrent_json(request_host=request_host, tracker_filter=tracker_filter, limit=100)
         return JSONResponse(json_data)
     except Exception as e:
         logger.error(f"Erreur rss_tracker_json: {e}")
@@ -354,7 +418,7 @@ async def purge_retention(hours: int = Query(..., ge=1)):
 
 @app.get("/api/sync/status", response_model=SyncStatus)
 async def sync_status():
-    """Statut du sync Prowlarr"""
+    """Statut de la réconciliation history."""
     try:
         return get_sync_status()
     except Exception as e:
@@ -363,13 +427,13 @@ async def sync_status():
 
 @app.post("/api/sync/trigger")
 async def sync_trigger_now():
-    """Lance une sync immédiate"""
+    """Lance une réconciliation history immédiate."""
     try:
         success = trigger_sync()
         if success:
             return {
                 "status": "triggered",
-                "message": "Synchronisation lancée"
+                "message": "Réconciliation history lancée"
             }
         else:
             return {
@@ -407,18 +471,72 @@ async def update_configuration(config_data: dict):
     """Met à jour la configuration dans settings.yml"""
     try:
         from setup import save_config_from_ui
-        success = save_config_from_ui(config_data)
+        from setup import get_config_for_ui
+
+        # Supporter les updates partielles (ex: bascule auth inline)
+        # en fusionnant avec la config UI complète courante.
+        merged_config = get_config_for_ui()
+        for key, value in (config_data or {}).items():
+            merged_config[key] = value
+
+        success = save_config_from_ui(merged_config)
 
         if success:
+            try:
+                from config import reload_config
+                reload_config()
+                from scheduler import restart_scheduler_after_setup
+                restart_scheduler_after_setup()
+            except Exception as e:
+                logger.warning("Erreur rechargement config/scheduler: %s", e)
             return {
                 "status": "updated",
-                "message": f"Configuration sauvegardée dans {SETTINGS_FILE}. Redémarrez l'application pour appliquer certains paramètres (SYNC_INTERVAL, etc.)"
+                "message": f"Configuration sauvegardée dans {SETTINGS_FILE}. Redémarrez l'application pour appliquer certains paramètres."
             }
         else:
             raise HTTPException(status_code=500, detail="Erreur lors de la sauvegarde")
     except Exception as e:
         logger.error(f"Erreur update_config: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== WEBHOOK GRAB ====================
+
+@app.post("/api/webhook/grab")
+async def webhook_grab(request: Request):
+    """Webhook Grab Radarr/Sonarr"""
+    if not WEBHOOK_ENABLED:
+        raise HTTPException(status_code=403, detail="Webhook désactivé")
+    if HISTORY_INGESTION_MODE == "history_only":
+        return {"status": "ignored", "reason": "ingestion_mode=history_only"}
+
+    token = request.headers.get("X-Webhook-Token") or request.query_params.get("token")
+    if not WEBHOOK_TOKEN or token != WEBHOOK_TOKEN:
+        raise HTTPException(status_code=401, detail="Token webhook invalide")
+
+    payload = await request.json()
+    result = handle_webhook_grab(
+        payload=payload,
+        prowlarr_url=PROWLARR_URL,
+        prowlarr_api_key=PROWLARR_API_KEY,
+        min_score=WEBHOOK_MIN_SCORE,
+        strict=WEBHOOK_STRICT,
+        download=WEBHOOK_DOWNLOAD
+    )
+    return result
+
+
+@app.post("/api/webhook/token/generate")
+async def generate_webhook_token_endpoint():
+    """Génère et sauvegarde un token webhook"""
+    token = generate_webhook_token()
+    try:
+        import setup
+        setup.update_config({"webhook": {"token": token}})
+        from config import reload_config
+        reload_config()
+    except Exception as e:
+        logger.warning("Erreur sauvegarde token webhook: %s", e)
+    return {"success": True, "token": token}
 
 # ==================== API KEYS & RSS ====================
 
@@ -436,15 +554,128 @@ async def get_api_keys():
         logger.error(f"Erreur get_api_keys: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@app.get("/api/auth/security-status")
+async def get_auth_security_status(request: Request):
+    """Retourne l'état sécurité/auth pour l'UI config."""
+    try:
+        auth_enabled = is_auth_enabled()
+        session_token = request.cookies.get("session_token")
+        client_host = request.client.host if request.client else None
+        if auth_enabled and not verify_session(session_token):
+            raise HTTPException(status_code=401, detail="Non authentifié")
+        if not auth_enabled and not is_local_request(client_host):
+            raise HTTPException(status_code=403, detail="Accès local requis")
+
+        auth_cfg = get_auth_config() or {}
+        return {
+            "auth_enabled": bool(auth_cfg.get("enabled", False)),
+            "username": (auth_cfg.get("username") or "").strip(),
+            "password_configured": bool(auth_cfg.get("password_hash")),
+            "cookie_secure": bool(auth_cfg.get("cookie_secure", False)),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Erreur auth security-status: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/auth/configure")
+async def configure_auth_settings(payload: dict, request: Request, response: Response):
+    """
+    Configure les credentials et/ou active/désactive l'auth.
+    Utilisable en mode local quand auth désactivée, sinon session requise.
+    """
+    try:
+        auth_was_enabled = is_auth_enabled()
+        session_token = request.cookies.get("session_token")
+        client_host = request.client.host if request.client else None
+
+        if auth_was_enabled and not verify_session(session_token):
+            raise HTTPException(status_code=401, detail="Non authentifié")
+        if not auth_was_enabled and not is_local_request(client_host):
+            raise HTTPException(status_code=403, detail="Accès local requis")
+
+        auth_cfg = get_auth_config() or {}
+
+        username_in = str((payload or {}).get("username", "")).strip()
+        password_in = str((payload or {}).get("password", "")).strip()
+        enabled_in = (payload or {}).get("enabled", None)
+
+        if username_in:
+            if len(username_in) < 3:
+                raise HTTPException(status_code=400, detail="Nom d'utilisateur trop court")
+            auth_cfg["username"] = username_in
+
+        if password_in:
+            if len(password_in) < 8:
+                raise HTTPException(status_code=400, detail="Mot de passe trop court (min 8)")
+            auth_cfg["password_hash"] = hash_password(password_in)
+
+        if enabled_in is not None:
+            enable_target = bool(enabled_in)
+            if enable_target and (not auth_cfg.get("username") or not auth_cfg.get("password_hash")):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Configurer utilisateur + mot de passe avant activation"
+                )
+            auth_cfg["enabled"] = enable_target
+
+        if "cookie_secure" in (payload or {}):
+            auth_cfg["cookie_secure"] = bool((payload or {}).get("cookie_secure"))
+
+        if not save_auth_config(auth_cfg):
+            raise HTTPException(status_code=500, detail="Erreur sauvegarde configuration auth")
+
+        try:
+            from config import reload_config
+            reload_config()
+        except Exception as e:
+            logger.warning("Erreur reload_config après auth configure: %s", e)
+
+        enabled_now = bool(auth_cfg.get("enabled", False))
+        if (not auth_was_enabled) and enabled_now and not verify_session(session_token):
+            # Evite de verrouiller l'interface juste après activation.
+            new_session = create_session()
+            response.set_cookie(
+                key="session_token",
+                value=new_session,
+                httponly=True,
+                secure=get_auth_cookie_secure(),
+                samesite="lax",
+                max_age=7 * 24 * 3600
+            )
+
+        return {
+            "success": True,
+            "auth_enabled": enabled_now,
+            "username": (auth_cfg.get("username") or "").strip(),
+            "password_configured": bool(auth_cfg.get("password_hash")),
+            "cookie_secure": bool(auth_cfg.get("cookie_secure", False)),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Erreur configure auth: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/auth/keys/generate")
-async def generate_api_key_endpoint():
+async def generate_api_key_endpoint(request: Request):
     """Génère une nouvelle API key"""
     try:
         from auth import create_api_key
         from datetime import datetime
 
-        # Créer une nouvelle clé avec un nom automatique
-        name = f"API Key {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        payload = {}
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+
+        requested_name = str(payload.get("name") or "").strip()
+        # Créer une nouvelle clé avec un nom automatique si non fourni
+        name = requested_name or f"API Key {datetime.now().strftime('%Y-%m-%d %H:%M')}"
         key_data = create_api_key(name, enabled=True)
 
         if key_data:
@@ -480,8 +711,8 @@ async def delete_api_key(key: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/rss/urls")
-async def get_rss_urls(request: Request):
-    """Génère les URLs RSS (sans API key dans l'URL)"""
+async def get_rss_urls(request: Request, token: Optional[str] = Query(None)):
+    """Génère les URLs RSS avec token sélectionnable et trackers normalisés."""
     try:
         from auth import get_api_keys
         from config import RSS_DOMAIN, RSS_SCHEME
@@ -495,50 +726,80 @@ async def get_rss_urls(request: Request):
                 "urls": []
             }
 
-        # Prendre la première clé active
-        api_key_data = next((k for k in keys if k.get("enabled", True)), None)
+        enabled_keys = [k for k in keys if k.get("enabled", True)]
+        if not enabled_keys:
+            return {
+                "error": "Aucune API key active",
+                "message": "Activez une API key depuis le dashboard",
+                "urls": [],
+                "api_keys": []
+            }
+
+        # Token choisi par l'utilisateur (si fourni) sinon première active
+        api_key_data = None
+        if token:
+            api_key_data = next((k for k in enabled_keys if k.get("key") == token), None)
+        if api_key_data is None:
+            api_key_data = enabled_keys[0]
+
+        # Liste des tokens nommés (actifs) exposés à l'UI
+        api_keys_public = [
+            {"name": k.get("name") or "API Key", "key": k.get("key")}
+            for k in enabled_keys
+        ]
+
         if not api_key_data:
             return {
                 "error": "Aucune API key active",
                 "message": "Activez une API key depuis le dashboard",
-                "urls": []
+                "urls": [],
+                "api_keys": []
             }
 
         api_key = api_key_data["key"]
+        api_key_encoded = quote(api_key, safe="")
 
         # Construire l'URL de base
         base_url = f"{RSS_SCHEME}://{RSS_DOMAIN}"
 
-        # Générer les URLs (sans API key dans l'URL)
+        # Générer les URLs avec token dans query string
         urls = [
             {
                 "name": "Flux RSS complet",
-                "url": f"{base_url}/rss",
+                "url": f"{base_url}/rss?apikey={api_key_encoded}",
                 "description": "Tous les torrents récents",
                 "category": "principal"
             },
             {
                 "name": "Flux RSS (format JSON)",
-                "url": f"{base_url}/rss/torrent.json",
+                "url": f"{base_url}/rss/torrent.json?apikey={api_key_encoded}",
                 "description": "Format JSON pour intégrations",
                 "category": "principal"
             }
         ]
 
-        # Ajouter les URLs par tracker
+        # Ajouter les URLs par tracker avec slug normalisé
         from db import get_trackers
         trackers = get_trackers()
         for tracker in trackers[:10]:  # Limiter à 10 trackers
+            tracker_slug = _slugify_tracker_name(tracker)
             urls.append({
                 "name": f"Flux {tracker}",
-                "url": f"{base_url}/rss/tracker/{tracker}",
+                "url": f"{base_url}/rss/tracker/{tracker_slug}?apikey={api_key_encoded}",
                 "description": f"Torrents de {tracker} uniquement",
-                "category": "tracker"
+                "category": "tracker",
+                "tracker": tracker,
+                "tracker_slug": tracker_slug
             })
 
         return {
             "api_key": api_key,
             "api_key_name": api_key_data.get("name", "Sans nom"),
+            "api_keys": api_keys_public,
+            "selected_api_key": {
+                "name": api_key_data.get("name", "Sans nom"),
+                "key": api_key
+            },
             "base_url": base_url,
             "auth": {
                 "x_api_key": api_key,
@@ -555,16 +816,12 @@ async def get_rss_urls(request: Request):
 
 @app.post("/api/cache/clear")
 async def clear_cache():
-    """Vide tous les caches (trackers + imports Radarr/Sonarr)"""
+    """Vide le cache trackers."""
     try:
         # Cache trackers
         from prowlarr import clear_tracker_cache, get_tracker_cache_info
         tracker_count = clear_tracker_cache()
-        
-        # Cache Radarr/Sonarr
-        from radarr_sonarr import clear_cache as clear_import_cache
-        clear_import_cache()
-        
+
         return {
             "status": "cleared",
             "message": f"Cache vidé ({tracker_count} trackers)",
@@ -671,25 +928,6 @@ async def get_detailed_stats():
         logger.error(f"Erreur get_detailed_stats: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/test-history-limits")
-async def test_history_limits():
-    """Lance le test des limites d'historique Prowlarr/Radarr/Sonarr"""
-    try:
-        from test_history_limits import run_test_and_save
-
-        # Lancer le test (peut prendre quelques secondes)
-        results = run_test_and_save()
-
-        return {
-            "status": "success",
-            "message": "Test des limites d'historique terminé",
-            "results": results,
-            "output_file": results.get("output_file", str(CONFIG_DIR / "history_limits_test.json"))
-        }
-    except Exception as e:
-        logger.error(f"Erreur test_history_limits: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
 # ==================== TORRENTS MANAGEMENT ====================
 
 @app.get("/api/torrents")
@@ -697,9 +935,17 @@ async def list_torrents():
     """Liste tous les fichiers torrents avec leurs informations détaillées"""
     try:
         torrents = get_torrent_files_with_info()
+        total_size_mb = round(sum(float(t.get("size_mb", 0) or 0) for t in torrents), 2)
+        with_grab_count = sum(1 for t in torrents if t.get("has_grab"))
+        orphan_count = len(torrents) - with_grab_count
         return {
             "torrents": torrents,
-            "total": len(torrents)
+            "total": len(torrents),
+            "summary": {
+                "total_size_mb": total_size_mb,
+                "with_grab_count": with_grab_count,
+                "orphan_count": orphan_count,
+            },
         }
     except Exception as e:
         logger.error(f"Erreur list_torrents: {e}")
@@ -739,6 +985,24 @@ async def delete_torrent(filename: str):
         raise
     except Exception as e:
         logger.error(f"Erreur delete_torrent: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/torrents/download/{filename}")
+async def download_torrent_file(filename: str):
+    """Télécharge un fichier torrent même si /torrents statique est désactivé."""
+    try:
+        path = resolve_torrent_path(filename)
+        if path is None or not path.exists():
+            raise HTTPException(status_code=404, detail="Torrent non trouvé")
+        return FileResponse(
+            path=str(path),
+            media_type="application/x-bittorrent",
+            filename=path.name
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Erreur download_torrent_file %s: %s", filename, e)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/torrents/purge-all")
@@ -788,6 +1052,180 @@ async def purge_logs():
     except Exception as e:
         logger.error(f"Erreur purge_logs: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/db/purge-all")
+async def purge_database():
+    """Nettoie la base (grabs, logs, sessions) sans toucher la config."""
+    try:
+        counts = purge_all_db()
+        return {
+            "status": "purged",
+            "message": (
+                f"DB nettoyée: {counts['grabs']} grabs, "
+                f"{counts['logs']} logs, {counts['sessions']} sessions"
+            ),
+            "counts": counts
+        }
+    except Exception as e:
+        logger.error(f"Erreur purge_db: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/history/reconcile/sync")
+async def sync_history_reconcile_endpoint(
+    event_type: Optional[str] = Query("grabbed"),
+    page_size: int = Query(200, ge=50, le=500),
+    max_pages: int = Query(10, ge=1, le=50),
+    lookback_days: Optional[int] = Query(None, ge=1, le=365),
+    full_scan: bool = Query(False),
+    download_from_history: Optional[bool] = Query(None),
+    min_score: Optional[int] = Query(None, ge=0, le=10),
+    strict_hash: Optional[bool] = Query(None),
+):
+    """Rafraichit l'historique consolide Radarr/Sonarr."""
+    try:
+        apps = setup.get_history_apps()
+        result = sync_grab_history(
+            history_apps=apps,
+            event_type=event_type or "",
+            page_size=page_size,
+            max_pages=max_pages,
+            lookback_days=lookback_days or HISTORY_LOOKBACK_DAYS,
+            full_scan=full_scan,
+            download_from_history=HISTORY_DOWNLOAD_FROM_HISTORY if download_from_history is None else download_from_history,
+            min_score=HISTORY_MIN_SCORE if min_score is None else min_score,
+            strict_hash=HISTORY_STRICT_HASH if strict_hash is None else strict_hash,
+            ingestion_mode=HISTORY_INGESTION_MODE,
+        )
+        return {"status": "ok", "result": result}
+    except Exception as e:
+        logger.error("Erreur sync historique consolide: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/history/reconcile")
+async def list_history_reconcile(
+    limit: int = Query(200, ge=1, le=1000),
+    instance: Optional[str] = Query(None),
+    tracker: Optional[str] = Query(None),
+    download_id: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    source: Optional[str] = Query(None),
+    dedup: bool = Query(True)
+):
+    """Liste l'historique consolide avec indicateur webhook."""
+    try:
+        rows = get_grab_history_list(
+            limit=limit,
+            instance=instance,
+            tracker=tracker,
+            download_id=download_id,
+            status=status,
+            source=source,
+            dedup=dedup
+        )
+        if rows:
+            return rows
+
+        # Compat legacy: si store historique vide, fallback sur grabs canoniques.
+        fallback_rows = []
+        grabs_rows = get_grabs(limit=1000, tracker_filter=None)
+        for row in grabs_rows:
+            row_instance = row.get("instance")
+            row_tracker = row.get("tracker")
+            row_download_id = row.get("download_id")
+            row_status = row.get("status")
+            row_source = row.get("source_first_seen") or row.get("source_last_seen")
+
+            if instance and row_instance != instance:
+                continue
+            if tracker and row_tracker != tracker:
+                continue
+            if download_id and row_download_id != download_id:
+                continue
+            if status and row_status != status:
+                continue
+            if source and row_source != source:
+                continue
+
+            fallback_rows.append({
+                "id": row.get("id"),
+                "instance": row_instance,
+                "download_id": row_download_id,
+                "source_title": row.get("title"),
+                "indexer": row_tracker,
+                "size": None,
+                "grabbed_at": row.get("grabbed_at"),
+                "torrent_file": row.get("torrent_file"),
+                "status": row_status or "missing",
+                "source": row_source or "legacy",
+                "source_last_seen": row.get("source_last_seen"),
+                "in_webhook": 1 if (row_source or "").lower() == "webhook" else 0
+            })
+
+        fallback_rows.sort(
+            key=lambda item: item.get("grabbed_at") or "",
+            reverse=True
+        )
+        logger.warning(
+            "historique consolide vide: fallback sur grabs (%s lignes retournees)",
+            len(fallback_rows[:limit])
+        )
+        return fallback_rows[:limit]
+    except Exception as e:
+        logger.error("Erreur historique consolide list: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/history/reconcile/recover")
+async def recover_history_reconcile(payload: dict):
+    """Recupere un torrent manquant a partir de l'historique consolide."""
+    download_id = (payload.get("download_id") or "").strip()
+    instance = (payload.get("instance") or "").strip() or None
+    if not download_id:
+        raise HTTPException(status_code=400, detail="download_id manquant")
+
+    record = get_grab_history_record(download_id=download_id, instance=instance)
+    if not record:
+        raise HTTPException(status_code=404, detail="Entrée historique introuvable")
+
+    record_instance = (record.get("instance") or instance or "").strip().lower()
+
+    with get_db() as conn:
+        existing = conn.execute(
+            """
+            SELECT 1
+            FROM grabs
+            WHERE instance = ? AND download_id = ?
+            LIMIT 1
+            """,
+            (record_instance, download_id)
+        ).fetchone()
+    if existing:
+        return {"status": "exists", "message": "Déjà présent dans les grabs"}
+
+    if not PROWLARR_URL or not PROWLARR_API_KEY:
+        raise HTTPException(status_code=400, detail="Prowlarr non configuré")
+
+    release_title = record.get("source_title") or download_id
+    record_payload = {
+        "instance": record_instance,
+        "download_id": download_id,
+        "source_title": release_title,
+        "indexer": record.get("indexer"),
+        "size": record.get("size"),
+        "info_url": record.get("info_url")
+    }
+    result = recover_from_history(
+        record=record_payload,
+        prowlarr_url=PROWLARR_URL,
+        prowlarr_api_key=PROWLARR_API_KEY,
+        min_score=HISTORY_MIN_SCORE,
+        strict=HISTORY_STRICT_HASH,
+        download=True
+    )
+    return result
 
 # ==================== WEB UI ====================
 
@@ -889,15 +1327,14 @@ async def configuration_page(request: Request):
 
 @app.get("/security", response_class=HTMLResponse)
 async def security_page(request: Request):
-    ctx = _ui_context_or_redirect(request)
-    if isinstance(ctx, RedirectResponse):
-        return ctx
-    return templates.TemplateResponse("pages/security.html", ctx)
+    return RedirectResponse(url='/config?tab=security', status_code=302)
 
 
 @app.get("/logs", response_class=HTMLResponse)
 async def logs_page(request: Request):
-    ctx = _ui_context_or_redirect(request)
-    if isinstance(ctx, RedirectResponse):
-        return ctx
-    return templates.TemplateResponse("pages/logs.html", ctx)
+    return RedirectResponse(url='/config?tab=maintenance', status_code=302)
+
+
+@app.get("/history-grabb", response_class=HTMLResponse)
+async def history_grabb_page(request: Request):
+    return RedirectResponse(url='/grabs', status_code=302)

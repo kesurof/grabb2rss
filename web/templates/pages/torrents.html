@@ -11,7 +11,7 @@
 {% block legacy_css %}{% endblock %}
 
 {% block content %}
-<div class="page-shell">
+<div class="page-shell page-shell--overview">
     <div class="page-header page-header--row">
         <div>
             <h1>Torrents</h1>
@@ -19,68 +19,95 @@
         </div>
     </div>
 
-    <div class="page-section">
+    <section class="page-section page-section--overview">
         <div class="section-header">Synthèse</div>
         <div class="section-state section-state--error" data-role="section-error" hidden></div>
         <div class="section-state section-state--empty" data-role="section-empty" hidden>Aucun fichier torrent disponible.</div>
-        <div class="section-grid">
-            <div class="ui-card">
+        <div class="section-grid section-grid--overview">
+            <div class="ui-card ui-card--kpi ui-card--kpi-critical ui-card--kpi-fusion">
                 <div class="ui-card__title">Total fichiers</div>
-                <div class="ui-card__value" id="torrents-total">-</div>
+                <div class="ui-card__value ui-card__value--metric" id="torrents-total">-</div>
             </div>
-            <div class="ui-card">
+            <div class="ui-card ui-card--kpi ui-card--kpi-critical ui-card--kpi-fusion">
                 <div class="ui-card__title">Taille totale</div>
-                <div class="ui-card__value"><span id="torrents-size">-</span> MB</div>
+                <div class="ui-card__value ui-card__value--size"><span id="torrents-size">-</span> MB</div>
             </div>
-            <div class="ui-card">
+            <div class="ui-card ui-card--kpi ui-card--kpi-critical ui-card--kpi-fusion">
                 <div class="ui-card__title">Avec grab</div>
-                <div class="ui-card__value" id="torrents-with-grab">-</div>
+                <div class="ui-card__value ui-card__value--metric" id="torrents-with-grab">-</div>
             </div>
-            <div class="ui-card">
+            <div class="ui-card ui-card--kpi ui-card--kpi-critical ui-card--kpi-fusion">
                 <div class="ui-card__title">Orphelins</div>
-                <div class="ui-card__value" id="torrents-orphans">-</div>
+                <div class="ui-card__value ui-card__value--metric" id="torrents-orphans">-</div>
             </div>
         </div>
-    </div>
+    </section>
 
-    <div class="page-section">
-        <div class="section-header">Actions</div>
-        <div class="actions-bar">
-            <button class="btn btn-primary" type="button" data-action="load-torrents">Actualiser</button>
-            <button class="btn btn-secondary" type="button" data-action="cleanup-orphans">Nettoyer orphelins</button>
-            <button class="btn btn-secondary" type="button" data-action="purge-torrents">Vider tous les torrents</button>
+    <section class="page-section page-section--overview">
+        <div class="section-header">Filtres</div>
+        <div class="filters-bar filters-bar--compact">
+            <div class="filter-pair">
+                <label class="filter-label" for="torrents-tracker-filter">Tracker</label>
+                <select id="torrents-tracker-filter" class="config-input">
+                    <option value="">Tous</option>
+                </select>
+            </div>
+            <div class="filter-pair">
+                <label class="filter-label" for="torrents-status-filter">Statut</label>
+                <select id="torrents-status-filter" class="config-input">
+                    <option value="">Tous</option>
+                    <option value="with_grab">Avec grab</option>
+                    <option value="orphan">Orphelin</option>
+                </select>
+            </div>
+            <div class="filter-pair">
+                <label class="filter-label" for="torrents-search">Recherche</label>
+                <input id="torrents-search" class="config-input" type="text" placeholder="Fichier, titre, tracker">
+            </div>
+            <div class="filter-pair">
+                <label class="filter-label" for="torrents-sort">Tri</label>
+                <select id="torrents-sort" class="config-input">
+                    <option value="date_desc">Date grab (récent)</option>
+                    <option value="date_asc">Date grab (ancien)</option>
+                    <option value="name_asc">Fichier (A→Z)</option>
+                    <option value="size_desc">Taille (grand→petit)</option>
+                    <option value="tracker_asc">Tracker (A→Z)</option>
+                </select>
+            </div>
         </div>
-    </div>
+    </section>
 
-    <div class="page-section">
+    <section class="page-section page-section--overview">
         <div class="section-header">Liste des torrents</div>
-        <table class="ui-table">
-            <thead>
-                <tr>
-                    <th style="width: 40px;">
-                        <input type="checkbox" id="select-all-torrents" data-action="toggle-all-torrents">
-                    </th>
-                    <th>Fichier</th>
-                    <th>Titre</th>
-                    <th>Tracker</th>
-                    <th>Date Grab</th>
-                    <th>Taille</th>
-                    <th>Statut</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody id="torrents-table" aria-live="polite" aria-busy="true">
-                <tr>
-                    <td colspan="8" data-role="section-loading">
-                        {{ table_state("Chargement...", "loading") }}
-                    </td>
-                </tr>
-            </tbody>
-        </table>
-        <div class="actions-bar" id="bulk-actions">
-            <button class="btn btn-secondary" type="button" data-action="delete-bulk-torrents">Supprimer la sélection</button>
+        <div class="actions-bar bulk-actions" id="bulk-actions">
+            <button class="btn btn-danger" type="button" data-action="delete-bulk-torrents" id="delete-bulk-torrents-btn">Supprimer la sélection</button>
         </div>
-    </div>
+        <div class="table-responsive">
+            <table class="ui-table">
+                <thead>
+                    <tr>
+                        <th class="torrents-table__select-col">
+                            <input type="checkbox" id="select-all-torrents" data-action="toggle-all-torrents">
+                        </th>
+                        <th>Fichier</th>
+                        <th>Titre</th>
+                        <th>Tracker</th>
+                        <th>Date Grab</th>
+                        <th>Taille</th>
+                        <th>Statut</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="torrents-table" aria-live="polite" aria-busy="true">
+                    <tr>
+                        <td colspan="8" data-role="section-loading">
+                            {{ table_state("Chargement...", "loading") }}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
 </div>
 {% endblock %}
 
