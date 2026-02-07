@@ -15,6 +15,7 @@ from urllib.parse import quote
 
 from logging_config import setup_logging
 from version import APP_VERSION
+import config as runtime_config
 from config import (
     TORRENT_DIR, DB_PATH, DESCRIPTIONS, PROWLARR_URL, PROWLARR_API_KEY,
     CORS_ALLOW_ORIGINS, TORRENTS_EXPOSE_STATIC, WEBHOOK_ENABLED, WEBHOOK_TOKEN,
@@ -36,7 +37,14 @@ import setup
 from setup_routes import router as setup_router
 from auth_routes import router as auth_router
 from auth import is_auth_enabled, verify_session, verify_api_key, is_local_request, get_username_from_session
-from auth import get_auth_config, save_auth_config, hash_password, create_session, get_auth_cookie_secure
+from auth import (
+    get_auth_config,
+    save_auth_config,
+    hash_password,
+    create_session,
+    get_auth_cookie_secure,
+    validate_password_for_bcrypt
+)
 from webhook_grab import handle_webhook_grab, generate_webhook_token, recover_from_history
 from history_reconcile import sync_grab_history
 
@@ -504,23 +512,23 @@ async def update_configuration(config_data: dict):
 @app.post("/api/webhook/grab")
 async def webhook_grab(request: Request):
     """Webhook Grab Radarr/Sonarr"""
-    if not WEBHOOK_ENABLED:
+    if not runtime_config.WEBHOOK_ENABLED:
         raise HTTPException(status_code=403, detail="Webhook désactivé")
-    if HISTORY_INGESTION_MODE == "history_only":
+    if runtime_config.HISTORY_INGESTION_MODE == "history_only":
         return {"status": "ignored", "reason": "ingestion_mode=history_only"}
 
     token = request.headers.get("X-Webhook-Token") or request.query_params.get("token")
-    if not WEBHOOK_TOKEN or token != WEBHOOK_TOKEN:
+    if not runtime_config.WEBHOOK_TOKEN or token != runtime_config.WEBHOOK_TOKEN:
         raise HTTPException(status_code=401, detail="Token webhook invalide")
 
     payload = await request.json()
     result = handle_webhook_grab(
         payload=payload,
-        prowlarr_url=PROWLARR_URL,
-        prowlarr_api_key=PROWLARR_API_KEY,
-        min_score=WEBHOOK_MIN_SCORE,
-        strict=WEBHOOK_STRICT,
-        download=WEBHOOK_DOWNLOAD
+        prowlarr_url=runtime_config.PROWLARR_URL,
+        prowlarr_api_key=runtime_config.PROWLARR_API_KEY,
+        min_score=runtime_config.WEBHOOK_MIN_SCORE,
+        strict=runtime_config.WEBHOOK_STRICT,
+        download=runtime_config.WEBHOOK_DOWNLOAD
     )
     return result
 
@@ -614,7 +622,13 @@ async def configure_auth_settings(payload: dict, request: Request, response: Res
         if password_in:
             if len(password_in) < 8:
                 raise HTTPException(status_code=400, detail="Mot de passe trop court (min 8)")
-            auth_cfg["password_hash"] = hash_password(password_in)
+            password_error = validate_password_for_bcrypt(password_in)
+            if password_error:
+                raise HTTPException(status_code=400, detail=f"Erreur auth: {password_error}")
+            try:
+                auth_cfg["password_hash"] = hash_password(password_in)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=f"Erreur auth: {exc}") from exc
 
         if enabled_in is not None:
             enable_target = bool(enabled_in)

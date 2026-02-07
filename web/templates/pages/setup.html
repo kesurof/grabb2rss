@@ -134,10 +134,10 @@
                 <div class="section-note">Ajoutez une authentification pour protéger l’accès à l’interface.</div>
 
                 <div class="auth-toggle">
-                    <div class="auth-toggle__label">
+                    <label class="auth-toggle__label" for="auth_enabled">
                         <span class="auth-toggle__title">Activer l'authentification</span>
                         <span class="auth-toggle__note">Recommandée pour protéger l’accès</span>
-                    </div>
+                    </label>
                     <label class="switch">
                         <input type="checkbox" id="auth_enabled" name="auth_enabled" data-action="toggle-auth">
                         <span class="switch__track" aria-hidden="true"></span>
@@ -163,10 +163,10 @@
                 <div class="section-note">Recommandé pour récupérer uniquement les torrents réellement grab.</div>
 
                 <div class="auth-toggle">
-                    <div class="auth-toggle__label">
+                    <label class="auth-toggle__label" for="webhook_enabled">
                         <span class="auth-toggle__title">Activer le webhook</span>
                         <span class="auth-toggle__note">Permet le flux Grab → Prowlarr → .torrent</span>
-                    </div>
+                    </label>
                     <label class="switch">
                         <input type="checkbox" id="webhook_enabled" name="webhook_enabled">
                         <span class="switch__track" aria-hidden="true"></span>
@@ -223,6 +223,7 @@
                 </div>
 
                 <div class="actions-bar">
+                    <button type="button" class="btn btn-secondary" data-action="apply-webhook-setup">Activer et valider</button>
                     <button type="button" class="btn btn-secondary" data-action="test-webhook-url">Tester l'URL webhook</button>
                     <span id="webhook_test_status" class="section-note"></span>
                 </div>

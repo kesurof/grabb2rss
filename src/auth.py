@@ -32,6 +32,23 @@ PASSWORD_CONTEXT = CryptContext(
 
 LEGACY_SALT_HEX_LEN = 64
 LEGACY_HASH_HEX_LEN = 64
+MAX_BCRYPT_PASSWORD_BYTES = 72
+
+
+def validate_password_for_bcrypt(password: str) -> Optional[str]:
+    """
+    Valide un mot de passe avant hash bcrypt.
+    Retourne un message d'erreur si invalide, sinon None.
+    """
+    if password is None:
+        return "mot de passe manquant"
+    pwd_bytes = str(password).encode("utf-8")
+    if len(pwd_bytes) > MAX_BCRYPT_PASSWORD_BYTES:
+        return (
+            f"mot de passe trop long pour bcrypt "
+            f"({len(pwd_bytes)} octets > {MAX_BCRYPT_PASSWORD_BYTES})"
+        )
+    return None
 
 
 def hash_password(password: str) -> str:
@@ -44,6 +61,9 @@ def hash_password(password: str) -> str:
     Returns:
         Hash au format: salt$hash
     """
+    password_error = validate_password_for_bcrypt(password)
+    if password_error:
+        raise ValueError(password_error)
     return PASSWORD_CONTEXT.hash(password)
 
 

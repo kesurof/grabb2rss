@@ -2813,6 +2813,7 @@ function initSetupPage() {
     const webhookGenerateBtn = document.querySelector('[data-action="generate-webhook-token"]');
     const webhookCopyPrimaryBtn = document.querySelector('[data-action="copy-webhook-url-primary"]');
     const webhookCopyFallbackBtn = document.querySelector('[data-action="copy-webhook-url-fallback"]');
+    const webhookApplyBtn = document.querySelector('[data-action="apply-webhook-setup"]');
     const webhookTestBtn = document.querySelector('[data-action="test-webhook-url"]');
     const webhookTestStatus = byId('webhook_test_status');
     const webhookPrimaryRow = byId('webhook_url_primary_row');
@@ -3145,6 +3146,17 @@ function initSetupPage() {
         }
     };
 
+    const applyWebhookSetup = async () => {
+        if (!webhookToggle) return;
+        if (!webhookToggle.checked) {
+            webhookToggle.checked = true;
+            toggleWebhookFields();
+        }
+        await ensureWebhookToken();
+        await testWebhookReachability();
+        showAlert("Webhook prêt. Cliquez sur « Enregistrer et démarrer » pour sauvegarder définitivement.", 'success');
+    };
+
     const submitSetup = async (event) => {
         event.preventDefault();
         if (submitInFlight) return;
@@ -3192,6 +3204,11 @@ function initSetupPage() {
                 showAlert('Le mot de passe doit contenir au moins 8 caractères', 'error');
                 return;
             }
+            const passwordBytes = new TextEncoder().encode(config.auth_password).length;
+            if (passwordBytes > 72) {
+                showAlert('Mot de passe trop long pour bcrypt (max 72 octets UTF-8)', 'error');
+                return;
+            }
         }
 
         submitInFlight = true;
@@ -3206,10 +3223,13 @@ function initSetupPage() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(config)
             });
-
-            const data = await response.json();
-
-            if (data.success) {
+            let data = {};
+            try {
+                data = await response.json();
+            } catch (parseError) {
+                data = {};
+            }
+            if (response.ok && data.success) {
                 showNotification('Configuration enregistrée', 'success');
                 showAlert('Configuration enregistrée ! Redirection...', 'success');
                 setTimeout(() => {
@@ -3218,7 +3238,7 @@ function initSetupPage() {
             } else {
                 form.style.display = 'block';
                 loadingEl.style.display = 'none';
-                showAlert('Erreur: ' + (data.error || data.message || 'Impossible de sauvegarder'), 'error');
+                showAlert('Erreur: ' + (data.detail || data.error || data.message || `HTTP ${response.status}`), 'error');
             }
         } catch (error) {
             form.style.display = 'block';
@@ -3276,6 +3296,9 @@ function initSetupPage() {
             updateSetupWebhookUrls();
             setWebhookStatus('');
         });
+    }
+    if (webhookApplyBtn) {
+        webhookApplyBtn.addEventListener('click', applyWebhookSetup);
     }
     if (webhookTestBtn) {
         webhookTestBtn.addEventListener('click', testWebhookReachability);
