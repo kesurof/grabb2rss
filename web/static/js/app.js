@@ -2924,6 +2924,8 @@ function initSetupPage() {
         warnMissing('setup', '#setupForm, #auth_enabled, #auth_fields');
         return;
     }
+    if (form.dataset.setupInitialized === 'true') return;
+    form.dataset.setupInitialized = 'true';
 
     let currentStep = 0;
 
@@ -3462,6 +3464,19 @@ function initSetupPage() {
     });
 
     updateWizard();
+}
+
+// Fallback dédié setup: évite un setup partiellement inactif si l'init globale échoue.
+if (window.location.pathname === '/setup') {
+    window.addEventListener('load', () => {
+        const form = byId('setupForm');
+        if (!form || form.dataset.setupInitialized === 'true') return;
+        try {
+            initSetupPage();
+        } catch (error) {
+            console.error("Erreur fallback init setup:", error);
+        }
+    });
 }
 
 // Event listener for torrent checkboxes

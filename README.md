@@ -2,7 +2,7 @@
   <img src="web/static/medias/logo-grabb2rss.webp" alt="Grabb2RSS" width="220">
   <h1>Grabb2RSS</h1>
   <p>Pipeline Grab -> Torrent -> RSS pour Radarr/Sonarr/Prowlarr.</p>
-  <p><strong>Version</strong> : v3.0.4</p>
+  <p><strong>Version</strong> : v3.0.5</p>
 </div>
 
 [![Docker](https://img.shields.io/badge/docker-ghcr.io-blue)](https://ghcr.io/kesurof/grabb2rss)
