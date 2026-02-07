@@ -159,14 +159,16 @@
                     </div>
                 </div>
 
-                <div class="section-header" style="margin-top: 32px;">Webhook Grab</div>
-                <div class="section-note">Recommandé pour récupérer uniquement les torrents réellement grab.</div>
+                <div class="auth-toggle" style="margin-top: 32px;">
+                    <div class="auth-toggle__label">
+                        <span class="auth-toggle__title">Webhook Grab</span>
+                        <span class="auth-toggle__note">Recommandé pour récupérer uniquement les torrents réellement grab.</span>
+                        <span id="webhook_activation_status" class="auth-toggle__note">Webhook désactivé.</span>
+                    </div>
+                    <button type="button" class="btn btn-secondary" data-action="apply-webhook-setup">Activer et valider</button>
+                </div>
 
                 <input type="checkbox" id="webhook_enabled" name="webhook_enabled" hidden>
-                <div class="actions-bar">
-                    <button type="button" class="btn btn-secondary" data-action="apply-webhook-setup">Activer et valider</button>
-                    <span id="webhook_activation_status" class="section-note">Webhook désactivé (optionnel, mais recommandé).</span>
-                </div>
 
                 <div class="form-field">
                     <div class="form-inline">
@@ -179,9 +181,8 @@
                     <div class="form-help">Le token est intégré automatiquement dans l’URL webhook à copier.</div>
                 </div>
 
-                <div class="setup-webhook-guide">
+                <div class="setup-webhook-guide" hidden>
                     <div class="setup-webhook-guide__title">Guide rapide Radarr / Sonarr</div>
-                    <div class="setup-webhook-guide__note">1) Utilisez d’abord <code>grabb2rss</code>. 2) Si le test échoue, utilisez <code>172.17.0.1</code>.</div>
                     <div class="setup-webhook-guide__steps">
                         <div class="setup-webhook-step">Paramètres → Connect → + → Webhook</div>
                         <div class="setup-webhook-step">Méthode: POST</div>
@@ -214,11 +215,6 @@
                             <button class="btn btn-secondary" type="button" data-action="copy-webhook-url-fallback">Copier</button>
                         </div>
                     </div>
-                </div>
-
-                <div class="actions-bar">
-                    <button type="button" class="btn btn-secondary" data-action="test-webhook-url">Tester l'URL webhook</button>
-                    <span id="webhook_test_status" class="section-note"></span>
                 </div>
 
                 <details class="advanced-block">

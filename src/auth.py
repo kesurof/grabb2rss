@@ -35,6 +35,21 @@ LEGACY_HASH_HEX_LEN = 64
 MAX_BCRYPT_PASSWORD_BYTES = 72
 
 
+def _password_for_bcrypt(password: Any) -> str:
+    """
+    Normalise un mot de passe pour bcrypt.
+    Bcrypt ne supporte que 72 octets maximum.
+    """
+    text_password = str(password or "")
+    pwd_bytes = text_password.encode("utf-8")
+    if len(pwd_bytes) <= MAX_BCRYPT_PASSWORD_BYTES:
+        return text_password
+    safe_bytes = pwd_bytes[:MAX_BCRYPT_PASSWORD_BYTES]
+    safe_password = safe_bytes.decode("utf-8", errors="ignore")
+    logger.warning("Mot de passe tronqué à %d octets pour bcrypt", MAX_BCRYPT_PASSWORD_BYTES)
+    return safe_password
+
+
 def validate_password_for_bcrypt(password: str) -> Optional[str]:
     """
     Valide un mot de passe avant hash bcrypt.
@@ -73,18 +88,16 @@ def hash_password(password: str) -> str:
     Returns:
         Hash au format: salt$hash
     """
-    password_error = validate_password_for_bcrypt(password)
-    if password_error:
-        raise ValueError(normalize_auth_error_message(password_error))
+    if password is None:
+        raise ValueError("mot de passe manquant")
+    safe_password = _password_for_bcrypt(password)
     try:
-        return PASSWORD_CONTEXT.hash(password)
+        return PASSWORD_CONTEXT.hash(safe_password)
     except ValueError as exc:
         normalized = normalize_auth_error_message(exc)
         # Garde-fou: si bcrypt renvoie malgré tout l'erreur 72 bytes, on retente en borne stricte.
         if "mot de passe trop long pour bcrypt" in normalized:
-            safe_bytes = str(password).encode("utf-8")[:MAX_BCRYPT_PASSWORD_BYTES]
-            safe_password = safe_bytes.decode("utf-8", errors="ignore")
-            return PASSWORD_CONTEXT.hash(safe_password)
+            return PASSWORD_CONTEXT.hash(_password_for_bcrypt(password))
         raise ValueError(normalized) from exc
 
 
@@ -124,7 +137,7 @@ def verify_password(password: str, password_hash: str) -> bool:
             return False
 
     try:
-        return PASSWORD_CONTEXT.verify(password, password_hash)
+        return PASSWORD_CONTEXT.verify(_password_for_bcrypt(password), password_hash)
     except Exception:
         return False
 

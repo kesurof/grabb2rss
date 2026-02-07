@@ -43,7 +43,6 @@ from auth import (
     hash_password,
     create_session,
     get_auth_cookie_secure,
-    validate_password_for_bcrypt,
     normalize_auth_error_message
 )
 from webhook_grab import handle_webhook_grab, generate_webhook_token, recover_from_history
@@ -623,9 +622,6 @@ async def configure_auth_settings(payload: dict, request: Request, response: Res
         if password_in:
             if len(password_in) < 8:
                 raise HTTPException(status_code=400, detail="Mot de passe trop court (min 8)")
-            password_error = validate_password_for_bcrypt(password_in)
-            if password_error:
-                raise HTTPException(status_code=400, detail=f"Erreur auth: {normalize_auth_error_message(password_error)}")
             try:
                 auth_cfg["password_hash"] = hash_password(password_in)
             except ValueError as exc:

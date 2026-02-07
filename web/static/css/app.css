@@ -880,6 +880,10 @@ body.auth-page {
     background: rgba(15, 23, 42, 0.55);
 }
 
+.setup-webhook-guide[hidden] {
+    display: none !important;
+}
+
 .setup-webhook-guide__title {
     color: #e2e8f0;
     font-size: 14px;
@@ -1037,6 +1041,10 @@ body.auth-page {
     gap: 12px;
     flex-wrap: wrap;
     padding-top: 4px;
+}
+
+.actions-bar[hidden] {
+    display: none !important;
 }
 
 .actions-bar .btn-primary {

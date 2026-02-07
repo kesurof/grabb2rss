@@ -2899,8 +2899,6 @@ function initSetupPage() {
     const webhookCopyPrimaryBtn = document.querySelector('[data-action="copy-webhook-url-primary"]');
     const webhookCopyFallbackBtn = document.querySelector('[data-action="copy-webhook-url-fallback"]');
     const webhookApplyBtn = document.querySelector('[data-action="apply-webhook-setup"]');
-    const webhookTestBtn = document.querySelector('[data-action="test-webhook-url"]');
-    const webhookTestStatus = byId('webhook_test_status');
     const webhookActivationStatus = byId('webhook_activation_status');
     const webhookPrimaryRow = byId('webhook_url_primary_row');
     const webhookFallbackRow = byId('webhook_url_fallback_row');
@@ -2911,7 +2909,6 @@ function initSetupPage() {
     const webhookMinScore = byId('webhook_min_score');
     const webhookTokenRow = webhookTokenInput?.closest('.form-field') || null;
     const webhookGuide = document.querySelector('.setup-webhook-guide');
-    const webhookActionsBar = webhookTestStatus?.closest('.actions-bar') || document.querySelector('[data-action="test-webhook-url"]')?.closest('.actions-bar') || null;
     const webhookAdvancedBlock = webhookMinScore?.closest('.advanced-block') || null;
     const steps = Array.from(document.querySelectorAll('[data-setup-step]'));
     const stepPills = Array.from(document.querySelectorAll('.setup-wizard__step'));
@@ -3017,19 +3014,10 @@ function initSetupPage() {
     }
 
     stepPills.forEach((pill, index) => {
-        pill.setAttribute('tabindex', '0');
         pill.addEventListener('click', () => {
             currentStep = index;
             updateWizard();
             window.scrollTo({ top: 0, behavior: 'smooth' });
-        });
-        pill.addEventListener('keydown', event => {
-            if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                currentStep = index;
-                updateWizard();
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            }
         });
     });
 
@@ -3105,29 +3093,24 @@ function initSetupPage() {
         if (webhookGuide) webhookGuide.hidden = !enabled;
         if (webhookPrimaryRow) webhookPrimaryRow.hidden = !enabled;
         if (webhookFallbackRow) webhookFallbackRow.hidden = !enabled;
-        if (webhookActionsBar) webhookActionsBar.hidden = !enabled;
         if (webhookAdvancedBlock) webhookAdvancedBlock.hidden = !enabled;
         if (webhookGenerateBtn) webhookGenerateBtn.disabled = !enabled;
         if (webhookCopyPrimaryBtn) webhookCopyPrimaryBtn.disabled = !enabled;
         if (webhookCopyFallbackBtn) webhookCopyFallbackBtn.disabled = !enabled;
-        if (webhookTestBtn) webhookTestBtn.disabled = !enabled;
         if (enabled) {
             webhookTokenInput.setAttribute('required', 'required');
             updateSetupWebhookUrls();
-            setWebhookStatus('');
             setWebhookActivationStatus('Webhook activé. Vous pouvez tester puis copier les URLs.', 'success');
             ensureWebhookToken();
         } else {
             webhookTokenInput.removeAttribute('required');
             setRecommendedWebhook(null);
-            setWebhookStatus('Webhook désactivé (optionnel, mais recommandé).', 'info');
             setWebhookActivationStatus('Webhook désactivé (optionnel, mais recommandé).', 'info');
         }
         validateStep();
     };
 
     let testInFlight = false;
-    let webhookTestInFlight = false;
     let submitInFlight = false;
 
     const buildWebhookUrlByHost = (token, hostValue) => {
@@ -3165,7 +3148,7 @@ function initSetupPage() {
             if (data && data.token) {
                 webhookTokenInput.value = data.token;
                 updateSetupWebhookUrls();
-                setWebhookStatus('Webhook activé avec token généré: utilisable immédiatement.', 'success');
+                setWebhookActivationStatus('Webhook activé avec token généré: utilisable immédiatement.', 'success');
             }
         } catch (e) {
             console.warn('Impossible de pré-générer le token webhook:', e);
@@ -3179,15 +3162,6 @@ function initSetupPage() {
         }
         button.disabled = loading;
         button.textContent = loading ? loadingText : button.dataset.originalText;
-    };
-
-    const setWebhookStatus = (message, type = 'info') => {
-        if (!webhookTestStatus) return;
-        webhookTestStatus.textContent = message;
-        webhookTestStatus.classList.remove('text-success', 'text-danger', 'text-muted');
-        if (type === 'success') webhookTestStatus.classList.add('text-success');
-        else if (type === 'error') webhookTestStatus.classList.add('text-danger');
-        else webhookTestStatus.classList.add('text-muted');
     };
 
     const setWebhookActivationStatus = (message, type = 'info') => {
@@ -3253,59 +3227,6 @@ function initSetupPage() {
         }
     };
 
-    const testWebhookReachability = async ({ skipConfirmation = false } = {}) => {
-        if (webhookTestInFlight) return;
-        if (!skipConfirmation && !requireSetupInlineConfirmation(webhookTestBtn)) return;
-        if (!webhookToggle?.checked) {
-            setWebhookStatus("Activez d'abord le webhook pour lancer le test.", 'error');
-            return;
-        }
-        if (!webhookUrlPrimaryInput || !webhookUrlFallbackInput) return;
-        const urls = [webhookUrlPrimaryInput.value.trim(), webhookUrlFallbackInput.value.trim()].filter(Boolean);
-        if (!urls.length) {
-            setWebhookStatus("Aucune URL webhook à tester", 'error');
-            return;
-        }
-
-        webhookTestInFlight = true;
-        setButtonState(webhookTestBtn, true, 'Test...');
-        setWebhookStatus('Test de joignabilité en cours...', 'info');
-        try {
-            const res = await fetch('/api/setup/test-webhook-url', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ urls })
-            });
-            const data = await res.json();
-            if (!res.ok || !data?.success) {
-                setWebhookStatus(data?.detail || "Test webhook impossible", 'error');
-                return;
-            }
-            const results = Array.isArray(data.results) ? data.results : [];
-            const readable = results.map(item => {
-                const host = item.url?.includes('172.17.0.1') ? '172.17.0.1' : 'grabb2rss';
-                return `${host}: ${item.reachable ? 'joignable' : 'non joignable'}${item.detail ? ` (${item.detail})` : ''}`;
-            });
-            const hasFailure = results.some(item => !item.reachable);
-            const primaryResult = results.find(item => item.url && item.url.includes('//grabb2rss:'));
-            const fallbackResult = results.find(item => item.url && item.url.includes('//172.17.0.1:'));
-            if (primaryResult?.reachable) {
-                setRecommendedWebhook('primary');
-            } else if (fallbackResult?.reachable) {
-                setRecommendedWebhook('fallback');
-            } else {
-                setRecommendedWebhook(null);
-            }
-            setWebhookStatus(readable.join(' | '), hasFailure ? 'error' : 'success');
-        } catch (e) {
-            setRecommendedWebhook(null);
-            setWebhookStatus(`Erreur test webhook: ${e.message || e}`, 'error');
-        } finally {
-            webhookTestInFlight = false;
-            setButtonState(webhookTestBtn, false);
-        }
-    };
-
     const applyWebhookSetup = async () => {
         if (!requireSetupInlineConfirmation(webhookApplyBtn)) return;
         if (!webhookToggle) return;
@@ -3314,7 +3235,6 @@ function initSetupPage() {
             toggleWebhookFields();
         }
         await ensureWebhookToken();
-        await testWebhookReachability({ skipConfirmation: true });
         showAlert("Webhook prêt. Cliquez sur « Enregistrer et démarrer » pour sauvegarder définitivement.", 'success');
     };
 
@@ -3459,14 +3379,10 @@ function initSetupPage() {
     if (webhookTokenInput) {
         webhookTokenInput.addEventListener('input', () => {
             updateSetupWebhookUrls();
-            setWebhookStatus('');
         });
     }
     if (webhookApplyBtn) {
         webhookApplyBtn.addEventListener('click', applyWebhookSetup);
-    }
-    if (webhookTestBtn) {
-        webhookTestBtn.addEventListener('click', testWebhookReachability);
     }
     const testButton = document.querySelector('[data-action="test-connection"]');
     if (testButton) testButton.addEventListener('click', testConnection);

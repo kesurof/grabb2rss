@@ -6,10 +6,9 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional
 import setup
 import logging
-import requests
 from version import APP_VERSION
 
 logger = logging.getLogger(__name__)
@@ -63,10 +62,6 @@ class SetupConfigModel(BaseModel):
     history_ingestion_mode: Optional[str] = "webhook_plus_history"
 
 
-class WebhookReachabilityModel(BaseModel):
-    urls: List[str]
-
-
 @router.get("/setup", response_class=HTMLResponse)
 async def setup_page(request: Request):
     """Page de setup wizard"""
@@ -105,39 +100,6 @@ async def test_prowlarr(data: dict):
         return {"success": True}
     else:
         return {"success": False, "error": error}
-
-
-@router.post("/api/setup/test-webhook-url")
-async def test_webhook_url(payload: WebhookReachabilityModel):
-    """Teste la joignabilité HTTP des URLs webhook depuis Grabb2RSS."""
-    results = []
-    for raw_url in payload.urls:
-        url = (raw_url or "").strip()
-        if not url:
-            continue
-        if not (url.startswith("http://") or url.startswith("https://")):
-            results.append({
-                "url": url,
-                "reachable": False,
-                "detail": "URL invalide (http/https requis)"
-            })
-            continue
-        try:
-            # Le endpoint webhook est en POST: un code 405/401/403 confirme déjà la joignabilité.
-            resp = requests.get(url, timeout=3, allow_redirects=False)
-            results.append({
-                "url": url,
-                "reachable": True,
-                "status_code": resp.status_code,
-                "detail": f"HTTP {resp.status_code}"
-            })
-        except requests.RequestException as exc:
-            results.append({
-                "url": url,
-                "reachable": False,
-                "detail": str(exc)
-            })
-    return {"success": True, "results": results}
 
 
 @router.post("/api/setup/save")
@@ -183,11 +145,8 @@ async def save_setup(config: SetupConfigModel):
 
         # Ajouter la configuration d'authentification si activée
         if config.auth_enabled and config.auth_username and config.auth_password:
-            from auth import hash_password, validate_password_for_bcrypt, normalize_auth_error_message
+            from auth import hash_password, normalize_auth_error_message
             logger.info("Configuration de l'authentification pour %s", config.auth_username)
-            password_error = validate_password_for_bcrypt(config.auth_password)
-            if password_error:
-                raise HTTPException(status_code=400, detail=f"Erreur auth: {normalize_auth_error_message(password_error)}")
             try:
                 password_hash = hash_password(config.auth_password)
             except ValueError as exc:
