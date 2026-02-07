@@ -10,11 +10,11 @@ import os
 import logging
 import secrets
 import hmac
+import bcrypt
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 import yaml
 from paths import SETTINGS_FILE
-from passlib.context import CryptContext
 
 # Chemins
 CONFIG_FILE = SETTINGS_FILE
@@ -24,11 +24,6 @@ logger = logging.getLogger(__name__)
 SESSION_DURATION = timedelta(days=7)
 
 from db import get_db
-
-PASSWORD_CONTEXT = CryptContext(
-    schemes=["bcrypt"],
-    deprecated="auto"
-)
 
 LEGACY_SALT_HEX_LEN = 64
 LEGACY_HASH_HEX_LEN = 64
@@ -92,12 +87,20 @@ def hash_password(password: str) -> str:
         raise ValueError("mot de passe manquant")
     safe_password = _password_for_bcrypt(password)
     try:
-        return PASSWORD_CONTEXT.hash(safe_password)
-    except ValueError as exc:
+        hashed = bcrypt.hashpw(
+            safe_password.encode("utf-8"),
+            bcrypt.gensalt()
+        )
+        return hashed.decode("utf-8")
+    except Exception as exc:
         normalized = normalize_auth_error_message(exc)
-        # Garde-fou: si bcrypt renvoie malgré tout l'erreur 72 bytes, on retente en borne stricte.
-        if "mot de passe trop long pour bcrypt" in normalized:
-            return PASSWORD_CONTEXT.hash(_password_for_bcrypt(password))
+        # Garde-fou: certains backends bcrypt remontent cette erreur hors ValueError.
+        if (
+            "mot de passe trop long pour bcrypt" in normalized
+            or "password cannot be longer than 72 bytes" in str(exc)
+        ):
+            safe = _password_for_bcrypt(password).encode("utf-8")
+            return bcrypt.hashpw(safe, bcrypt.gensalt()).decode("utf-8")
         raise ValueError(normalized) from exc
 
 
@@ -137,7 +140,10 @@ def verify_password(password: str, password_hash: str) -> bool:
             return False
 
     try:
-        return PASSWORD_CONTEXT.verify(_password_for_bcrypt(password), password_hash)
+        return bcrypt.checkpw(
+            _password_for_bcrypt(password).encode("utf-8"),
+            str(password_hash).encode("utf-8")
+        )
     except Exception:
         return False
 
@@ -150,10 +156,8 @@ def needs_rehash(password_hash: str) -> bool:
         return False
     if _is_legacy_sha256_hash(password_hash):
         return True
-    try:
-        return PASSWORD_CONTEXT.needs_update(password_hash)
-    except Exception:
-        return True
+    # Hash bcrypt natif ($2a$, $2b$, $2y$): pas de rehash imposé ici.
+    return not str(password_hash).startswith(("$2a$", "$2b$", "$2y$"))
 
 
 def get_auth_config() -> Dict[str, Any]:
