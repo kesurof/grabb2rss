@@ -3100,7 +3100,7 @@ function initSetupPage() {
         if (enabled) {
             webhookTokenInput.setAttribute('required', 'required');
             updateSetupWebhookUrls();
-            setWebhookActivationStatus('Webhook activé. Vous pouvez tester puis copier les URLs.', 'success');
+            setWebhookActivationStatus('Webhook activé. Vous pouvez copier les URLs.', 'success');
             ensureWebhookToken();
         } else {
             webhookTokenInput.removeAttribute('required');
@@ -3136,10 +3136,12 @@ function initSetupPage() {
         if (!webhookTokenInput) return;
         if (!webhookToggle?.checked) {
             updateSetupWebhookUrls();
+            validateStep();
             return;
         }
         if ((webhookTokenInput.value || '').trim()) {
             updateSetupWebhookUrls();
+            validateStep();
             return;
         }
         try {
@@ -3152,6 +3154,8 @@ function initSetupPage() {
             }
         } catch (e) {
             console.warn('Impossible de pré-générer le token webhook:', e);
+        } finally {
+            validateStep();
         }
     };
 
@@ -3285,11 +3289,6 @@ function initSetupPage() {
             }
             if (config.auth_password.length < 8) {
                 showAlert('Le mot de passe doit contenir au moins 8 caractères', 'error');
-                return;
-            }
-            const passwordBytes = new TextEncoder().encode(config.auth_password).length;
-            if (passwordBytes > 72) {
-                showAlert('Mot de passe trop long pour bcrypt (max 72 octets UTF-8)', 'error');
                 return;
             }
         }
