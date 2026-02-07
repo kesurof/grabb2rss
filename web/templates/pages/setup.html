@@ -162,16 +162,10 @@
                 <div class="section-header" style="margin-top: 32px;">Webhook Grab</div>
                 <div class="section-note">Recommandé pour récupérer uniquement les torrents réellement grab.</div>
 
-                <div class="auth-toggle">
-                    <label class="auth-toggle__label" for="webhook_enabled">
-                        <span class="auth-toggle__title">Activer le webhook</span>
-                        <span class="auth-toggle__note">Permet le flux Grab → Prowlarr → .torrent</span>
-                    </label>
-                    <label class="switch">
-                        <input type="checkbox" id="webhook_enabled" name="webhook_enabled">
-                        <span class="switch__track" aria-hidden="true"></span>
-                        <span class="switch__thumb" aria-hidden="true"></span>
-                    </label>
+                <input type="checkbox" id="webhook_enabled" name="webhook_enabled" hidden>
+                <div class="actions-bar">
+                    <button type="button" class="btn btn-secondary" data-action="apply-webhook-setup">Activer et valider</button>
+                    <span id="webhook_activation_status" class="section-note">Webhook désactivé (optionnel, mais recommandé).</span>
                 </div>
 
                 <div class="form-field">
@@ -223,7 +217,6 @@
                 </div>
 
                 <div class="actions-bar">
-                    <button type="button" class="btn btn-secondary" data-action="apply-webhook-setup">Activer et valider</button>
                     <button type="button" class="btn btn-secondary" data-action="test-webhook-url">Tester l'URL webhook</button>
                     <span id="webhook_test_status" class="section-note"></span>
                 </div>

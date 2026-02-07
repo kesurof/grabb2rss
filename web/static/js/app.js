@@ -2901,6 +2901,7 @@ function initSetupPage() {
     const webhookApplyBtn = document.querySelector('[data-action="apply-webhook-setup"]');
     const webhookTestBtn = document.querySelector('[data-action="test-webhook-url"]');
     const webhookTestStatus = byId('webhook_test_status');
+    const webhookActivationStatus = byId('webhook_activation_status');
     const webhookPrimaryRow = byId('webhook_url_primary_row');
     const webhookFallbackRow = byId('webhook_url_fallback_row');
     const webhookPrimaryBadge = byId('webhook_primary_badge');
@@ -3114,11 +3115,13 @@ function initSetupPage() {
             webhookTokenInput.setAttribute('required', 'required');
             updateSetupWebhookUrls();
             setWebhookStatus('');
+            setWebhookActivationStatus('Webhook activé. Vous pouvez tester puis copier les URLs.', 'success');
             ensureWebhookToken();
         } else {
             webhookTokenInput.removeAttribute('required');
             setRecommendedWebhook(null);
             setWebhookStatus('Webhook désactivé (optionnel, mais recommandé).', 'info');
+            setWebhookActivationStatus('Webhook désactivé (optionnel, mais recommandé).', 'info');
         }
         validateStep();
     };
@@ -3128,7 +3131,9 @@ function initSetupPage() {
     let submitInFlight = false;
 
     const buildWebhookUrlByHost = (token, hostValue) => {
-        const protocol = window.location.protocol || 'http:';
+        // Les endpoints Docker internes (grabb2rss / 172.17.0.1) exposent typiquement HTTP.
+        const internalHosts = new Set(['grabb2rss', '172.17.0.1']);
+        const protocol = internalHosts.has(hostValue) ? 'http:' : (window.location.protocol || 'http:');
         const tokenPart = token ? `?token=${encodeURIComponent(token)}` : '';
         return `${protocol}//${hostValue}:8000/api/webhook/grab${tokenPart}`;
     };
@@ -3185,6 +3190,15 @@ function initSetupPage() {
         else webhookTestStatus.classList.add('text-muted');
     };
 
+    const setWebhookActivationStatus = (message, type = 'info') => {
+        if (!webhookActivationStatus) return;
+        webhookActivationStatus.textContent = message;
+        webhookActivationStatus.classList.remove('text-success', 'text-danger', 'text-muted');
+        if (type === 'success') webhookActivationStatus.classList.add('text-success');
+        else if (type === 'error') webhookActivationStatus.classList.add('text-danger');
+        else webhookActivationStatus.classList.add('text-muted');
+    };
+
     const setRecommendedWebhook = (choice) => {
         const primary = choice === 'primary';
         const fallback = choice === 'fallback';
@@ -3239,9 +3253,9 @@ function initSetupPage() {
         }
     };
 
-    const testWebhookReachability = async () => {
+    const testWebhookReachability = async ({ skipConfirmation = false } = {}) => {
         if (webhookTestInFlight) return;
-        if (!requireSetupInlineConfirmation(webhookTestBtn)) return;
+        if (!skipConfirmation && !requireSetupInlineConfirmation(webhookTestBtn)) return;
         if (!webhookToggle?.checked) {
             setWebhookStatus("Activez d'abord le webhook pour lancer le test.", 'error');
             return;
@@ -3300,7 +3314,7 @@ function initSetupPage() {
             toggleWebhookFields();
         }
         await ensureWebhookToken();
-        await testWebhookReachability();
+        await testWebhookReachability({ skipConfirmation: true });
         showAlert("Webhook prêt. Cliquez sur « Enregistrer et démarrer » pour sauvegarder définitivement.", 'success');
     };
 
