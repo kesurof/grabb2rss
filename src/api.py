@@ -526,17 +526,20 @@ async def webhook_grab(request: Request):
 
 
 @app.post("/api/webhook/token/generate")
-async def generate_webhook_token_endpoint():
+async def generate_webhook_token_endpoint(enable: bool = Query(False)):
     """Génère et sauvegarde un token webhook"""
     token = generate_webhook_token()
     try:
         import setup
-        setup.update_config({"webhook": {"token": token}})
+        webhook_update = {"token": token}
+        if enable:
+            webhook_update["enabled"] = True
+        setup.update_config({"webhook": webhook_update})
         from config import reload_config
         reload_config()
     except Exception as e:
         logger.warning("Erreur sauvegarde token webhook: %s", e)
-    return {"success": True, "token": token}
+    return {"success": True, "token": token, "enabled": enable}
 
 # ==================== API KEYS & RSS ====================
 

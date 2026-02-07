@@ -1909,7 +1909,14 @@ async function saveConfig(event, button) {
             showNotification("Configuration sauvegardée", 'success');
             await loadConfig();
         } else {
-            showNotification("Erreur lors de la sauvegarde", 'error');
+            let details = "Erreur lors de la sauvegarde";
+            try {
+                const data = await res.json();
+                details = data?.detail || data?.message || data?.error || details;
+            } catch (_) {
+                // noop
+            }
+            showNotification(details, 'error');
         }
     } catch (e) {
         showNotification("Erreur: " + e, 'error');
@@ -2806,6 +2813,12 @@ function initSetupPage() {
     const webhookGenerateBtn = document.querySelector('[data-action="generate-webhook-token"]');
     const webhookCopyPrimaryBtn = document.querySelector('[data-action="copy-webhook-url-primary"]');
     const webhookCopyFallbackBtn = document.querySelector('[data-action="copy-webhook-url-fallback"]');
+    const webhookTestBtn = document.querySelector('[data-action="test-webhook-url"]');
+    const webhookTestStatus = byId('webhook_test_status');
+    const webhookPrimaryRow = byId('webhook_url_primary_row');
+    const webhookFallbackRow = byId('webhook_url_fallback_row');
+    const webhookPrimaryBadge = byId('webhook_primary_badge');
+    const webhookFallbackBadge = byId('webhook_fallback_badge');
     const webhookStrict = byId('webhook_strict');
     const webhookDownload = byId('webhook_download');
     const webhookMinScore = byId('webhook_min_score');
@@ -2961,13 +2974,16 @@ function initSetupPage() {
         const enabled = webhookToggle.checked;
         if (enabled) {
             webhookTokenInput.setAttribute('required', 'required');
+            ensureWebhookToken();
         } else {
             webhookTokenInput.removeAttribute('required');
+            setWebhookStatus('Webhook désactivé (optionnel, mais recommandé).', 'info');
         }
         validateStep();
     };
 
     let testInFlight = false;
+    let webhookTestInFlight = false;
     let submitInFlight = false;
 
     const buildWebhookUrlByHost = (token, hostValue) => {
@@ -2984,20 +3000,26 @@ function initSetupPage() {
         if (webhookUrlFallbackInput) {
             webhookUrlFallbackInput.value = buildWebhookUrlByHost(token, '172.17.0.1');
         }
+        setRecommendedWebhook('primary');
     };
 
     const ensureWebhookToken = async () => {
         if (!webhookTokenInput) return;
+        if (!webhookToggle?.checked) {
+            updateSetupWebhookUrls();
+            return;
+        }
         if ((webhookTokenInput.value || '').trim()) {
             updateSetupWebhookUrls();
             return;
         }
         try {
-            const res = await fetch('/api/webhook/token/generate', { method: 'POST' });
+            const res = await fetch('/api/webhook/token/generate?enable=true', { method: 'POST' });
             const data = await res.json();
             if (data && data.token) {
                 webhookTokenInput.value = data.token;
                 updateSetupWebhookUrls();
+                setWebhookStatus('Webhook activé avec token généré: utilisable immédiatement.', 'success');
             }
         } catch (e) {
             console.warn('Impossible de pré-générer le token webhook:', e);
@@ -3011,6 +3033,24 @@ function initSetupPage() {
         }
         button.disabled = loading;
         button.textContent = loading ? loadingText : button.dataset.originalText;
+    };
+
+    const setWebhookStatus = (message, type = 'info') => {
+        if (!webhookTestStatus) return;
+        webhookTestStatus.textContent = message;
+        webhookTestStatus.classList.remove('text-success', 'text-danger', 'text-muted');
+        if (type === 'success') webhookTestStatus.classList.add('text-success');
+        else if (type === 'error') webhookTestStatus.classList.add('text-danger');
+        else webhookTestStatus.classList.add('text-muted');
+    };
+
+    const setRecommendedWebhook = (choice) => {
+        const primary = choice === 'primary';
+        const fallback = choice === 'fallback';
+        if (webhookPrimaryRow) webhookPrimaryRow.classList.toggle('is-recommended', primary);
+        if (webhookFallbackRow) webhookFallbackRow.classList.toggle('is-recommended', fallback);
+        if (webhookPrimaryBadge) webhookPrimaryBadge.hidden = !primary;
+        if (webhookFallbackBadge) webhookFallbackBadge.hidden = !fallback;
     };
 
     const testConnection = async () => {
@@ -3054,6 +3094,54 @@ function initSetupPage() {
         } finally {
             testInFlight = false;
             setButtonState(testButton, false);
+        }
+    };
+
+    const testWebhookReachability = async () => {
+        if (webhookTestInFlight) return;
+        if (!webhookUrlPrimaryInput || !webhookUrlFallbackInput) return;
+        const urls = [webhookUrlPrimaryInput.value.trim(), webhookUrlFallbackInput.value.trim()].filter(Boolean);
+        if (!urls.length) {
+            setWebhookStatus("Aucune URL webhook à tester", 'error');
+            return;
+        }
+
+        webhookTestInFlight = true;
+        setButtonState(webhookTestBtn, true, 'Test...');
+        setWebhookStatus('Test de joignabilité en cours...', 'info');
+        try {
+            const res = await fetch('/api/setup/test-webhook-url', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ urls })
+            });
+            const data = await res.json();
+            if (!res.ok || !data?.success) {
+                setWebhookStatus(data?.detail || "Test webhook impossible", 'error');
+                return;
+            }
+            const results = Array.isArray(data.results) ? data.results : [];
+            const readable = results.map(item => {
+                const host = item.url?.includes('172.17.0.1') ? '172.17.0.1' : 'grabb2rss';
+                return `${host}: ${item.reachable ? 'joignable' : 'non joignable'}${item.detail ? ` (${item.detail})` : ''}`;
+            });
+            const hasFailure = results.some(item => !item.reachable);
+            const primaryResult = results.find(item => item.url && item.url.includes('//grabb2rss:'));
+            const fallbackResult = results.find(item => item.url && item.url.includes('//172.17.0.1:'));
+            if (primaryResult?.reachable) {
+                setRecommendedWebhook('primary');
+            } else if (fallbackResult?.reachable) {
+                setRecommendedWebhook('fallback');
+            } else {
+                setRecommendedWebhook(null);
+            }
+            setWebhookStatus(readable.join(' | '), hasFailure ? 'error' : 'success');
+        } catch (e) {
+            setRecommendedWebhook(null);
+            setWebhookStatus(`Erreur test webhook: ${e.message || e}`, 'error');
+        } finally {
+            webhookTestInFlight = false;
+            setButtonState(webhookTestBtn, false);
         }
     };
 
@@ -3186,7 +3274,11 @@ function initSetupPage() {
     if (webhookTokenInput) {
         webhookTokenInput.addEventListener('input', () => {
             updateSetupWebhookUrls();
+            setWebhookStatus('');
         });
+    }
+    if (webhookTestBtn) {
+        webhookTestBtn.addEventListener('click', testWebhookReachability);
     }
     const testButton = document.querySelector('[data-action="test-connection"]');
     if (testButton) testButton.addEventListener('click', testConnection);

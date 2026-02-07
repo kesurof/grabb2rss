@@ -168,7 +168,7 @@
                         <span class="auth-toggle__note">Permet le flux Grab → Prowlarr → .torrent</span>
                     </div>
                     <label class="switch">
-                        <input type="checkbox" id="webhook_enabled" name="webhook_enabled" checked>
+                        <input type="checkbox" id="webhook_enabled" name="webhook_enabled">
                         <span class="switch__track" aria-hidden="true"></span>
                         <span class="switch__thumb" aria-hidden="true"></span>
                     </label>
@@ -193,11 +193,15 @@
                         <div class="setup-webhook-step">Méthode: POST</div>
                         <div class="setup-webhook-step">Événement: On Grab</div>
                     </div>
+                    <div class="setup-webhook-guide__note">Conservez ce webhook configuré et appliquez-le après le démarrage complet de Grabb2RSS.</div>
                 </div>
 
-                <div class="form-field">
+                <div class="form-field setup-webhook-url-row" id="webhook_url_primary_row">
                     <div class="form-inline">
-                        <label class="form-label" style="margin: 0;">URL Webhook (Docker: grabb2rss)</label>
+                        <label class="form-label" style="margin: 0;">
+                            URL Webhook (Docker: grabb2rss)
+                            <span class="webhook-recommended-badge" id="webhook_primary_badge" hidden>Recommandée</span>
+                        </label>
                         <div class="copy-field">
                             <input class="form-input" type="text" id="webhook_url_primary" name="webhook_url_primary" readonly>
                             <button class="btn btn-secondary" type="button" data-action="copy-webhook-url-primary">Copier</button>
@@ -205,14 +209,22 @@
                     </div>
                 </div>
 
-                <div class="form-field">
+                <div class="form-field setup-webhook-url-row" id="webhook_url_fallback_row">
                     <div class="form-inline">
-                        <label class="form-label" style="margin: 0;">URL Webhook (fallback: 172.17.0.1)</label>
+                        <label class="form-label" style="margin: 0;">
+                            URL Webhook (fallback: 172.17.0.1)
+                            <span class="webhook-recommended-badge" id="webhook_fallback_badge" hidden>Recommandée</span>
+                        </label>
                         <div class="copy-field">
                             <input class="form-input" type="text" id="webhook_url_fallback" name="webhook_url_fallback" readonly>
                             <button class="btn btn-secondary" type="button" data-action="copy-webhook-url-fallback">Copier</button>
                         </div>
                     </div>
+                </div>
+
+                <div class="actions-bar">
+                    <button type="button" class="btn btn-secondary" data-action="test-webhook-url">Tester l'URL webhook</button>
+                    <span id="webhook_test_status" class="section-note"></span>
                 </div>
 
                 <details class="advanced-block">

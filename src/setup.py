@@ -5,6 +5,7 @@ Gère le setup wizard au premier lancement
 """
 import yaml
 import logging
+import json
 from typing import Optional, Dict, Any
 import requests
 
@@ -511,11 +512,9 @@ def save_config_from_ui(ui_config: Dict[str, Any]) -> bool:
 
     # Radarr/Sonarr obligatoires pour l'historique consolidé
     if not config["radarr"].get("url") or not config["radarr"].get("api_key"):
-        logger.error("Radarr obligatoire pour l'historique consolidé (url + api_key)")
-        return False
+        raise ValueError("Radarr obligatoire: renseignez URL et clé API")
     if not config["sonarr"].get("url") or not config["sonarr"].get("api_key"):
-        logger.error("Sonarr obligatoire pour l'historique consolidé (url + api_key)")
-        return False
+        raise ValueError("Sonarr obligatoire: renseignez URL et clé API")
 
     def _upsert_history(apps: list, name: str, url: str, api_key: str, app_type: str) -> list:
         filtered = [a for a in apps if not (isinstance(a, dict) and a.get("name") == name)]

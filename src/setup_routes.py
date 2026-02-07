@@ -6,9 +6,10 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 import setup
 import logging
+import requests
 from version import APP_VERSION
 
 logger = logging.getLogger(__name__)
@@ -62,6 +63,10 @@ class SetupConfigModel(BaseModel):
     history_ingestion_mode: Optional[str] = "webhook_plus_history"
 
 
+class WebhookReachabilityModel(BaseModel):
+    urls: List[str]
+
+
 @router.get("/setup", response_class=HTMLResponse)
 async def setup_page(request: Request):
     """Page de setup wizard"""
@@ -102,12 +107,50 @@ async def test_prowlarr(data: dict):
         return {"success": False, "error": error}
 
 
+@router.post("/api/setup/test-webhook-url")
+async def test_webhook_url(payload: WebhookReachabilityModel):
+    """Teste la joignabilité HTTP des URLs webhook depuis Grabb2RSS."""
+    results = []
+    for raw_url in payload.urls:
+        url = (raw_url or "").strip()
+        if not url:
+            continue
+        if not (url.startswith("http://") or url.startswith("https://")):
+            results.append({
+                "url": url,
+                "reachable": False,
+                "detail": "URL invalide (http/https requis)"
+            })
+            continue
+        try:
+            # Le endpoint webhook est en POST: un code 405/401/403 confirme déjà la joignabilité.
+            resp = requests.get(url, timeout=3, allow_redirects=False)
+            results.append({
+                "url": url,
+                "reachable": True,
+                "status_code": resp.status_code,
+                "detail": f"HTTP {resp.status_code}"
+            })
+        except requests.RequestException as exc:
+            results.append({
+                "url": url,
+                "reachable": False,
+                "detail": str(exc)
+            })
+    return {"success": True, "results": results}
+
+
 @router.post("/api/setup/save")
 async def save_setup(config: SetupConfigModel):
     """Sauvegarde la configuration initiale"""
     try:
         logger.info("Début sauvegarde configuration setup...")
         logger.info("Prowlarr URL: %s", config.prowlarr_url)
+
+        if not config.radarr_url or not config.radarr_api_key:
+            raise HTTPException(status_code=400, detail="Radarr requis: URL et clé API obligatoires")
+        if not config.sonarr_url or not config.sonarr_api_key:
+            raise HTTPException(status_code=400, detail="Sonarr requis: URL et clé API obligatoires")
 
         # Construire la config
         new_config = {
