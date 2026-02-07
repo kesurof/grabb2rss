@@ -183,15 +183,15 @@ async def save_setup(config: SetupConfigModel):
 
         # Ajouter la configuration d'authentification si activée
         if config.auth_enabled and config.auth_username and config.auth_password:
-            from auth import hash_password, validate_password_for_bcrypt
+            from auth import hash_password, validate_password_for_bcrypt, normalize_auth_error_message
             logger.info("Configuration de l'authentification pour %s", config.auth_username)
             password_error = validate_password_for_bcrypt(config.auth_password)
             if password_error:
-                raise HTTPException(status_code=400, detail=f"Erreur auth: {password_error}")
+                raise HTTPException(status_code=400, detail=f"Erreur auth: {normalize_auth_error_message(password_error)}")
             try:
                 password_hash = hash_password(config.auth_password)
             except ValueError as exc:
-                raise HTTPException(status_code=400, detail=f"Erreur auth: {exc}") from exc
+                raise HTTPException(status_code=400, detail=f"Erreur auth: {normalize_auth_error_message(exc)}") from exc
             new_config["auth"] = {
                 "enabled": True,
                 "username": config.auth_username,

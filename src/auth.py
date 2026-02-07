@@ -51,6 +51,18 @@ def validate_password_for_bcrypt(password: str) -> Optional[str]:
     return None
 
 
+def normalize_auth_error_message(error: Any) -> str:
+    """
+    Normalise un message d'erreur auth sans préfixe redondant.
+    """
+    message = str(error or "").strip()
+    while message.lower().startswith("erreur auth:"):
+        message = message.split(":", 1)[1].strip() if ":" in message else ""
+    if "password cannot be longer than 72 bytes" in message:
+        return f"mot de passe trop long pour bcrypt (max {MAX_BCRYPT_PASSWORD_BYTES} octets UTF-8)"
+    return message or "erreur authentification"
+
+
 def hash_password(password: str) -> str:
     """
     Hash un mot de passe avec un algorithme moderne (bcrypt)
@@ -63,8 +75,17 @@ def hash_password(password: str) -> str:
     """
     password_error = validate_password_for_bcrypt(password)
     if password_error:
-        raise ValueError(password_error)
-    return PASSWORD_CONTEXT.hash(password)
+        raise ValueError(normalize_auth_error_message(password_error))
+    try:
+        return PASSWORD_CONTEXT.hash(password)
+    except ValueError as exc:
+        normalized = normalize_auth_error_message(exc)
+        # Garde-fou: si bcrypt renvoie malgré tout l'erreur 72 bytes, on retente en borne stricte.
+        if "mot de passe trop long pour bcrypt" in normalized:
+            safe_bytes = str(password).encode("utf-8")[:MAX_BCRYPT_PASSWORD_BYTES]
+            safe_password = safe_bytes.decode("utf-8", errors="ignore")
+            return PASSWORD_CONTEXT.hash(safe_password)
+        raise ValueError(normalized) from exc
 
 
 def _is_legacy_sha256_hash(password_hash: str) -> bool:

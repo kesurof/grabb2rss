@@ -343,6 +343,31 @@ function copyText(value) {
     }
 }
 
+function copyTextWithButtonFeedback(value, buttonElement) {
+    if (!value) return;
+    const setCopiedState = () => {
+        if (!buttonElement) return;
+        const originalText = buttonElement.textContent;
+        buttonElement.textContent = 'Copie OK';
+        buttonElement.classList.add('copied');
+        setTimeout(() => {
+            buttonElement.textContent = originalText;
+            buttonElement.classList.remove('copied');
+        }, 2000);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(value).then(() => {
+            setCopiedState();
+        }).catch(() => {
+            fallbackCopyText(value);
+            setCopiedState();
+        });
+    } else {
+        fallbackCopyText(value);
+        setCopiedState();
+    }
+}
+
 function fallbackCopyText(value) {
     const temp = document.createElement('textarea');
     temp.value = value;
@@ -1034,6 +1059,11 @@ function hideSecurityAuthEditor() {
     if (editor) editor.hidden = true;
 }
 
+function formatAuthErrorMessage(error) {
+    const raw = String(error?.message || error || '').trim();
+    return raw.replace(/^Erreur auth:\s*/i, '').trim() || 'Erreur authentification';
+}
+
 async function saveSecurityAuthCredentials(event, button) {
     const targetButton = button || event?.currentTarget;
     const usernameInput = byId('security-auth-username-input');
@@ -1082,7 +1112,7 @@ async function saveSecurityAuthCredentials(event, button) {
         hideSecurityAuthEditor();
         showNotification('Identifiants enregistrés', 'success');
     } catch (e) {
-        showNotification(`Erreur auth: ${e.message || e}`, 'error');
+        showNotification(`Erreur auth: ${formatAuthErrorMessage(e)}`, 'error');
     } finally {
         if (targetButton) {
             targetButton.disabled = false;
@@ -1135,7 +1165,7 @@ async function toggleSecurityAuthEnabled(event, button) {
         renderSecurityAuthState();
         showNotification('Authentification mise à jour', 'success');
     } catch (e) {
-        showNotification(`Erreur auth: ${e.message || e}`, 'error');
+        showNotification(`Erreur auth: ${formatAuthErrorMessage(e)}`, 'error');
         renderSecurityAuthState();
     } finally {
         targetButton.disabled = false;
@@ -1555,7 +1585,7 @@ async function loadConfig(event, button) {
                             <div class="config-field__control">
                                 <div class="copy-field">
                                     <input class="config-input" type="text" id="webhook_url" name="webhook_url" readonly>
-                                    <button class="btn btn-secondary" type="button" data-action="copy-webhook-url">Copier</button>
+                                    <button class="btn btn-sm btn-secondary" type="button" data-action="copy-webhook-url">Copier</button>
                                 </div>
                             </div>
                         </div>`;
@@ -1734,10 +1764,8 @@ async function loadConfig(event, button) {
         const webhookCopyBtn = document.querySelector('[data-action="copy-webhook-url"]');
         const webhookUrlInput = byId('webhook_url');
         if (webhookCopyBtn && webhookUrlInput) {
-            webhookCopyBtn.addEventListener('click', () => {
-                webhookUrlInput.select();
-                document.execCommand('copy');
-                alert("✅ URL webhook copiée");
+            webhookCopyBtn.addEventListener('click', (event) => {
+                copyTextWithButtonFeedback(webhookUrlInput.value, event.currentTarget);
             });
         }
 
@@ -2309,9 +2337,12 @@ async function checkSetupStatus() {
     try {
         // Lire l'état initial injecté par le serveur au lieu d'appeler l'API
         if (window.INITIAL_STATE && window.INITIAL_STATE.first_run) {
-            console.log("🔧 Premier lancement détecté - redirection vers /setup");
-            window.location.href = '/setup';
-            return false; // Bloquer l'initialisation
+            if (window.location.pathname !== '/setup') {
+                console.log("🔧 Premier lancement détecté - redirection vers /setup");
+                window.location.href = '/setup';
+                return false; // Bloquer l'initialisation sur les autres pages
+            }
+            return true; // Déjà sur /setup: continuer l'initialisation normale
         }
 
         return true; // Setup terminé, continuer
@@ -2467,23 +2498,77 @@ function handleCopyApiKey(event, element) {
 }
 
 async function handleDeleteApiKey(event, element) {
+    if (!element) return;
+    if (element.dataset.confirming !== 'true') {
+        element.dataset.confirming = 'true';
+        if (!element.dataset.confirmOriginalText) {
+            element.dataset.confirmOriginalText = element.textContent || 'Supprimer';
+        }
+        element.classList.remove('btn-danger', 'btn-secondary');
+        element.classList.add('btn-warning');
+        element.textContent = 'Confirmer';
+        if (element._confirmTimer) clearTimeout(element._confirmTimer);
+        element._confirmTimer = setTimeout(() => {
+            element.dataset.confirming = 'false';
+            element.classList.remove('btn-warning');
+            element.classList.add('btn-danger');
+            element.textContent = element.dataset.confirmOriginalText || 'Supprimer';
+        }, 3500);
+        return;
+    }
+    if (element._confirmTimer) clearTimeout(element._confirmTimer);
+    element.dataset.confirming = 'false';
+    element.classList.remove('btn-warning');
+    element.classList.add('btn-danger');
+    element.textContent = 'Suppression...';
+    element.disabled = true;
     const key = element?.dataset?.key || '';
     if (!key) return;
-    await deleteApiKey(key);
+    try {
+        await deleteApiKey(key);
+    } finally {
+        element.disabled = false;
+        element.textContent = element.dataset.confirmOriginalText || 'Supprimer';
+    }
 }
 
 async function handleToggleApiKey(event, element) {
+    if (!element) return;
+    if (element.dataset.confirming !== 'true') {
+        element.dataset.confirming = 'true';
+        if (!element.dataset.confirmOriginalText) {
+            element.dataset.confirmOriginalText = element.textContent || 'Désactiver';
+        }
+        element.classList.remove('btn-secondary', 'btn-danger');
+        element.classList.add('btn-warning');
+        element.textContent = 'Confirmer';
+        if (element._confirmTimer) clearTimeout(element._confirmTimer);
+        element._confirmTimer = setTimeout(() => {
+            element.dataset.confirming = 'false';
+            element.classList.remove('btn-warning');
+            element.classList.add('btn-secondary');
+            element.textContent = element.dataset.confirmOriginalText || 'Désactiver';
+        }, 3500);
+        return;
+    }
+    if (element._confirmTimer) clearTimeout(element._confirmTimer);
+    element.dataset.confirming = 'false';
+    element.classList.remove('btn-warning');
+    element.classList.add('btn-secondary');
+    element.textContent = 'Application...';
+    element.disabled = true;
     const key = element?.dataset?.key || '';
     const enabled = String(element?.dataset?.enabled || '').toLowerCase() === 'true';
     if (!key) return;
-    await toggleApiKey(key, enabled);
+    try {
+        await toggleApiKey(key, enabled);
+    } finally {
+        element.disabled = false;
+        element.textContent = element.dataset.confirmOriginalText || (enabled ? 'Activer' : 'Désactiver');
+    }
 }
 
 async function deleteApiKey(key) {
-    if (!confirm('Êtes-vous sûr de vouloir supprimer cette API Key ?')) {
-        return;
-    }
-
     try {
         const res = await fetch(`/api/auth/keys/${encodeURIComponent(key)}`, {
             method: 'DELETE'
@@ -2823,6 +2908,10 @@ function initSetupPage() {
     const webhookStrict = byId('webhook_strict');
     const webhookDownload = byId('webhook_download');
     const webhookMinScore = byId('webhook_min_score');
+    const webhookTokenRow = webhookTokenInput?.closest('.form-field') || null;
+    const webhookGuide = document.querySelector('.setup-webhook-guide');
+    const webhookActionsBar = webhookTestStatus?.closest('.actions-bar') || document.querySelector('[data-action="test-webhook-url"]')?.closest('.actions-bar') || null;
+    const webhookAdvancedBlock = webhookMinScore?.closest('.advanced-block') || null;
     const steps = Array.from(document.querySelectorAll('[data-setup-step]'));
     const stepPills = Array.from(document.querySelectorAll('.setup-wizard__step'));
     const nextStepButton = document.querySelector('[data-action="next-step"]');
@@ -2917,6 +3006,7 @@ function initSetupPage() {
 
     if (goFixButton) {
         goFixButton.addEventListener('click', () => {
+            if (!requireSetupInlineConfirmation(goFixButton)) return;
             currentStep = 0;
             updateWizard();
             window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -2952,6 +3042,36 @@ function initSetupPage() {
         }
     };
 
+    const resetSetupInlineConfirmation = (button) => {
+        if (!button) return;
+        if (button._confirmTimer) {
+            clearTimeout(button._confirmTimer);
+            button._confirmTimer = null;
+        }
+        if (button.dataset.confirmOriginalText) {
+            button.textContent = button.dataset.confirmOriginalText;
+        }
+        button.dataset.confirming = 'false';
+    };
+
+    const requireSetupInlineConfirmation = (button) => {
+        if (!button) return true;
+        if (button.dataset.confirming === 'true') {
+            resetSetupInlineConfirmation(button);
+            return true;
+        }
+        if (!button.dataset.confirmOriginalText) {
+            button.dataset.confirmOriginalText = button.textContent;
+        }
+        button.dataset.confirming = 'true';
+        button.textContent = 'Confirmer';
+        if (button._confirmTimer) clearTimeout(button._confirmTimer);
+        button._confirmTimer = setTimeout(() => {
+            resetSetupInlineConfirmation(button);
+        }, 3500);
+        return false;
+    };
+
     const toggleAuthFields = () => {
         const enabled = authToggle.checked;
         authFields.style.display = enabled ? 'block' : 'none';
@@ -2973,11 +3093,24 @@ function initSetupPage() {
     const toggleWebhookFields = () => {
         if (!webhookToggle || !webhookTokenInput) return;
         const enabled = webhookToggle.checked;
+        if (webhookTokenRow) webhookTokenRow.hidden = !enabled;
+        if (webhookGuide) webhookGuide.hidden = !enabled;
+        if (webhookPrimaryRow) webhookPrimaryRow.hidden = !enabled;
+        if (webhookFallbackRow) webhookFallbackRow.hidden = !enabled;
+        if (webhookActionsBar) webhookActionsBar.hidden = !enabled;
+        if (webhookAdvancedBlock) webhookAdvancedBlock.hidden = !enabled;
+        if (webhookGenerateBtn) webhookGenerateBtn.disabled = !enabled;
+        if (webhookCopyPrimaryBtn) webhookCopyPrimaryBtn.disabled = !enabled;
+        if (webhookCopyFallbackBtn) webhookCopyFallbackBtn.disabled = !enabled;
+        if (webhookTestBtn) webhookTestBtn.disabled = !enabled;
         if (enabled) {
             webhookTokenInput.setAttribute('required', 'required');
+            updateSetupWebhookUrls();
+            setWebhookStatus('');
             ensureWebhookToken();
         } else {
             webhookTokenInput.removeAttribute('required');
+            setRecommendedWebhook(null);
             setWebhookStatus('Webhook désactivé (optionnel, mais recommandé).', 'info');
         }
         validateStep();
@@ -3056,6 +3189,8 @@ function initSetupPage() {
 
     const testConnection = async () => {
         if (testInFlight) return;
+        const testButton = document.querySelector('[data-action="test-connection"]');
+        if (!requireSetupInlineConfirmation(testButton)) return;
         const urlInput = byId('prowlarr_url');
         const apiKeyInput = byId('prowlarr_api_key');
         if (!urlInput || !apiKeyInput) {
@@ -3071,7 +3206,6 @@ function initSetupPage() {
         }
 
         testInFlight = true;
-        const testButton = document.querySelector('[data-action="test-connection"]');
         setButtonState(testButton, true, 'Test en cours...');
         showAlert('Test de connexion en cours...', 'info');
 
@@ -3100,6 +3234,11 @@ function initSetupPage() {
 
     const testWebhookReachability = async () => {
         if (webhookTestInFlight) return;
+        if (!requireSetupInlineConfirmation(webhookTestBtn)) return;
+        if (!webhookToggle?.checked) {
+            setWebhookStatus("Activez d'abord le webhook pour lancer le test.", 'error');
+            return;
+        }
         if (!webhookUrlPrimaryInput || !webhookUrlFallbackInput) return;
         const urls = [webhookUrlPrimaryInput.value.trim(), webhookUrlFallbackInput.value.trim()].filter(Boolean);
         if (!urls.length) {
@@ -3147,6 +3286,7 @@ function initSetupPage() {
     };
 
     const applyWebhookSetup = async () => {
+        if (!requireSetupInlineConfirmation(webhookApplyBtn)) return;
         if (!webhookToggle) return;
         if (!webhookToggle.checked) {
             webhookToggle.checked = true;
@@ -3160,6 +3300,8 @@ function initSetupPage() {
     const submitSetup = async (event) => {
         event.preventDefault();
         if (submitInFlight) return;
+        const submitButton = document.querySelector('[data-action="submit-setup"]');
+        if (!requireSetupInlineConfirmation(submitButton)) return;
 
         const formData = new FormData(form);
         const config = {
@@ -3212,7 +3354,6 @@ function initSetupPage() {
         }
 
         submitInFlight = true;
-        const submitButton = document.querySelector('[data-action="submit-setup"]');
         setButtonState(submitButton, true, 'Sauvegarde...');
         form.style.display = 'none';
         loadingEl.style.display = 'block';
@@ -3261,12 +3402,14 @@ function initSetupPage() {
 
     if (webhookCopyPrimaryBtn && webhookUrlPrimaryInput) {
         webhookCopyPrimaryBtn.addEventListener('click', () => {
+            if (!requireSetupInlineConfirmation(webhookCopyPrimaryBtn)) return;
             copyText(webhookUrlPrimaryInput.value);
             showAlert("URL webhook Docker copiée", 'success');
         });
     }
     if (webhookCopyFallbackBtn && webhookUrlFallbackInput) {
         webhookCopyFallbackBtn.addEventListener('click', () => {
+            if (!requireSetupInlineConfirmation(webhookCopyFallbackBtn)) return;
             copyText(webhookUrlFallbackInput.value);
             showAlert("URL webhook fallback copiée", 'success');
         });
@@ -3274,6 +3417,7 @@ function initSetupPage() {
 
     if (webhookGenerateBtn && webhookTokenInput) {
         webhookGenerateBtn.addEventListener('click', async () => {
+            if (!requireSetupInlineConfirmation(webhookGenerateBtn)) return;
             try {
                 const res = await fetch('/api/webhook/token/generate', { method: 'POST' });
                 const data = await res.json();
