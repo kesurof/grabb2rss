@@ -165,6 +165,27 @@ def get_history_apps() -> list[dict]:
     """Retourne la liste normalisée des instances history consolidé depuis settings.yml."""
     config = load_config()
     apps = config.get("history_apps", [])
+    if not isinstance(apps, list) or not apps:
+        # Fallback compatibilité: reconstruire depuis radarr/sonarr si history_apps absent.
+        reconstructed = []
+        for app_name in ("radarr", "sonarr"):
+            app_cfg = config.get(app_name, {})
+            if not isinstance(app_cfg, dict):
+                continue
+            url = (app_cfg.get("url") or "").strip()
+            api_key = (app_cfg.get("api_key") or "").strip()
+            enabled = bool(app_cfg.get("enabled", True))
+            if not (url and api_key):
+                continue
+            reconstructed.append({
+                "name": app_name,
+                "url": url.rstrip("/"),
+                "api_key": api_key,
+                "type": app_name,
+                "enabled": enabled,
+            })
+        apps = reconstructed
+
     if not isinstance(apps, list):
         return []
 
@@ -254,9 +275,9 @@ def get_config_for_ui() -> Dict[str, Any]:
         "history_sync_interval_seconds": "Intervalle de sync history en secondes (ex: 7200 = 2h)",
         "history_lookback_days": "Fenêtre de rattrapage history en jours (ex: 7)",
         "history_download_from_history": "Télécharger les .torrents pendant la sync history",
-        "history_min_score": "Score minimum de matching en sync history",
-        "history_strict_hash": "Refuser si hash invalide pendant la sync history",
-        "history_ingestion_mode": "Mode d'ingestion: webhook_only | webhook_plus_history | history_only",
+        "history_min_score": "Score minimum de matching en sync history (1 permissif, 3 recommande, 5 strict)",
+        "history_strict_hash": "Si active, rejette les grabs history sans hash valide pour eviter les faux rattachements",
+        "history_ingestion_mode": "Mode d'ingestion des grabs (webhook_plus_history recommande, webhook_only, history_only)",
         "history_apps": "Instances Radarr/Sonarr pour l'historique consolidé (JSON)"
     }
 

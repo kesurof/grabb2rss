@@ -5,9 +5,13 @@ class RSSManager {
     constructor() {
         this.apiKeys = [];
         this.rssUrls = [];
-        this.authInfo = null;
         this.availableTokens = [];
         this.selectedToken = '';
+        this.selectedTokenId = '';
+        this.apiKeyVault = new Map();
+        this.tokenVault = new Map();
+        this.copyVault = new Map();
+        this._copySeq = 0;
         this._filterTimer = null;
     }
 
@@ -20,12 +24,55 @@ class RSSManager {
             .replace(/'/g, '&#39;');
     }
 
+    maskSecret(value, visibleStart = 8, visibleEnd = 4) {
+        const raw = String(value ?? '');
+        if (!raw) return '';
+        if (raw.length <= visibleStart + visibleEnd + 3) return `${raw.slice(0, 3)}***`;
+        return `${raw.slice(0, visibleStart)}…${raw.slice(-visibleEnd)}`;
+    }
+
+    maskUrlApiKey(rawUrl) {
+        const value = String(rawUrl ?? '');
+        if (!value) return '';
+        return value.replace(/([?&]apikey=)([^&]+)/i, (match, prefix, token) => {
+            return `${prefix}${this.maskSecret(token, 6, 3)}`;
+        });
+    }
+
+    keyId(prefix, value, index) {
+        const raw = String(value ?? '');
+        const safe = raw.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 16) || 'k';
+        return `${prefix}-${index}-${safe}`;
+    }
+
+    setCopyRef(ref, value) {
+        if (!ref) return;
+        this.copyVault.set(ref, String(value ?? ''));
+    }
+
+    getCopyRef(ref) {
+        if (!ref) return '';
+        return this.copyVault.get(ref) || '';
+    }
+
+    findTokenIdByValue(tokenValue) {
+        if (!tokenValue) return '';
+        for (const [id, value] of this.tokenVault.entries()) {
+            if (value === tokenValue) return id;
+        }
+        return '';
+    }
+
     // Charger les API keys
     async loadApiKeys() {
         try {
             const response = await fetch('/api/auth/keys');
             const data = await response.json();
             this.apiKeys = data.keys || [];
+            this.apiKeyVault.clear();
+            this.apiKeys.forEach((key, index) => {
+                this.apiKeyVault.set(this.keyId('api', key.key, index), key.key || '');
+            });
             return this.apiKeys;
         } catch (error) {
             console.error('Erreur chargement API keys:', error);
@@ -91,16 +138,20 @@ class RSSManager {
 
             if (data.error) {
                 this.rssUrls = [];
-                this.authInfo = null;
                 this.availableTokens = [];
+                this.tokenVault.clear();
                 return { error: data.error, message: data.message };
             }
 
             this.rssUrls = data.urls || [];
-            this.authInfo = data.auth || null;
             this.availableTokens = data.api_keys || [];
+            this.tokenVault.clear();
+            this.availableTokens.forEach((tokenData, index) => {
+                this.tokenVault.set(this.keyId('token', tokenData.key, index), tokenData.key || '');
+            });
             if (data.selected_api_key && data.selected_api_key.key) {
                 this.selectedToken = data.selected_api_key.key;
+                this.selectedTokenId = this.findTokenIdByValue(this.selectedToken);
             }
             return data;
         } catch (error) {
@@ -185,27 +236,29 @@ class RSSManager {
                         </thead>
                         <tbody>`;
 
-            this.apiKeys.forEach(key => {
+            this.apiKeys.forEach((key, index) => {
                 const statusClass = key.enabled ? 'active' : 'inactive';
                 const statusText = key.enabled ? 'Active' : 'Inactive';
                 const createdAt = new Date(key.created_at).toLocaleDateString();
                 const isSelected = this.selectedToken && this.selectedToken === key.key;
                 const selectLabel = isSelected ? 'Sélectionné' : 'Sélectionner';
                 const selectClass = isSelected ? 'btn-success' : 'btn-secondary';
+                const id = this.keyId('api', key.key, index);
+                this.apiKeyVault.set(id, key.key || '');
 
                 html += `
                             <tr>
                                 <td><strong>${this.escapeHtml(key.name || 'API Key')}</strong></td>
-                                <td><code class="api-key-chip">${this.escapeHtml(key.key)}</code></td>
+                                <td><code class="api-key-chip" title="Clé masquée">${this.escapeHtml(this.maskSecret(key.key))}</code></td>
                                 <td><span class="key-status ${statusClass}">${statusText}</span></td>
                                 <td>${createdAt}</td>
                                 <td>
                                     <div class="api-key-actions">
-                                        <button class="btn btn-sm ${selectClass}" type="button" data-action="select-key" data-key="${this.escapeHtml(key.key)}" ${key.enabled ? '' : 'disabled'}>
+                                        <button class="btn btn-sm ${selectClass}" type="button" data-action="select-key" data-key-id="${id}" ${key.enabled ? '' : 'disabled'}>
                                             ${selectLabel}
                                         </button>
-                                        <button class="btn btn-sm btn-secondary" type="button" data-action="copy-key" data-key="${this.escapeHtml(key.key)}">Copier</button>
-                                        <button class="btn btn-sm btn-danger" type="button" data-action="delete-key" data-key="${this.escapeHtml(key.key)}">Supprimer</button>
+                                        <button class="btn btn-sm btn-secondary" type="button" data-action="copy-key" data-key-id="${id}">Copier</button>
+                                        <button class="btn btn-sm btn-danger" type="button" data-action="delete-key" data-key-id="${id}">Supprimer</button>
                                     </div>
                                 </td>
                             </tr>`;
@@ -228,6 +281,8 @@ class RSSManager {
         if (!container) return;
 
         const filteredUrls = this.getFilteredUrls();
+        this.copyVault.clear();
+        this._copySeq = 0;
         let html = `<div class="rss-urls-section rss-urls-section--flat">`;
 
         if (this.rssUrls.length === 0) {
@@ -243,41 +298,6 @@ class RSSManager {
                     <p>Modifiez la catégorie ou la recherche.</p>
                 </div>`;
         } else {
-            if (this.authInfo && (this.authInfo.x_api_key || this.authInfo.authorization)) {
-                const xApiKey = this.authInfo.x_api_key || '';
-                const bearer = this.authInfo.authorization || '';
-                const selectedTokenName = this.escapeHtml((this.availableTokens.find(t => t.key === this.selectedToken) || {}).name || 'Auto');
-                html += `
-                    <div class="rss-group-panel">
-                        <div class="rss-group-panel__title">Authentification via headers</div>
-                        <div class="rss-group-panel__subtitle">Token sélectionné: ${selectedTokenName}</div>
-                        <div class="rss-url-row">
-                            <div class="rss-url-row__meta">
-                                <div class="rss-url-row__name">Header principal</div>
-                                <div class="rss-url-row__desc">À ajouter dans votre client torrent</div>
-                            </div>
-                            <div class="rss-url-row__control">
-                                <div class="copy-field">
-                                    <input type="text" class="config-input" value="X-API-Key: ${xApiKey}" readonly data-select="all" title="Cliquez pour sélectionner">
-                                    <button class="btn btn-sm btn-secondary" type="button" data-action="copy-text" data-text="X-API-Key: ${xApiKey}">Copier</button>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="rss-url-row">
-                            <div class="rss-url-row__meta">
-                                <div class="rss-url-row__name">Alternative</div>
-                                <div class="rss-url-row__desc">Utilisez si votre client n'accepte pas X-API-Key</div>
-                            </div>
-                            <div class="rss-url-row__control">
-                                <div class="copy-field">
-                                    <input type="text" class="config-input" value="Authorization: ${bearer}" readonly data-select="all" title="Cliquez pour sélectionner">
-                                    <button class="btn btn-sm btn-secondary" type="button" data-action="copy-text" data-text="Authorization: ${bearer}">Copier</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>`;
-            }
-
             // Grouper par catégorie
             const principal = filteredUrls.filter(u => u.category === 'principal');
             const trackers = filteredUrls.filter(u => u.category === 'tracker');
@@ -365,7 +385,9 @@ class RSSManager {
         const searchEl = document.getElementById('rss-url-search');
         if (tokenEl && tokenEl.dataset.bound !== 'true') {
             tokenEl.addEventListener('change', async () => {
-                this.selectedToken = tokenEl.value || '';
+                const tokenId = tokenEl.value || '';
+                this.selectedTokenId = tokenId;
+                this.selectedToken = tokenId ? (this.tokenVault.get(tokenId) || '') : '';
                 await this.loadRSSUrls();
                 this.updateSummary();
                 this.renderRSSUrlsSection('rss-urls-container');
@@ -390,32 +412,40 @@ class RSSManager {
         const tokenEl = document.getElementById('rss-token-filter');
         if (!tokenEl) return;
         const prev = tokenEl.value || '';
+        this.tokenVault.clear();
         const options = ['<option value="">Auto</option>'].concat(
-            this.availableTokens.map(t => {
+            this.availableTokens.map((t, index) => {
                 const name = this.escapeHtml(t.name || 'API Key');
-                const value = this.escapeHtml(t.key || '');
-                return `<option value="${value}">${name}</option>`;
+                const id = this.keyId('token', t.key, index);
+                this.tokenVault.set(id, t.key || '');
+                return `<option value="${id}">${name}</option>`;
             })
         );
         tokenEl.innerHTML = options.join('');
-        const nextValue = this.selectedToken || prev || '';
+        const selectedByValue = this.findTokenIdByValue(this.selectedToken);
+        const nextValue = this.selectedTokenId || selectedByValue || prev || '';
         tokenEl.value = nextValue;
     }
 
     // Render une carte URL
     renderUrlRow(url) {
+        const safeName = this.escapeHtml(url.name || '');
+        const safeDesc = this.escapeHtml(url.description || '');
+        const safeUrl = this.escapeHtml(this.maskUrlApiKey(url.url || ''));
+        const rowId = `row-${++this._copySeq}`;
+
+        this.setCopyRef(`${rowId}:url`, url.url || '');
+
         return `
             <div class="rss-url-row">
                 <div class="rss-url-row__meta">
-                    <div class="rss-url-row__name">${url.name}</div>
-                    <div class="rss-url-row__desc">${url.description}</div>
+                    <div class="rss-url-row__name">${safeName}</div>
+                    <div class="rss-url-row__desc">${safeDesc}</div>
                 </div>
                 <div class="rss-url-row__control">
                     <div class="copy-field">
-                        <input type="text" class="config-input" value="${url.url}" readonly data-select="all" title="Cliquez pour sélectionner">
-                        <button class="btn btn-sm btn-secondary" type="button" data-action="copy-url" data-url="${url.url.replace(/'/g, "\\'")}">
-                            Copier
-                        </button>
+                        <input type="text" class="config-input" value="${safeUrl}" readonly data-select="all" title="URL masquée (copie complète via bouton)">
+                        <button class="btn btn-sm btn-secondary" type="button" data-action="copy-ref" data-copy-ref="${rowId}:url">Copier config</button>
                     </div>
                 </div>
             </div>`;
@@ -426,7 +456,7 @@ class RSSManager {
         try {
             const input = document.getElementById('rss-token-name-input');
             const requestedName = input ? input.value.trim() : '';
-            const data = await this.generateApiKey(requestedName);
+            await this.generateApiKey(requestedName);
             this.updateSummary();
             this.renderApiKeysSection('api-keys-container');
             this.renderRSSUrlsSection('rss-urls-container');
@@ -464,10 +494,6 @@ class RSSManager {
         await this.copyToClipboard(key, button);
     }
 
-    async copyUrl(url, button) {
-        await this.copyToClipboard(url, button);
-    }
-
     bindContainerHandlers(container) {
         if (!container || container.dataset.boundActions === 'true') return;
         container.addEventListener('click', event => {
@@ -486,9 +512,11 @@ class RSSManager {
             if (action === 'generate-key') {
                 this.handleGenerateKey();
             } else if (action === 'select-key') {
-                const key = actionEl.dataset.key;
+                const keyId = actionEl.dataset.keyId;
+                const key = keyId ? (this.apiKeyVault.get(keyId) || '') : '';
                 if (!key) return;
                 this.selectedToken = key;
+                this.selectedTokenId = this.findTokenIdByValue(key);
                 this.loadRSSUrls().then(() => {
                     this.updateSummary();
                     this.renderTokenFilter();
@@ -499,10 +527,12 @@ class RSSManager {
                     showNotification('Erreur sélection token', 'error');
                 });
             } else if (action === 'copy-key') {
-                const key = actionEl.dataset.key;
+                const keyId = actionEl.dataset.keyId;
+                const key = keyId ? (this.apiKeyVault.get(keyId) || '') : '';
                 if (key) this.copyKey(key, actionEl);
             } else if (action === 'delete-key') {
-                const key = actionEl.dataset.key;
+                const keyId = actionEl.dataset.keyId;
+                const key = keyId ? (this.apiKeyVault.get(keyId) || '') : '';
                 if (!key) return;
                 if (actionEl.dataset.confirming !== 'true') {
                     actionEl.dataset.confirming = 'true';
@@ -525,12 +555,10 @@ class RSSManager {
                 actionEl.classList.add('btn-danger');
                 actionEl.textContent = 'Suppression...';
                 this.handleDeleteKey(key, actionEl);
-            } else if (action === 'copy-text') {
-                const text = actionEl.dataset.text;
-                if (text) this.copyToClipboard(text, actionEl);
-            } else if (action === 'copy-url') {
-                const url = actionEl.dataset.url;
-                if (url) this.copyUrl(url, actionEl);
+            } else if (action === 'copy-ref') {
+                const ref = actionEl.dataset.copyRef;
+                const value = this.getCopyRef(ref);
+                if (value) this.copyToClipboard(value, actionEl);
             }
         });
         container.dataset.boundActions = 'true';

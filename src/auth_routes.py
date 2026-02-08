@@ -14,7 +14,7 @@ from models import (
 from auth import (
     is_auth_enabled, verify_credentials, create_session, verify_session,
     delete_session, get_api_keys, create_api_key, delete_api_key,
-    toggle_api_key, change_password, get_auth_config, cleanup_expired_sessions,
+    toggle_api_key, change_password, cleanup_expired_sessions,
     get_auth_cookie_secure
 )
 
@@ -173,6 +173,7 @@ async def logout(
 
 @router.get("/status", response_model=AuthStatus)
 async def auth_status(
+    response: Response,
     session_token: Optional[str] = Cookie(None)
 ):
     """
@@ -186,6 +187,8 @@ async def auth_status(
     """
     # Nettoyer les sessions expirées
     cleanup_expired_sessions()
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
 
     # Vérifier si l'auth est activée
     enabled = is_auth_enabled()
@@ -193,22 +196,17 @@ async def auth_status(
     if not enabled:
         return AuthStatus(
             authenticated=True,  # Pas d'auth = accès libre
-            enabled=False
+            enabled=False,
+            username=None
         )
 
     # Vérifier la session
     authenticated = verify_session(session_token)
 
-    # Récupérer le username si authentifié
-    username = None
-    if authenticated:
-        auth_config = get_auth_config()
-        username = auth_config.get("username")
-
     return AuthStatus(
         authenticated=authenticated,
         enabled=enabled,
-        username=username
+        username=None
     )
 
 

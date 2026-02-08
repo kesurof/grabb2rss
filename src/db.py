@@ -593,7 +593,7 @@ def upsert_grab_history(records: List[dict]) -> Dict[str, int]:
     with get_db() as conn:
         try:
             for item in records:
-                instance = item.get("instance")
+                instance = ((item.get("instance") or "legacy").strip().lower()) or "legacy"
                 raw_id = item.get("raw_id")
                 event_type = item.get("event_type")
                 download_id = item.get("download_id")
@@ -767,7 +767,7 @@ def get_grab_history_list(
              AND latest.max_grabbed_at = hs.grabbed_at
             LEFT JOIN (
                 SELECT
-                    instance,
+                    LOWER(instance) AS instance_norm,
                     download_id,
                     1 AS has_grab,
                     MAX(CASE WHEN torrent_file IS NOT NULL AND torrent_file != '' THEN torrent_file END) AS torrent_file,
@@ -776,8 +776,8 @@ def get_grab_history_list(
                     MAX(source_last_seen) AS source_last_seen
                 FROM grabs
                 WHERE download_id IS NOT NULL
-                GROUP BY instance, download_id
-            ) gs ON gs.instance = hs.instance AND gs.download_id = hs.download_id
+                GROUP BY LOWER(instance), download_id
+            ) gs ON gs.instance_norm = LOWER(hs.instance) AND gs.download_id = hs.download_id
             WHERE 1=1
             """
         else:
@@ -798,7 +798,7 @@ def get_grab_history_list(
             FROM grab_history hs
             LEFT JOIN (
                 SELECT
-                    instance,
+                    LOWER(instance) AS instance_norm,
                     download_id,
                     1 AS has_grab,
                     MAX(CASE WHEN torrent_file IS NOT NULL AND torrent_file != '' THEN torrent_file END) AS torrent_file,
@@ -807,8 +807,8 @@ def get_grab_history_list(
                     MAX(source_last_seen) AS source_last_seen
                 FROM grabs
                 WHERE download_id IS NOT NULL
-                GROUP BY instance, download_id
-            ) gs ON gs.instance = hs.instance AND gs.download_id = hs.download_id
+                GROUP BY LOWER(instance), download_id
+            ) gs ON gs.instance_norm = LOWER(hs.instance) AND gs.download_id = hs.download_id
             WHERE 1=1
             """
         if instance:

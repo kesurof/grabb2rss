@@ -183,6 +183,22 @@ async def save_setup(config: SetupConfigModel):
             "strict_hash": config.history_strict_hash,
             "ingestion_mode": config.history_ingestion_mode
         }
+        new_config["history_apps"] = [
+            {
+                "name": "radarr",
+                "url": config.radarr_url,
+                "api_key": config.radarr_api_key,
+                "type": "radarr",
+                "enabled": bool(config.radarr_enabled),
+            },
+            {
+                "name": "sonarr",
+                "url": config.sonarr_url,
+                "api_key": config.sonarr_api_key,
+                "type": "sonarr",
+                "enabled": bool(config.sonarr_enabled),
+            },
+        ]
 
         # Sauvegarder
         success = setup.save_config(new_config)

@@ -11,7 +11,6 @@ import time
 from datetime import datetime
 from typing import Optional
 import re
-from urllib.parse import quote
 
 from logging_config import setup_logging
 from version import APP_VERSION
@@ -76,6 +75,20 @@ async def add_version_header(request: Request, call_next):
 # Middleware d'authentification simplifié
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        # Webhook Grab: accessible uniquement depuis le réseau interne/local.
+        if request.url.path.startswith("/api/webhook/grab"):
+            client_host = request.client.host if request.client else None
+            if not is_local_request(client_host):
+                raise HTTPException(status_code=403, detail="Webhook restreint au réseau interne")
+            return await call_next(request)
+
+        # Healthcheck: accessible uniquement depuis le réseau interne/local.
+        if request.url.path == "/health":
+            client_host = request.client.host if request.client else None
+            if not is_local_request(client_host):
+                raise HTTPException(status_code=403, detail="Healthcheck restreint au réseau interne")
+            return await call_next(request)
+
         # Si auth désactivée, tout est public
         if not is_auth_enabled():
             if not setup.is_first_run():
@@ -110,11 +123,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         # Routes toujours publiques même si auth activée
         public_routes = [
-            '/health',              # Healthcheck pour Docker/K8s
             '/login',               # Page de login
             '/api/auth/login',      # API login
             '/api/auth/status',     # Statut auth
-            '/api/webhook/grab',    # Webhook Grab (protégé par token)
         ]
 
         # Vérifier si route publique
@@ -139,18 +150,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
             if not is_auth_enabled():
                 return await call_next(request)
 
-            # Vérifier l'API key via headers uniquement
-            auth_header = request.headers.get('Authorization')
-            api_key = None
-            if auth_header:
-                parts = auth_header.split()
-                if len(parts) == 2 and parts[0].lower() == "bearer":
-                    api_key = parts[1]
-
-            if not api_key:
-                api_key = request.headers.get('X-API-Key')
-            if not api_key:
-                api_key = request.query_params.get('apikey')
+            # Vérifier l'API key via query uniquement (compat qBittorrent)
+            api_key = request.query_params.get("apikey")
 
             if api_key and verify_api_key(api_key):
                 return await call_next(request)
@@ -158,7 +159,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # Pas d'API key valide : erreur 401
             raise HTTPException(
                 status_code=401,
-                detail="API key requise. Obtenez votre clé depuis le dashboard."
+                detail="API key requise (query apikey). Obtenez votre clé depuis le dashboard."
             )
 
         # Toutes les autres routes : vérifier session
@@ -512,6 +513,10 @@ async def update_configuration(config_data: dict):
 @app.post("/api/webhook/grab")
 async def webhook_grab(request: Request):
     """Webhook Grab Radarr/Sonarr"""
+    client_host = request.client.host if request.client else None
+    if not is_local_request(client_host):
+        raise HTTPException(status_code=403, detail="Webhook restreint au réseau interne")
+
     if not runtime_config.WEBHOOK_ENABLED:
         raise HTTPException(status_code=403, detail="Webhook désactivé")
     if runtime_config.HISTORY_INGESTION_MODE == "history_only":
@@ -726,7 +731,7 @@ async def delete_api_key(key: str):
 
 @app.get("/api/rss/urls")
 async def get_rss_urls(request: Request, token: Optional[str] = Query(None)):
-    """Génère les URLs RSS avec token sélectionnable et trackers normalisés."""
+    """Génère les URLs RSS avec token sélectionnable (query apikey)."""
     try:
         from auth import get_api_keys
         from config import RSS_DOMAIN, RSS_SCHEME
@@ -771,22 +776,22 @@ async def get_rss_urls(request: Request, token: Optional[str] = Query(None)):
             }
 
         api_key = api_key_data["key"]
-        api_key_encoded = quote(api_key, safe="")
 
         # Construire l'URL de base
         base_url = f"{RSS_SCHEME}://{RSS_DOMAIN}"
 
-        # Générer les URLs avec token dans query string
+        # Générer les URLs RSS avec query token (compat clients RSS sans headers custom).
+        token_qs = f"?apikey={api_key}"
         urls = [
             {
                 "name": "Flux RSS complet",
-                "url": f"{base_url}/rss?apikey={api_key_encoded}",
+                "url": f"{base_url}/rss{token_qs}",
                 "description": "Tous les torrents récents",
                 "category": "principal"
             },
             {
                 "name": "Flux RSS (format JSON)",
-                "url": f"{base_url}/rss/torrent.json?apikey={api_key_encoded}",
+                "url": f"{base_url}/rss/torrent.json{token_qs}",
                 "description": "Format JSON pour intégrations",
                 "category": "principal"
             }
@@ -799,7 +804,7 @@ async def get_rss_urls(request: Request, token: Optional[str] = Query(None)):
             tracker_slug = _slugify_tracker_name(tracker)
             urls.append({
                 "name": f"Flux {tracker}",
-                "url": f"{base_url}/rss/tracker/{tracker_slug}?apikey={api_key_encoded}",
+                "url": f"{base_url}/rss/tracker/{tracker_slug}{token_qs}",
                 "description": f"Torrents de {tracker} uniquement",
                 "category": "tracker",
                 "tracker": tracker,
@@ -815,10 +820,6 @@ async def get_rss_urls(request: Request, token: Optional[str] = Query(None)):
                 "key": api_key
             },
             "base_url": base_url,
-            "auth": {
-                "x_api_key": api_key,
-                "authorization": f"Bearer {api_key}"
-            },
             "urls": urls,
             "total_urls": len(urls)
         }

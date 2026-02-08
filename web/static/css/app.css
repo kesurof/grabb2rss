@@ -1463,6 +1463,68 @@ body.auth-page {
     min-width: 0;
 }
 
+.config-ingestion-mode-details {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.config-ingestion-mode-item {
+    border: 1px solid rgba(100, 116, 139, 0.45);
+    border-radius: 10px;
+    padding: 9px 11px;
+    background: rgba(30, 41, 59, 0.38);
+}
+
+.config-ingestion-mode-item.is-selected {
+    border-color: rgba(59, 130, 246, 0.8);
+    background: rgba(37, 99, 235, 0.14);
+}
+
+.config-ingestion-mode-title {
+    color: #dbe7ff;
+    font-size: 13px;
+    font-weight: 650;
+}
+
+.config-ingestion-mode-note {
+    margin-top: 3px;
+    color: #9cb0c9;
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.config-history-score-details {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.config-history-score-item {
+    border: 1px solid rgba(100, 116, 139, 0.45);
+    border-radius: 10px;
+    padding: 9px 11px;
+    background: rgba(30, 41, 59, 0.38);
+}
+
+.config-history-score-item.is-selected {
+    border-color: rgba(59, 130, 246, 0.8);
+    background: rgba(37, 99, 235, 0.14);
+}
+
+.config-history-score-title {
+    color: #dbe7ff;
+    font-size: 13px;
+    font-weight: 650;
+}
+
+.config-history-score-note {
+    margin-top: 3px;
+    color: #9cb0c9;
+    font-size: 12px;
+    line-height: 1.35;
+}
+
 /* Boolean fields on /config */
 .config-switch {
     display: inline-flex;

@@ -19,6 +19,7 @@ let purgeDbConfirmTimer = null;
 let loadConfigConfirmTimer = null;
 let saveConfigConfirmTimer = null;
 let apiKeysTargetId = 'api-keys-list';
+let apiKeysVault = new Map();
 let toggleAuthConfirmTimer = null;
 let securityAuthState = {
     auth_enabled: false,
@@ -31,6 +32,30 @@ let securityAuthState = {
 
 function byId(id) {
     return document.getElementById(id);
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function maskSecret(value, visibleStart = 6, visibleEnd = 3) {
+    const raw = String(value ?? '');
+    if (!raw) return '';
+    if (raw.length <= visibleStart + visibleEnd + 3) return `${raw.slice(0, 3)}***`;
+    return `${raw.slice(0, visibleStart)}…${raw.slice(-visibleEnd)}`;
+}
+
+function maskUrlSecret(rawUrl) {
+    const value = String(rawUrl ?? '');
+    if (!value) return '';
+    return value.replace(/([?&](?:apikey|token)=)([^&]+)/ig, (match, prefix, token) => {
+        return `${prefix}${maskSecret(token)}`;
+    });
 }
 
 function setText(id, value) {
@@ -1307,6 +1332,50 @@ async function loadConfig(event, button) {
             torrents_max_size_mb: 'Taille max .torrent (MB)',
             log_level: 'Niveau de logs'
         };
+        const historyIngestionModeOptions = [
+            {
+                value: 'webhook_plus_history',
+                label: 'Webhook + History (recommandé)',
+                detail: 'Temps réel via webhook, avec rattrapage history pour limiter les manques.'
+            },
+            {
+                value: 'webhook_only',
+                label: 'Webhook uniquement',
+                detail: 'Ingestion immédiate, sans rattrapage périodique history.'
+            },
+            {
+                value: 'history_only',
+                label: 'History uniquement',
+                detail: 'Ignore les webhooks Grab et s’appuie uniquement sur les cycles history.'
+            }
+        ];
+        const historyMinScoreOptions = [
+            {
+                value: '1',
+                label: '1 - Très permissif',
+                detail: 'Accepte presque tous les matchs, y compris les correspondances faibles.'
+            },
+            {
+                value: '2',
+                label: '2 - Permissif',
+                detail: 'Tolère des correspondances partielles, utile si vos noms de release sont variables.'
+            },
+            {
+                value: '3',
+                label: '3 - Équilibré (recommandé)',
+                detail: 'Bon compromis précision/rappel pour la majorité des bibliothèques.'
+            },
+            {
+                value: '4',
+                label: '4 - Précis',
+                detail: 'Réduit les faux positifs, mais peut ignorer quelques grabs valides.'
+            },
+            {
+                value: '5',
+                label: '5 - Strict',
+                detail: 'Privilégie la fiabilité maximale des correspondances.'
+            }
+        ];
         const subgroupDefinitions = {
             essential: [
                 {
@@ -1500,7 +1569,11 @@ async function loadConfig(event, button) {
                         .join(' ');
 
                     const isWebhookToken = fieldKey === 'webhook_token';
+                    const isEssentialApiKey = key === 'essential' && /api_key$/i.test(fieldKey);
                     const isHistoryApps = fieldKey === 'history_apps';
+                    const isHistoryIngestionMode = fieldKey === 'history_ingestion_mode';
+                    const isHistoryMinScore = fieldKey === 'history_min_score';
+                    const isHistoryStrictHash = fieldKey === 'history_strict_hash';
                     const skipField = key === 'security' && fieldKey === 'auth_enabled';
                     if (skipField) {
                         return;
@@ -1508,14 +1581,27 @@ async function loadConfig(event, button) {
                     const isBoolean = String(data.value).toLowerCase() === 'true' || String(data.value).toLowerCase() === 'false';
                     const inputType = isBoolean ? 'checkbox' : 'text';
                     const inputValue = isBoolean ? '' : (data.value || '');
-                    const isEditableText = !isBoolean && !isHistoryApps && !isWebhookToken;
+                    const isEditableText = !isBoolean && !isHistoryApps && !isWebhookToken && !isEssentialApiKey && !isHistoryIngestionMode && !isHistoryMinScore;
                     const isChecked = isBoolean && String(data.value).toLowerCase() === 'true';
+                    const normalizedIngestionValue = String(inputValue || '').trim().toLowerCase();
+                    const selectedIngestionValue = historyIngestionModeOptions.some(option => option.value === normalizedIngestionValue)
+                        ? normalizedIngestionValue
+                        : 'webhook_plus_history';
+                    const normalizedHistoryMinScore = String(inputValue || '').trim();
+                    const selectedHistoryMinScore = historyMinScoreOptions.some(option => option.value === normalizedHistoryMinScore)
+                        ? normalizedHistoryMinScore
+                        : '3';
+                    const fieldHelp = isHistoryIngestionMode
+                        ? "Détermine la source prioritaire d'ingestion des grabs."
+                        : isHistoryStrictHash
+                            ? "Si activé, un grab history sans hash valide est rejeté pour éviter les faux rattachements."
+                        : data.description;
 
                     panelsHtml += `
                         <div class="config-field">
                             <div class="config-field__meta">
                                 <label class="config-field__label" for="${fieldKey}">${displayName}</label>
-                                <div class="config-field__help">${data.description}</div>
+                                <div class="config-field__help">${fieldHelp}</div>
                             </div>
                             <div class="config-field__control">
                                 ${isHistoryApps ? `
@@ -1539,12 +1625,60 @@ async function loadConfig(event, button) {
                                 </div>
                                 ` : isWebhookToken ? `
                                 <div class="copy-field">
-                                    <input class="config-input" type="text"
+                                    <input class="config-input" type="password"
                                            id="${fieldKey}"
                                            name="${fieldKey}"
                                            value="${inputValue}"
-                                           placeholder="${data.description}">
+                                           placeholder="${data.description}"
+                                           autocomplete="new-password">
                                     <button class="btn btn-secondary" type="button" data-action="generate-webhook-token" data-target="${fieldKey}">Générer</button>
+                                    <button class="btn btn-secondary" type="button" data-action="copy-config-field" data-copy-target="${fieldKey}">Copier config</button>
+                                </div>
+                                ` : isEssentialApiKey ? `
+                                <div class="copy-field">
+                                    <input class="config-input" type="password"
+                                           id="${fieldKey}"
+                                           name="${fieldKey}"
+                                           value="${inputValue}"
+                                           placeholder="${data.description}"
+                                           autocomplete="new-password">
+                                    <button class="btn btn-secondary" type="button" data-action="copy-config-field" data-copy-target="${fieldKey}">Copier config</button>
+                                </div>
+                                ` : isHistoryIngestionMode ? `
+                                <div class="edit-field">
+                                    <select class="config-input config-input--edit"
+                                            id="${fieldKey}"
+                                            name="${fieldKey}">
+                                        ${historyIngestionModeOptions.map(option => `
+                                            <option value="${option.value}" ${option.value === selectedIngestionValue ? 'selected' : ''}>${option.label}</option>
+                                        `).join('')}
+                                    </select>
+                                </div>
+                                <div class="config-ingestion-mode-details">
+                                    ${historyIngestionModeOptions.map(option => `
+                                        <div class="config-ingestion-mode-item${option.value === selectedIngestionValue ? ' is-selected' : ''}" data-mode="${option.value}">
+                                            <div class="config-ingestion-mode-title">${option.label}</div>
+                                            <div class="config-ingestion-mode-note">${option.detail}</div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                                ` : isHistoryMinScore ? `
+                                <div class="edit-field">
+                                    <select class="config-input config-input--edit"
+                                            id="${fieldKey}"
+                                            name="${fieldKey}">
+                                        ${historyMinScoreOptions.map(option => `
+                                            <option value="${option.value}" ${option.value === selectedHistoryMinScore ? 'selected' : ''}>${option.label}</option>
+                                        `).join('')}
+                                    </select>
+                                </div>
+                                <div class="config-history-score-details">
+                                    ${historyMinScoreOptions.map(option => `
+                                        <div class="config-history-score-item${option.value === selectedHistoryMinScore ? ' is-selected' : ''}" data-score="${option.value}">
+                                            <div class="config-history-score-title">${option.label}</div>
+                                            <div class="config-history-score-note">${option.detail}</div>
+                                        </div>
+                                    `).join('')}
                                 </div>
                                 ` : `
                                 ${isBoolean ? `
@@ -1585,7 +1719,7 @@ async function loadConfig(event, button) {
                             <div class="config-field__control">
                                 <div class="copy-field">
                                     <input class="config-input" type="text" id="webhook_url" name="webhook_url" readonly>
-                                    <button class="btn btn-sm btn-secondary" type="button" data-action="copy-webhook-url">Copier</button>
+                                    <button class="btn btn-sm btn-secondary" type="button" data-action="copy-config-field" data-copy-target="webhook_url">Copier config</button>
                                 </div>
                             </div>
                         </div>`;
@@ -1738,7 +1872,9 @@ async function loadConfig(event, button) {
             const webhookUrlInput = byId('webhook_url');
             if (!webhookUrlInput) return;
             const tokenValue = tokenInput ? tokenInput.value.trim() : '';
-            webhookUrlInput.value = buildWebhookUrl(tokenValue);
+            const rawUrl = buildWebhookUrl(tokenValue);
+            webhookUrlInput.value = maskUrlSecret(rawUrl);
+            webhookUrlInput.dataset.rawValue = rawUrl;
         };
 
         document.querySelectorAll('[data-action="generate-webhook-token"]').forEach(btn => {
@@ -1761,13 +1897,18 @@ async function loadConfig(event, button) {
         });
 
         updateWebhookUrl();
-        const webhookCopyBtn = document.querySelector('[data-action="copy-webhook-url"]');
-        const webhookUrlInput = byId('webhook_url');
-        if (webhookCopyBtn && webhookUrlInput) {
-            webhookCopyBtn.addEventListener('click', (event) => {
-                copyTextWithButtonFeedback(webhookUrlInput.value, event.currentTarget);
+
+        document.querySelectorAll('[data-action="copy-config-field"]').forEach(btn => {
+            if (btn.dataset.boundCopyConfig === 'true') return;
+            btn.dataset.boundCopyConfig = 'true';
+            btn.addEventListener('click', (event) => {
+                const targetId = btn.getAttribute('data-copy-target');
+                const input = targetId ? byId(targetId) : null;
+                if (!input) return;
+                const rawValue = input.dataset.rawValue || input.value || '';
+                copyTextWithButtonFeedback(rawValue, event.currentTarget);
             });
-        }
+        });
 
         const webhookTokenInput = byId('webhook_token');
         if (webhookTokenInput) {
@@ -1868,6 +2009,32 @@ async function loadConfig(event, button) {
                     renderList();
                 }
             });
+        }
+
+        const ingestionModeSelect = byId('history_ingestion_mode');
+        if (ingestionModeSelect) {
+            const refreshIngestionModeDetails = () => {
+                const selected = String(ingestionModeSelect.value || '').trim().toLowerCase();
+                document.querySelectorAll('.config-ingestion-mode-item').forEach((item) => {
+                    if (!(item instanceof HTMLElement)) return;
+                    item.classList.toggle('is-selected', item.dataset.mode === selected);
+                });
+            };
+            ingestionModeSelect.addEventListener('change', refreshIngestionModeDetails);
+            refreshIngestionModeDetails();
+        }
+
+        const historyMinScoreSelect = byId('history_min_score');
+        if (historyMinScoreSelect) {
+            const refreshHistoryScoreDetails = () => {
+                const selected = String(historyMinScoreSelect.value || '').trim();
+                document.querySelectorAll('.config-history-score-item').forEach((item) => {
+                    if (!(item instanceof HTMLElement)) return;
+                    item.classList.toggle('is-selected', item.dataset.score === selected);
+                });
+            };
+            historyMinScoreSelect.addEventListener('change', refreshHistoryScoreDetails);
+            refreshHistoryScoreDetails();
         }
 
         bindActionHandlers();
@@ -2439,32 +2606,42 @@ async function loadApiKeys(targetId = 'api-keys-list') {
 
         const apiKeys = data.api_keys || data.keys || [];
         if (!apiKeys || apiKeys.length === 0) {
+            apiKeysVault = new Map();
             list.innerHTML = '<p style="color: #888; text-align: center;">Aucune API Key configurée</p>';
             return;
         }
 
+        const vault = new Map();
         let html = '<table style="margin-top: 10px;"><thead><tr><th>Nom</th><th>Clé</th><th>Statut</th><th>Créée le</th><th>Actions</th></tr></thead><tbody>';
 
-        apiKeys.forEach(key => {
+        apiKeys.forEach((key, index) => {
             const statusColor = key.enabled ? '#00aa00' : '#888';
             const statusText = key.enabled ? '✅ Activée' : '❌ Désactivée';
             const createdAt = new Date(key.created_at).toLocaleString('fr-FR');
+            const safeName = escapeHtml(key.name || 'API Key');
+            const rawKey = String(key.key || '');
+            const masked = String(key.key_masked || '');
+            const displayKey = masked || (rawKey ? `${rawKey.slice(0, 15)}...${rawKey.slice(-5)}` : '');
+            const safeDisplayKey = escapeHtml(displayKey);
+            const safeCreatedAt = escapeHtml(createdAt);
+            const keyId = `k_${index}_${Date.now()}`;
+            vault.set(keyId, rawKey);
 
             html += `
                 <tr>
-                    <td><strong>${key.name}</strong></td>
+                    <td><strong>${safeName}</strong></td>
                     <td>
-                        <code class="api-key-chip">${key.key_masked || key.key}</code>
-                        <button class="btn btn-secondary btn-sm" type="button" data-action="copy-api-key" data-key="${key.key}">Copier</button>
+                        <code class="api-key-chip">${safeDisplayKey}</code>
+                        <button class="btn btn-secondary btn-sm" type="button" data-action="copy-api-key" data-key-id="${keyId}">Copier</button>
                     </td>
                     <td style="color: ${statusColor};">${statusText}</td>
-                    <td style="color: #888; font-size: 12px;">${createdAt}</td>
+                    <td style="color: #888; font-size: 12px;">${safeCreatedAt}</td>
                     <td>
                         <div class="api-key-actions">
-                            <button class="btn btn-secondary btn-sm" type="button" data-action="toggle-api-key" data-key="${key.key}" data-enabled="${!key.enabled}">
+                            <button class="btn btn-secondary btn-sm" type="button" data-action="toggle-api-key" data-key-id="${keyId}" data-enabled="${!key.enabled}">
                                 ${key.enabled ? 'Désactiver' : 'Activer'}
                             </button>
-                            <button class="btn btn-danger btn-sm" type="button" data-action="delete-api-key" data-key="${key.key}">Supprimer</button>
+                            <button class="btn btn-danger btn-sm" type="button" data-action="delete-api-key" data-key-id="${keyId}">Supprimer</button>
                         </div>
                     </td>
                 </tr>
@@ -2472,6 +2649,7 @@ async function loadApiKeys(targetId = 'api-keys-list') {
         });
 
         html += '</tbody></table>';
+        apiKeysVault = vault;
         list.innerHTML = html;
         bindActionHandlers();
     } catch (error) {
@@ -2492,7 +2670,7 @@ function copyApiKey(key) {
 }
 
 function handleCopyApiKey(event, element) {
-    const key = element?.dataset?.key || '';
+    const key = apiKeysVault.get(element?.dataset?.keyId || '') || '';
     if (!key) return;
     copyApiKey(key);
 }
@@ -2522,7 +2700,7 @@ async function handleDeleteApiKey(event, element) {
     element.classList.add('btn-danger');
     element.textContent = 'Suppression...';
     element.disabled = true;
-    const key = element?.dataset?.key || '';
+    const key = apiKeysVault.get(element?.dataset?.keyId || '') || '';
     if (!key) return;
     try {
         await deleteApiKey(key);
@@ -2557,7 +2735,7 @@ async function handleToggleApiKey(event, element) {
     element.classList.add('btn-secondary');
     element.textContent = 'Application...';
     element.disabled = true;
-    const key = element?.dataset?.key || '';
+    const key = apiKeysVault.get(element?.dataset?.keyId || '') || '';
     const enabled = String(element?.dataset?.enabled || '').toLowerCase() === 'true';
     if (!key) return;
     try {

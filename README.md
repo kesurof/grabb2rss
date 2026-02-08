@@ -2,7 +2,7 @@
   <img src="web/static/medias/logo-grabb2rss.webp" alt="Grabb2RSS" width="220">
   <h1>Grabb2RSS</h1>
   <p>Pipeline Grab -> Torrent -> RSS pour Radarr/Sonarr/Prowlarr.</p>
-  <p><strong>Version</strong> : v3.0.9</p>
+  <p><strong>Version</strong> : v3.1.0</p>
 </div>
 
 [![Docker](https://img.shields.io/badge/docker-ghcr.io-blue)](https://ghcr.io/kesurof/grabb2rss)
@@ -87,11 +87,10 @@ Ensuite: ouvrez `http://localhost:8000/setup` et suivez le wizard.
 Authentification RSS/API:
 - Header `X-API-Key: <key>`
 - ou `Authorization: Bearer <key>`
-- ou query `?apikey=<key>`
 
 ## Endpoints utiles
 
-- `GET /health`
+- `GET /health` (réseau interne uniquement)
 - `GET /api/stats`
 - `GET /api/grabs`
 - `POST /api/history/reconcile/sync`

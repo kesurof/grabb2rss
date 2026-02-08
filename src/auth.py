@@ -10,6 +10,7 @@ import os
 import logging
 import secrets
 import hmac
+import ipaddress
 import bcrypt
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
@@ -188,6 +189,19 @@ def _parse_bool(value: Any) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
+def _is_production_env() -> bool:
+    """Détermine si l'application tourne en environnement production."""
+    env_candidates = [
+        os.getenv("APP_ENV"),
+        os.getenv("ENVIRONMENT"),
+        os.getenv("ENV"),
+    ]
+    for env_value in env_candidates:
+        if env_value and str(env_value).strip().lower() in {"prod", "production"}:
+            return True
+    return False
+
+
 def get_auth_cookie_secure() -> bool:
     """
     Détermine si le cookie de session doit être sécurisé (HTTPS only).
@@ -195,10 +209,16 @@ def get_auth_cookie_secure() -> bool:
     """
     env_value = os.getenv("AUTH_COOKIE_SECURE")
     if env_value is not None:
-        return _parse_bool(env_value)
+        cookie_secure = _parse_bool(env_value)
+    else:
+        auth_config = get_auth_config() or {}
+        cookie_secure = _parse_bool(auth_config.get("cookie_secure", False))
 
-    auth_config = get_auth_config() or {}
-    return _parse_bool(auth_config.get("cookie_secure", False))
+    # Garde-fou sécurité: en production, forcer un cookie HTTPS-only.
+    if _is_production_env() and not cookie_secure:
+        logger.warning("cookie_secure forcé à true en production")
+        return True
+    return cookie_secure
 
 
 def save_auth_config(auth_config: Dict[str, Any]) -> bool:
@@ -544,20 +564,17 @@ def is_local_request(client_host: Optional[str]) -> bool:
     if not client_host:
         return False
 
-    # IPs locales
-    local_ips = [
-        '127.0.0.1',
-        'localhost',
-        '::1',
-        '0.0.0.0'
-    ]
-
-    # Vérifier si c'est une IP locale
-    if client_host in local_ips:
+    host = str(client_host).strip().lower()
+    if host == "localhost":
         return True
 
-    # Vérifier les réseaux privés (172.x.x.x, 192.168.x.x, 10.x.x.x)
-    if client_host.startswith('172.') or client_host.startswith('192.168.') or client_host.startswith('10.'):
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+
+    # Local strict: loopback, private RFC1918/ULA, et interfaces non routables.
+    if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_unspecified:
         return True
 
     return False
