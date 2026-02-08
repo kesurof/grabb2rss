@@ -1,12 +1,17 @@
 # rss.py
 from xml.etree.ElementTree import Element, SubElement, tostring
 from datetime import datetime
-from pathlib import Path
 from typing import Optional
 from urllib.parse import quote
 
-from db import get_db_connection
-from config import RSS_TITLE, RSS_DESCRIPTION, RSS_DOMAIN, RSS_SCHEME, RSS_INTERNAL_URL, TORRENT_DIR
+from db import get_db_connection, resolve_torrent_path
+import logging
+from config import (
+    RSS_TITLE, RSS_DESCRIPTION, RSS_DOMAIN, RSS_SCHEME,
+    RSS_INTERNAL_URL, TORRENT_DIR, RSS_ALLOWED_HOSTS
+)
+
+logger = logging.getLogger(__name__)
 
 def is_docker_internal_request(request_host: Optional[str]) -> bool:
     """
@@ -41,6 +46,34 @@ def get_torrent_url(base_url: str, torrent_file: str) -> str:
     encoded_file = quote(torrent_file, safe='')
     return f"{base_url}/torrents/{encoded_file}"
 
+
+def _normalize_host(host: str) -> str:
+    return host.strip().lower()
+
+
+def _host_without_port(host: str) -> str:
+    host = host.strip()
+    if host.startswith("["):
+        end = host.find("]")
+        if end != -1:
+            return host[1:end].lower()
+    if ":" in host:
+        name, port = host.rsplit(":", 1)
+        if port.isdigit():
+            return name.lower()
+    return host.lower()
+
+
+def _is_allowed_host(request_host: str) -> bool:
+    if not request_host:
+        return False
+    normalized = _normalize_host(request_host)
+    normalized_no_port = _host_without_port(request_host)
+    allowed = [h.strip().lower() for h in RSS_ALLOWED_HOSTS if str(h).strip()]
+    if normalized == RSS_DOMAIN.lower() or normalized_no_port == RSS_DOMAIN.lower():
+        return True
+    return normalized in allowed or normalized_no_port in allowed
+
 def generate_rss(
     request_host: Optional[str] = None,
     tracker_filter: Optional[str] = None,
@@ -65,10 +98,12 @@ def generate_rss(
     if is_docker_internal_request(request_host):
         # Requête depuis l'intérieur de Docker (ex: qBittorrent dans un autre conteneur)
         base_url = RSS_INTERNAL_URL
-    elif request_host:
+    elif request_host and _is_allowed_host(request_host):
         # Requête externe avec host spécifique
         base_url = f"{RSS_SCHEME}://{request_host}"
     else:
+        if request_host and not _is_allowed_host(request_host):
+            logger.warning("Host RSS non autorisé: %s (fallback vers RSS_DOMAIN)", request_host)
         # Fallback sur domaine public configuré
         base_url = f"{RSS_SCHEME}://{RSS_DOMAIN}"
     
@@ -149,11 +184,11 @@ def generate_rss(
             
             # Déterminer la taille du fichier
             try:
-                torrent_path = TORRENT_DIR / torrent_file
-                if torrent_path.exists():
+                torrent_path = resolve_torrent_path(torrent_file)
+                if torrent_path and torrent_path.exists():
                     size = torrent_path.stat().st_size
                     enclosure.set("length", str(size))
-            except:
+            except Exception:
                 pass
             
             # Content
@@ -175,10 +210,12 @@ def generate_torrent_json(
     if is_docker_internal_request(request_host):
         # Requête depuis l'intérieur de Docker (ex: qBittorrent dans un autre conteneur)
         base_url = RSS_INTERNAL_URL
-    elif request_host:
+    elif request_host and _is_allowed_host(request_host):
         # Requête externe avec host spécifique
         base_url = f"{RSS_SCHEME}://{request_host}"
     else:
+        if request_host and not _is_allowed_host(request_host):
+            logger.warning("Host RSS non autorisé: %s (fallback vers RSS_DOMAIN)", request_host)
         # Fallback sur domaine public configuré
         base_url = f"{RSS_SCHEME}://{RSS_DOMAIN}"
     

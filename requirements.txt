@@ -11,3 +11,4 @@ psutil==5.9.8
 pyyaml==6.0.1
 jinja2==3.1.2
 aiofiles==23.2.1
+bcrypt==4.2.1

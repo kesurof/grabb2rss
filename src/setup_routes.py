@@ -24,7 +24,6 @@ class SetupConfigModel(BaseModel):
     """Modèle pour la configuration initiale"""
     prowlarr_url: str
     prowlarr_api_key: str
-    prowlarr_history_page_size: Optional[int] = 500
 
     radarr_url: Optional[str] = ""
     radarr_api_key: Optional[str] = ""
@@ -34,10 +33,8 @@ class SetupConfigModel(BaseModel):
     sonarr_api_key: Optional[str] = ""
     sonarr_enabled: Optional[bool] = False
 
-    sync_interval: Optional[int] = 3600
     retention_hours: Optional[int] = 168
     auto_purge: Optional[bool] = True
-    dedup_hours: Optional[int] = 168
 
     rss_domain: Optional[str] = "localhost:8000"
     rss_scheme: Optional[str] = "http"
@@ -49,6 +46,20 @@ class SetupConfigModel(BaseModel):
     auth_username: Optional[str] = ""
     auth_password: Optional[str] = ""
     auth_cookie_secure: Optional[bool] = False
+
+    # Webhook
+    webhook_enabled: Optional[bool] = False
+    webhook_token: Optional[str] = ""
+    webhook_min_score: Optional[int] = 3
+    webhook_strict: Optional[bool] = True
+    webhook_download: Optional[bool] = True
+
+    history_sync_interval_seconds: Optional[int] = 7200
+    history_lookback_days: Optional[int] = 7
+    history_download_from_history: Optional[bool] = True
+    history_min_score: Optional[int] = 3
+    history_strict_hash: Optional[bool] = False
+    history_ingestion_mode: Optional[str] = "webhook_plus_history"
 
 
 @router.get("/setup", response_class=HTMLResponse)
@@ -98,12 +109,16 @@ async def save_setup(config: SetupConfigModel):
         logger.info("Début sauvegarde configuration setup...")
         logger.info("Prowlarr URL: %s", config.prowlarr_url)
 
+        if not config.radarr_url or not config.radarr_api_key:
+            raise HTTPException(status_code=400, detail="Radarr requis: URL et clé API obligatoires")
+        if not config.sonarr_url or not config.sonarr_api_key:
+            raise HTTPException(status_code=400, detail="Sonarr requis: URL et clé API obligatoires")
+
         # Construire la config
         new_config = {
             "prowlarr": {
                 "url": config.prowlarr_url,
-                "api_key": config.prowlarr_api_key,
-                "history_page_size": config.prowlarr_history_page_size
+                "api_key": config.prowlarr_api_key
             },
             "radarr": {
                 "url": config.radarr_url,
@@ -116,10 +131,8 @@ async def save_setup(config: SetupConfigModel):
                 "enabled": config.sonarr_enabled
             },
             "sync": {
-                "interval": config.sync_interval,
                 "auto_purge": config.auto_purge,
-                "retention_hours": config.retention_hours,
-                "dedup_hours": config.dedup_hours
+                "retention_hours": config.retention_hours
             },
             "rss": {
                 "domain": config.rss_domain,
@@ -132,12 +145,16 @@ async def save_setup(config: SetupConfigModel):
 
         # Ajouter la configuration d'authentification si activée
         if config.auth_enabled and config.auth_username and config.auth_password:
-            from auth import hash_password
+            from auth import hash_password, normalize_auth_error_message
             logger.info("Configuration de l'authentification pour %s", config.auth_username)
+            try:
+                password_hash = hash_password(config.auth_password)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=f"Erreur auth: {normalize_auth_error_message(exc)}") from exc
             new_config["auth"] = {
                 "enabled": True,
                 "username": config.auth_username,
-                "password_hash": hash_password(config.auth_password),
+                "password_hash": password_hash,
                 "api_keys": [],
                 "cookie_secure": config.auth_cookie_secure
             }
@@ -150,6 +167,38 @@ async def save_setup(config: SetupConfigModel):
                 "api_keys": [],
                 "cookie_secure": config.auth_cookie_secure
             }
+
+        new_config["webhook"] = {
+            "enabled": config.webhook_enabled,
+            "token": config.webhook_token,
+            "min_score": config.webhook_min_score,
+            "strict": config.webhook_strict,
+            "download": config.webhook_download
+        }
+        new_config["history"] = {
+            "sync_interval_seconds": config.history_sync_interval_seconds,
+            "lookback_days": config.history_lookback_days,
+            "download_from_history": config.history_download_from_history,
+            "min_score": config.history_min_score,
+            "strict_hash": config.history_strict_hash,
+            "ingestion_mode": config.history_ingestion_mode
+        }
+        new_config["history_apps"] = [
+            {
+                "name": "radarr",
+                "url": config.radarr_url,
+                "api_key": config.radarr_api_key,
+                "type": "radarr",
+                "enabled": bool(config.radarr_enabled),
+            },
+            {
+                "name": "sonarr",
+                "url": config.sonarr_url,
+                "api_key": config.sonarr_api_key,
+                "type": "sonarr",
+                "enabled": bool(config.sonarr_enabled),
+            },
+        ]
 
         # Sauvegarder
         success = setup.save_config(new_config)

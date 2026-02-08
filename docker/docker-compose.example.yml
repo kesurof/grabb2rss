@@ -1,18 +1,22 @@
-version: "3.8"
-
 services:
-  grab2rss:
+  grabb2rss:
     image: ghcr.io/kesurof/grabb2rss:latest
-    container_name: grab2rss
+    container_name: grabb2rss
     environment:
-      - PUID=1000  # Votre User ID (trouvez-le avec: id -u)
-      - PGID=1000  # Votre Group ID (trouvez-le avec: id -g)
-      - TZ=Europe/Paris  # Votre timezone
+      - PUID=${PUID:-1002}  # Votre User ID (id -u)
+      - PGID=${PGID:-1002}  # Votre Group ID (id -g)
+      - TZ=${TZ:-Europe/Paris}
+      - CONFIG_DIR=/config
+      - DATA_DIR=/app/data
+      - APP_HOST=0.0.0.0
+      - APP_PORT=8000
     volumes:
-      - ./config:/config  # Configuration persistante
-      - ./data:/app/data  # Données et torrents
+      - ../config:/config  # Configuration persistante
+      - ../data:/app/data  # Donnees et torrents
     ports:
       - "8000:8000"
+    networks:
+      - traefik_proxy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -22,17 +26,14 @@ services:
       start_period: 10s
 
 # Optionnel: Avec Traefik
-# Décommentez les lignes suivantes si vous utilisez Traefik
-#
-#    networks:
-#      - traefik_proxy
-#    labels:
-#      - "traefik.enable=true"
-#      - "traefik.http.routers.grab2rss.rule=Host(`rss.votre-domaine.com`)"
-#      - "traefik.http.routers.grab2rss.entrypoints=https"
-#      - "traefik.http.routers.grab2rss.tls.certresolver=letsencrypt"
-#      - "traefik.http.services.grab2rss.loadbalancer.server.port=8000"
-#
-#networks:
-#  traefik_proxy:
-#    external: true
+# labels:
+#   - "traefik.enable=true"
+#   - "traefik.http.routers.grabb2rss.rule=Host(`rss.votre-domaine.com`)"
+#   - "traefik.http.routers.grabb2rss.entrypoints=https"
+#   - "traefik.http.routers.grabb2rss.tls.certresolver=letsencrypt"
+#   - "traefik.http.services.grabb2rss.loadbalancer.server.port=8000"
+
+networks:
+  traefik_proxy:
+    external: true
+    name: traefik_proxy

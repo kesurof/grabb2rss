@@ -1,51 +1,22 @@
-version: "3.8"
-
 services:
-  grab2rss:
+  grabb2rss:
+    image: grabb2rss:dev-local
+    pull_policy: never
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    container_name: grab2rss
+    container_name: grabb2rss
     ports:
       - "8000:8000"
     environment:
-      # User/Group IDs (LinuxServer.io style)
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
+      - PUID=${PUID:-1002}
+      - PGID=${PGID:-1002}
       - TZ=${TZ:-Etc/UTC}
-
-      # Prowlarr Configuration
-      - PROWLARR_URL=${PROWLARR_URL:-http://prowlarr:9696}
-      - PROWLARR_API_KEY=${PROWLARR_API_KEY:-}
-      - PROWLARR_HISTORY_PAGE_SIZE=${PROWLARR_HISTORY_PAGE_SIZE:-100}
-
-      # Radarr Configuration (Optional)
-      - RADARR_URL=${RADARR_URL:-}
-      - RADARR_API_KEY=${RADARR_API_KEY:-}
-
-      # Sonarr Configuration (Optional)
-      - SONARR_URL=${SONARR_URL:-}
-      - SONARR_API_KEY=${SONARR_API_KEY:-}
-
-      # Synchronization Settings
-      - SYNC_INTERVAL=${SYNC_INTERVAL:-3600}
-
-      # Retention & Purge
-      - RETENTION_HOURS=${RETENTION_HOURS:-168}
-      - AUTO_PURGE=${AUTO_PURGE:-true}
-
-      # Deduplication
-      - DEDUP_HOURS=${DEDUP_HOURS:-24}
-
-      # Application Settings
+      - CONFIG_DIR=/config
+      - DATA_DIR=/app/data
       - APP_HOST=0.0.0.0
       - APP_PORT=8000
-
-      # RSS Configuration
-      - RSS_DOMAIN=${RSS_DOMAIN:-localhost:8000}
-      - RSS_SCHEME=${RSS_SCHEME:-http}
-      - RSS_TITLE=${RSS_TITLE:-Grab2RSS}
-      - RSS_DESCRIPTION=${RSS_DESCRIPTION:-Prowlarr to RSS Feed}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
       - ../config:/config
       - ../data:/app/data
@@ -62,3 +33,4 @@ services:
 networks:
   traefik_proxy:
     external: true
+    name: traefik_proxy

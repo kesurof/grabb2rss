@@ -10,6 +10,8 @@ import os
 import logging
 import secrets
 import hmac
+import ipaddress
+import bcrypt
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 import yaml
@@ -24,10 +26,57 @@ SESSION_DURATION = timedelta(days=7)
 
 from db import get_db
 
+LEGACY_SALT_HEX_LEN = 64
+LEGACY_HASH_HEX_LEN = 64
+MAX_BCRYPT_PASSWORD_BYTES = 72
+
+
+def _password_for_bcrypt(password: Any) -> str:
+    """
+    Normalise un mot de passe pour bcrypt.
+    Bcrypt ne supporte que 72 octets maximum.
+    """
+    text_password = str(password or "")
+    pwd_bytes = text_password.encode("utf-8")
+    if len(pwd_bytes) <= MAX_BCRYPT_PASSWORD_BYTES:
+        return text_password
+    safe_bytes = pwd_bytes[:MAX_BCRYPT_PASSWORD_BYTES]
+    safe_password = safe_bytes.decode("utf-8", errors="ignore")
+    logger.warning("Mot de passe tronqué à %d octets pour bcrypt", MAX_BCRYPT_PASSWORD_BYTES)
+    return safe_password
+
+
+def validate_password_for_bcrypt(password: str) -> Optional[str]:
+    """
+    Valide un mot de passe avant hash bcrypt.
+    Retourne un message d'erreur si invalide, sinon None.
+    """
+    if password is None:
+        return "mot de passe manquant"
+    pwd_bytes = str(password).encode("utf-8")
+    if len(pwd_bytes) > MAX_BCRYPT_PASSWORD_BYTES:
+        return (
+            f"mot de passe trop long pour bcrypt "
+            f"({len(pwd_bytes)} octets > {MAX_BCRYPT_PASSWORD_BYTES})"
+        )
+    return None
+
+
+def normalize_auth_error_message(error: Any) -> str:
+    """
+    Normalise un message d'erreur auth sans préfixe redondant.
+    """
+    message = str(error or "").strip()
+    while message.lower().startswith("erreur auth:"):
+        message = message.split(":", 1)[1].strip() if ":" in message else ""
+    if "password cannot be longer than 72 bytes" in message:
+        return f"mot de passe trop long pour bcrypt (max {MAX_BCRYPT_PASSWORD_BYTES} octets UTF-8)"
+    return message or "erreur authentification"
+
 
 def hash_password(password: str) -> str:
     """
-    Hash un mot de passe avec SHA-256 + salt
+    Hash un mot de passe avec un algorithme moderne (bcrypt)
 
     Args:
         password: Mot de passe en clair
@@ -35,13 +84,38 @@ def hash_password(password: str) -> str:
     Returns:
         Hash au format: salt$hash
     """
-    # Générer un salt aléatoire
-    salt = secrets.token_hex(32)
+    if password is None:
+        raise ValueError("mot de passe manquant")
+    safe_password = _password_for_bcrypt(password)
+    try:
+        hashed = bcrypt.hashpw(
+            safe_password.encode("utf-8"),
+            bcrypt.gensalt()
+        )
+        return hashed.decode("utf-8")
+    except Exception as exc:
+        normalized = normalize_auth_error_message(exc)
+        # Garde-fou: certains backends bcrypt remontent cette erreur hors ValueError.
+        if (
+            "mot de passe trop long pour bcrypt" in normalized
+            or "password cannot be longer than 72 bytes" in str(exc)
+        ):
+            safe = _password_for_bcrypt(password).encode("utf-8")
+            return bcrypt.hashpw(safe, bcrypt.gensalt()).decode("utf-8")
+        raise ValueError(normalized) from exc
 
-    # Hasher le mot de passe avec le salt
-    pwd_hash = hashlib.sha256(f"{salt}{password}".encode()).hexdigest()
 
-    return f"{salt}${pwd_hash}"
+def _is_legacy_sha256_hash(password_hash: str) -> bool:
+    """
+    Détecte l'ancien format salt$hash (SHA-256) pour migration.
+    """
+    try:
+        salt, pwd_hash = password_hash.split('$', 1)
+    except (ValueError, AttributeError):
+        return False
+    if len(salt) != LEGACY_SALT_HEX_LEN or len(pwd_hash) != LEGACY_HASH_HEX_LEN:
+        return False
+    return all(c in "0123456789abcdef" for c in salt + pwd_hash)
 
 
 def verify_password(password: str, password_hash: str) -> bool:
@@ -55,14 +129,36 @@ def verify_password(password: str, password_hash: str) -> bool:
     Returns:
         True si le mot de passe est correct
     """
-    try:
-        salt, expected_hash = password_hash.split('$', 1)
-        pwd_hash = hashlib.sha256(f"{salt}{password}".encode()).hexdigest()
-
-        # Comparaison sécurisée contre timing attacks
-        return hmac.compare_digest(pwd_hash, expected_hash)
-    except (ValueError, AttributeError):
+    if not password_hash:
         return False
+
+    if _is_legacy_sha256_hash(password_hash):
+        try:
+            salt, expected_hash = password_hash.split('$', 1)
+            pwd_hash = hashlib.sha256(f"{salt}{password}".encode()).hexdigest()
+            return hmac.compare_digest(pwd_hash, expected_hash)
+        except (ValueError, AttributeError):
+            return False
+
+    try:
+        return bcrypt.checkpw(
+            _password_for_bcrypt(password).encode("utf-8"),
+            str(password_hash).encode("utf-8")
+        )
+    except Exception:
+        return False
+
+
+def needs_rehash(password_hash: str) -> bool:
+    """
+    Indique si le hash doit être mis à jour (legacy ou politique bcrypt).
+    """
+    if not password_hash:
+        return False
+    if _is_legacy_sha256_hash(password_hash):
+        return True
+    # Hash bcrypt natif ($2a$, $2b$, $2y$): pas de rehash imposé ici.
+    return not str(password_hash).startswith(("$2a$", "$2b$", "$2y$"))
 
 
 def get_auth_config() -> Dict[str, Any]:
@@ -93,6 +189,19 @@ def _parse_bool(value: Any) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
+def _is_production_env() -> bool:
+    """Détermine si l'application tourne en environnement production."""
+    env_candidates = [
+        os.getenv("APP_ENV"),
+        os.getenv("ENVIRONMENT"),
+        os.getenv("ENV"),
+    ]
+    for env_value in env_candidates:
+        if env_value and str(env_value).strip().lower() in {"prod", "production"}:
+            return True
+    return False
+
+
 def get_auth_cookie_secure() -> bool:
     """
     Détermine si le cookie de session doit être sécurisé (HTTPS only).
@@ -100,10 +209,16 @@ def get_auth_cookie_secure() -> bool:
     """
     env_value = os.getenv("AUTH_COOKIE_SECURE")
     if env_value is not None:
-        return _parse_bool(env_value)
+        cookie_secure = _parse_bool(env_value)
+    else:
+        auth_config = get_auth_config() or {}
+        cookie_secure = _parse_bool(auth_config.get("cookie_secure", False))
 
-    auth_config = get_auth_config() or {}
-    return _parse_bool(auth_config.get("cookie_secure", False))
+    # Garde-fou sécurité: en production, forcer un cookie HTTPS-only.
+    if _is_production_env() and not cookie_secure:
+        logger.warning("cookie_secure forcé à true en production")
+        return True
+    return cookie_secure
 
 
 def save_auth_config(auth_config: Dict[str, Any]) -> bool:
@@ -173,7 +288,18 @@ def verify_credentials(username: str, password: str) -> bool:
     if not password_hash:
         return False
 
-    return verify_password(password, password_hash)
+    if not verify_password(password, password_hash):
+        return False
+
+    if needs_rehash(password_hash):
+        try:
+            auth_config["password_hash"] = hash_password(password)
+            save_auth_config(auth_config)
+            logger.info("Mot de passe rehashé avec bcrypt")
+        except Exception as e:
+            logger.warning("Impossible de rehasher le mot de passe: %s", e)
+
+    return True
 
 
 def create_session() -> str:
@@ -438,20 +564,17 @@ def is_local_request(client_host: Optional[str]) -> bool:
     if not client_host:
         return False
 
-    # IPs locales
-    local_ips = [
-        '127.0.0.1',
-        'localhost',
-        '::1',
-        '0.0.0.0'
-    ]
-
-    # Vérifier si c'est une IP locale
-    if client_host in local_ips:
+    host = str(client_host).strip().lower()
+    if host == "localhost":
         return True
 
-    # Vérifier les réseaux privés (172.x.x.x, 192.168.x.x, 10.x.x.x)
-    if client_host.startswith('172.') or client_host.startswith('192.168.') or client_host.startswith('10.'):
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+
+    # Local strict: loopback, private RFC1918/ULA, et interfaces non routables.
+    if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_unspecified:
         return True
 
     return False

@@ -3,8 +3,8 @@
 Routes d'authentification pour Grabb2RSS
 """
 from fastapi import APIRouter, HTTPException, Request, Response, Cookie
-from fastapi.responses import JSONResponse
 from typing import Optional
+import time
 import logging
 
 from models import (
@@ -14,13 +14,58 @@ from models import (
 from auth import (
     is_auth_enabled, verify_credentials, create_session, verify_session,
     delete_session, get_api_keys, create_api_key, delete_api_key,
-    toggle_api_key, change_password, get_auth_config, cleanup_expired_sessions,
+    toggle_api_key, change_password, cleanup_expired_sessions,
     get_auth_cookie_secure
 )
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
+
+LOGIN_RATE_LIMIT_MAX_ATTEMPTS = 5
+LOGIN_RATE_LIMIT_WINDOW_SECONDS = 10 * 60
+LOGIN_RATE_LIMIT_BLOCK_SECONDS = 15 * 60
+_login_attempts: dict[str, dict[str, int | float]] = {}
+
+
+def _get_client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _is_rate_limited(client_ip: str) -> tuple[bool, int]:
+    now = time.time()
+    entry = _login_attempts.get(client_ip)
+    if not entry:
+        return False, 0
+    if entry["blocked_until"] > now:
+        return True, int(entry["blocked_until"] - now)
+    if now - entry["window_start"] > LOGIN_RATE_LIMIT_WINDOW_SECONDS:
+        _login_attempts.pop(client_ip, None)
+        return False, 0
+    return False, 0
+
+
+def _register_failed_attempt(client_ip: str) -> None:
+    now = time.time()
+    entry = _login_attempts.get(client_ip)
+    if not entry or now - entry["window_start"] > LOGIN_RATE_LIMIT_WINDOW_SECONDS:
+        _login_attempts[client_ip] = {
+            "window_start": now,
+            "count": 1,
+            "blocked_until": 0,
+        }
+        return
+
+    entry["count"] += 1
+    if entry["count"] >= LOGIN_RATE_LIMIT_MAX_ATTEMPTS:
+        entry["blocked_until"] = now + LOGIN_RATE_LIMIT_BLOCK_SECONDS
+
+
+def _reset_attempts(client_ip: str) -> None:
+    _login_attempts.pop(client_ip, None)
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -39,6 +84,15 @@ async def login(request: Request, response: Response):
     if not is_auth_enabled():
         raise HTTPException(status_code=400, detail="L'authentification n'est pas activée")
 
+    client_ip = _get_client_ip(request)
+    is_limited, retry_after = _is_rate_limited(client_ip)
+    if is_limited:
+        logger.warning("Rate limit login pour IP %s (%ss)", client_ip, retry_after)
+        raise HTTPException(
+            status_code=429,
+            detail=f"Trop de tentatives. Réessayez dans {retry_after}s"
+        )
+
     # Support JSON + form-urlencoded (fallback sans JS)
     try:
         content_type = request.headers.get("content-type", "")
@@ -53,10 +107,14 @@ async def login(request: Request, response: Response):
 
     # Vérifier les credentials
     if not verify_credentials(login_request.username, login_request.password):
+        _register_failed_attempt(client_ip)
+        logger.warning("Échec login pour %s depuis %s", login_request.username, client_ip)
         return LoginResponse(
             success=False,
             message="Identifiants incorrects"
         )
+
+    _reset_attempts(client_ip)
 
     # Créer une session
     session_token = create_session()
@@ -115,6 +173,7 @@ async def logout(
 
 @router.get("/status", response_model=AuthStatus)
 async def auth_status(
+    response: Response,
     session_token: Optional[str] = Cookie(None)
 ):
     """
@@ -128,6 +187,8 @@ async def auth_status(
     """
     # Nettoyer les sessions expirées
     cleanup_expired_sessions()
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
 
     # Vérifier si l'auth est activée
     enabled = is_auth_enabled()
@@ -135,22 +196,17 @@ async def auth_status(
     if not enabled:
         return AuthStatus(
             authenticated=True,  # Pas d'auth = accès libre
-            enabled=False
+            enabled=False,
+            username=None
         )
 
     # Vérifier la session
     authenticated = verify_session(session_token)
 
-    # Récupérer le username si authentifié
-    username = None
-    if authenticated:
-        auth_config = get_auth_config()
-        username = auth_config.get("username")
-
     return AuthStatus(
         authenticated=authenticated,
         enabled=enabled,
-        username=username
+        username=None
     )
 
 
