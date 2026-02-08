@@ -2,7 +2,7 @@
 from xml.etree.ElementTree import Element, SubElement, tostring
 from datetime import datetime
 from typing import Optional
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from db import get_db_connection, resolve_torrent_path
 import logging
@@ -26,25 +26,28 @@ def is_docker_internal_request(request_host: Optional[str]) -> bool:
     if not request_host:
         return False
 
-    # Normaliser en minuscules pour comparaison
-    host_lower = request_host.lower()
+    # Détection stricte: hôte exact (avec/sans port), jamais par sous-chaîne.
+    host_normalized = request_host.strip().lower()
+    host_no_port = _host_without_port(request_host)
 
-    # Indicateurs d'accès interne Docker
-    internal_indicators = [
-        'grabb2rss',       # Nom du service Docker
-        'grab2rss',        # Alias possible
-        'localhost',       # Accès local
-        '127.0.0.1',       # Loopback IPv4
-        '::1',             # Loopback IPv6
-        '0.0.0.0'          # Wildcard
-    ]
+    internal_hosts = {
+        "grabb2rss",  # Nom de service Docker
+        "grab2rss",   # Alias historique
+        "localhost",
+        "127.0.0.1",
+        "::1",
+        "0.0.0.0",
+    }
 
-    return any(indicator in host_lower for indicator in internal_indicators)
+    return host_normalized in internal_hosts or host_no_port in internal_hosts
 
-def get_torrent_url(base_url: str, torrent_file: str) -> str:
-    """Génère une URL encodée pour le fichier torrent"""
+def get_torrent_url(base_url: str, torrent_file: str, api_key: Optional[str] = None) -> str:
+    """Génère une URL encodée pour le téléchargement torrent."""
     encoded_file = quote(torrent_file, safe='')
-    return f"{base_url}/torrents/{encoded_file}"
+    url = f"{base_url}/api/torrents/download/{encoded_file}"
+    if api_key:
+        url = f"{url}?{urlencode({'apikey': api_key})}"
+    return url
 
 
 def _normalize_host(host: str) -> str:
@@ -76,8 +79,10 @@ def _is_allowed_host(request_host: str) -> bool:
 
 def generate_rss(
     request_host: Optional[str] = None,
+    request_scheme: Optional[str] = None,
     tracker_filter: Optional[str] = None,
-    limit: int = 100
+    limit: int = 100,
+    api_key: Optional[str] = None,
 ) -> bytes:
     """
     Génère le flux RSS multi-client avec filtres optionnels
@@ -95,12 +100,16 @@ def generate_rss(
     """
 
     # Déterminer la base URL selon le contexte
+    effective_scheme = (request_scheme or RSS_SCHEME or "http").strip().lower()
+    if effective_scheme not in {"http", "https"}:
+        effective_scheme = RSS_SCHEME
+
     if is_docker_internal_request(request_host):
         # Requête depuis l'intérieur de Docker (ex: qBittorrent dans un autre conteneur)
         base_url = RSS_INTERNAL_URL
     elif request_host and _is_allowed_host(request_host):
         # Requête externe avec host spécifique
-        base_url = f"{RSS_SCHEME}://{request_host}"
+        base_url = f"{effective_scheme}://{request_host}"
     else:
         if request_host and not _is_allowed_host(request_host):
             logger.warning("Host RSS non autorisé: %s (fallback vers RSS_DOMAIN)", request_host)
@@ -174,7 +183,7 @@ def generate_rss(
             SubElement(item, "description").text = description
             
             # URLs avec encoding
-            torrent_url = get_torrent_url(base_url, torrent_file)
+            torrent_url = get_torrent_url(base_url, torrent_file, api_key=api_key)
             SubElement(item, "link").text = torrent_url
             
             # Enclosure pour rutorrent, qBittorrent, Transmission
@@ -201,18 +210,24 @@ def generate_rss(
 
 def generate_torrent_json(
     request_host: Optional[str] = None,
+    request_scheme: Optional[str] = None,
     tracker_filter: Optional[str] = None,
-    limit: int = 100
+    limit: int = 100,
+    api_key: Optional[str] = None,
 ) -> dict:
     """Génère un flux au format JSON avec filtres"""
 
     # Déterminer la base URL selon le contexte
+    effective_scheme = (request_scheme or RSS_SCHEME or "http").strip().lower()
+    if effective_scheme not in {"http", "https"}:
+        effective_scheme = RSS_SCHEME
+
     if is_docker_internal_request(request_host):
         # Requête depuis l'intérieur de Docker (ex: qBittorrent dans un autre conteneur)
         base_url = RSS_INTERNAL_URL
     elif request_host and _is_allowed_host(request_host):
         # Requête externe avec host spécifique
-        base_url = f"{RSS_SCHEME}://{request_host}"
+        base_url = f"{effective_scheme}://{request_host}"
     else:
         if request_host and not _is_allowed_host(request_host):
             logger.warning("Host RSS non autorisé: %s (fallback vers RSS_DOMAIN)", request_host)
@@ -241,7 +256,7 @@ def generate_torrent_json(
         
         items = []
         for grab_id, grabbed_at, title, torrent_file, tracker in rows:
-            torrent_url = get_torrent_url(base_url, torrent_file)
+            torrent_url = get_torrent_url(base_url, torrent_file, api_key=api_key)
             items.append({
                 "id": f"grab-{grab_id}",
                 "title": title,

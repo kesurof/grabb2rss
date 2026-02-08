@@ -143,9 +143,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 return await call_next(request)
             # Sinon, continuer la vérification auth normale
 
-        # Routes RSS : API key OBLIGATOIRE (même en local)
+        # Routes RSS et téléchargement torrent API : API key OBLIGATOIRE (même en local)
         # Exclure l'UI RSS (page HTML)
-        if (request.url.path.startswith('/rss') and not request.url.path.startswith('/rss-ui')) or request.url.path.startswith('/feed'):
+        if ((request.url.path.startswith('/rss') and not request.url.path.startswith('/rss-ui'))
+                or request.url.path.startswith('/feed')
+                or request.url.path.startswith('/api/torrents/download/')):
             # Si auth désactivée, accès libre aux RSS
             if not is_auth_enabled():
                 return await call_next(request)
@@ -335,8 +337,16 @@ async def rss_feed(request: Request, tracker: str = Query("all")):
     """Flux RSS standard avec filtres optionnels"""
     try:
         request_host = request.headers.get("host")
+        request_scheme = request.headers.get("x-forwarded-proto") or request.url.scheme
+        api_key = request.query_params.get("apikey")
         tracker_filter = None if tracker == "all" else tracker
-        rss_xml = generate_rss(request_host=request_host, tracker_filter=tracker_filter, limit=100)
+        rss_xml = generate_rss(
+            request_host=request_host,
+            request_scheme=request_scheme,
+            tracker_filter=tracker_filter,
+            limit=100,
+            api_key=api_key
+        )
         return Response(
             content=rss_xml,
             media_type="application/rss+xml; charset=utf-8"
@@ -350,8 +360,16 @@ async def rss_torrent_json(request: Request, tracker: str = Query("all")):
     """Flux au format JSON avec filtres optionnels"""
     try:
         request_host = request.headers.get("host")
+        request_scheme = request.headers.get("x-forwarded-proto") or request.url.scheme
+        api_key = request.query_params.get("apikey")
         tracker_filter = None if tracker == "all" else tracker
-        json_data = generate_torrent_json(request_host=request_host, tracker_filter=tracker_filter, limit=100)
+        json_data = generate_torrent_json(
+            request_host=request_host,
+            request_scheme=request_scheme,
+            tracker_filter=tracker_filter,
+            limit=100,
+            api_key=api_key
+        )
         return JSONResponse(json_data)
     except Exception as e:
         logger.error(f"Erreur rss_torrent_json: {e}")
@@ -362,8 +380,16 @@ async def rss_tracker(request: Request, tracker_name: str):
     """Flux RSS pour un tracker spécifique"""
     try:
         request_host = request.headers.get("host")
+        request_scheme = request.headers.get("x-forwarded-proto") or request.url.scheme
+        api_key = request.query_params.get("apikey")
         tracker_filter = _resolve_tracker_name(tracker_name)
-        rss_xml = generate_rss(request_host=request_host, tracker_filter=tracker_filter, limit=100)
+        rss_xml = generate_rss(
+            request_host=request_host,
+            request_scheme=request_scheme,
+            tracker_filter=tracker_filter,
+            limit=100,
+            api_key=api_key
+        )
         return Response(
             content=rss_xml,
             media_type="application/rss+xml; charset=utf-8"
@@ -377,8 +403,16 @@ async def rss_tracker_json(request: Request, tracker_name: str):
     """Flux JSON pour un tracker spécifique"""
     try:
         request_host = request.headers.get("host")
+        request_scheme = request.headers.get("x-forwarded-proto") or request.url.scheme
+        api_key = request.query_params.get("apikey")
         tracker_filter = _resolve_tracker_name(tracker_name)
-        json_data = generate_torrent_json(request_host=request_host, tracker_filter=tracker_filter, limit=100)
+        json_data = generate_torrent_json(
+            request_host=request_host,
+            request_scheme=request_scheme,
+            tracker_filter=tracker_filter,
+            limit=100,
+            api_key=api_key
+        )
         return JSONResponse(json_data)
     except Exception as e:
         logger.error(f"Erreur rss_tracker_json: {e}")
@@ -735,6 +769,7 @@ async def get_rss_urls(request: Request, token: Optional[str] = Query(None)):
     try:
         from auth import get_api_keys
         from config import RSS_DOMAIN, RSS_SCHEME
+        from rss import _is_allowed_host
 
         # Récupérer les API keys disponibles
         keys = get_api_keys()
@@ -777,8 +812,18 @@ async def get_rss_urls(request: Request, token: Optional[str] = Query(None)):
 
         api_key = api_key_data["key"]
 
-        # Construire l'URL de base
-        base_url = f"{RSS_SCHEME}://{RSS_DOMAIN}"
+        # Construire l'URL de base:
+        # - host autorisé + schéma forwardé => URL publique exacte
+        # - sinon fallback config
+        request_host = request.headers.get("host")
+        request_scheme = (request.headers.get("x-forwarded-proto") or request.url.scheme or RSS_SCHEME).strip().lower()
+        if request_scheme not in {"http", "https"}:
+            request_scheme = RSS_SCHEME
+
+        if request_host and _is_allowed_host(request_host):
+            base_url = f"{request_scheme}://{request_host}"
+        else:
+            base_url = f"{RSS_SCHEME}://{RSS_DOMAIN}"
 
         # Générer les URLs RSS avec query token (compat clients RSS sans headers custom).
         token_qs = f"?apikey={api_key}"
